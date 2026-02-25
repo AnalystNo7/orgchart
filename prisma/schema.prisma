@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ScenarioStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ShetilType {
+  REVENUE
+  RESOURCE
+  SERVICE
+  BACKOFFICE
+}
+
+enum EmployeeCategory {
+  PP
+  OPP
+  AUP
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+model Scenario {
+  id            String         @id @default(uuid())
+  name          String
+  description   String?
+  isBaseline    Boolean        @default(false)
+  status        ScenarioStatus @default(DRAFT)
+  createdFromId String?
+  createdFrom   Scenario?      @relation("ScenarioParent", fields: [createdFromId], references: [id])
+  children      Scenario[]     @relation("ScenarioParent")
+  departments   Department[]
+  employees     Employee[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Department {
+  id         String     @id @default(uuid())
+  scenarioId String
+  scenario   Scenario   @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  parentId   String?
+  parent     Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
+  children   Department[] @relation("DepartmentTree")
+  name       String
+  shetilType ShetilType
+  headId     String?
+  head       Employee?  @relation("DepartmentHead", fields: [headId], references: [id])
+  sortOrder  Int        @default(0)
+  employees  Employee[] @relation("DepartmentEmployees")
+  originId   String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([scenarioId])
+  @@index([parentId])
+}
+
+model Employee {
+  id           String           @id @default(uuid())
+  scenarioId   String
+  scenario     Scenario         @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department       @relation("DepartmentEmployees", fields: [departmentId], references: [id], onDelete: Cascade)
+  fullName     String
+  position     String
+  category     EmployeeCategory
+  fte          Decimal          @default(1.0)
+  headOf       Department[]     @relation("DepartmentHead")
+  originId     String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([scenarioId])
+  @@index([departmentId])
+}

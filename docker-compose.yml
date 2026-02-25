@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: orgchart
+      POSTGRES_PASSWORD: orgchart
+      POSTGRES_DB: orgchart
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://orgchart:orgchart@db:5432/orgchart"
+      NEXTAUTH_SECRET: "change-me-in-production-use-openssl-rand-base64-32"
+      NEXTAUTH_URL: "http://localhost:3000"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:

@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-shetil-revenue: #22C55E;
+  --color-shetil-resource: #3B82F6;
+  --color-shetil-service: #EAB308;
+  --color-shetil-backoffice: #EF4444;
+
+  --color-shetil-revenue-bg: #f0fdf4;
+  --color-shetil-resource-bg: #eff6ff;
+  --color-shetil-service-bg: #fefce8;
+  --color-shetil-backoffice-bg: #fef2f2;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.react-flow__node {
+  cursor: pointer;
+}
