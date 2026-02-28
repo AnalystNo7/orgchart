@@ -40,7 +40,21 @@ export const CATEGORY_LABELS: Record<EmployeeCategory, string> = {
 
 export type MetricsMode = "own" | "selected_levels" | "all_descendants";
 
-export const DEFAULT_LEVEL_NAMES = ["ГД", "ЗГД", "Блок", "Управление", "Отдел", "Группа"];
+export const HIERARCHY_SKIP_LEVELS = 2;
+
+export const DEFAULT_LEVEL_NAMES = ["Блок", "Управление/Центр/ПП", "Подразделение"];
+
+export const DEFAULT_COLUMN_NAMES: Record<string, string> = {
+  cfo: "ЦФО",
+  hierarchy_0: "Блок",
+  hierarchy_1: "Управление/Центр/ПП",
+  hierarchy_2: "Подразделение",
+  hierarchy_path: "Иерархия",
+  position: "Должность",
+  fullName: "ФИО",
+  fte: "FTE",
+  category: "Тип занятости",
+};
 
 export interface DepartmentWithMetrics {
   id: string;

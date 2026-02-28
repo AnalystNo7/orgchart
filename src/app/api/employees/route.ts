@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createEmployeeSchema } from "@/lib/validations/employee";
-import { DEFAULT_LEVEL_NAMES } from "@/types";
+import { DEFAULT_LEVEL_NAMES, HIERARCHY_SKIP_LEVELS } from "@/types";
 
 export async function GET(req: NextRequest) {
   const scenarioId = req.nextUrl.searchParams.get("scenarioId");
@@ -52,7 +52,10 @@ export async function GET(req: NextRequest) {
       path.unshift({ id: current.id, name: current.name });
       current = current.parentId ? deptMap.get(current.parentId) : undefined;
     }
-    return path.map((item, index) => ({ ...item, depth: index }));
+    return path
+      .map((item, index) => ({ ...item, depth: index }))
+      .slice(HIERARCHY_SKIP_LEVELS)
+      .map((item, index) => ({ ...item, depth: index }));
   }
 
   const enrichedEmployees = employees.map((emp) => ({
@@ -66,6 +69,12 @@ export async function GET(req: NextRequest) {
   );
 
   const levelNames = DEFAULT_LEVEL_NAMES.slice(0, maxDepth);
+
+  // Fetch scenario column names
+  const scenario = await prisma.scenario.findUnique({
+    where: { id: scenarioId },
+    select: { columnNames: true },
+  });
 
   // Category totals for footer
   const categoryTotals = await prisma.employee.groupBy({
@@ -82,6 +91,7 @@ export async function GET(req: NextRequest) {
     totalPages: Math.ceil(total / limit),
     maxDepth,
     levelNames,
+    columnNames: (scenario?.columnNames as Record<string, string>) ?? null,
     categoryTotals: {
       pp: categoryTotals.find((c) => c.category === "PP")?._count ?? 0,
       opp: categoryTotals.find((c) => c.category === "OPP")?._count ?? 0,

@@ -25,6 +25,7 @@ interface APIResponse {
   totalPages: number;
   maxDepth: number;
   levelNames: string[];
+  columnNames: Record<string, string> | null;
   categoryTotals: { pp: number; opp: number; aup: number };
 }
 
@@ -79,12 +80,23 @@ export default function EmployeesPage() {
     category: EmployeeCategory;
     fte: number;
     departmentId: string;
+    cfo?: string;
   }) {
+    const { cfo, ...employeeData } = data;
     await fetch("/api/employees", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, scenarioId: currentScenarioId }),
+      body: JSON.stringify({ ...employeeData, scenarioId: currentScenarioId }),
     });
+
+    if (cfo && data.departmentId) {
+      await fetch(`/api/departments/${data.departmentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cfo }),
+      });
+    }
+
     setShowAdd(false);
     fetchEmployees();
   }
@@ -95,13 +107,24 @@ export default function EmployeesPage() {
     category: EmployeeCategory;
     fte: number;
     departmentId: string;
+    cfo?: string;
   }) {
     if (!editingEmployee) return;
+    const { cfo, ...employeeData } = data;
     await fetch(`/api/employees/${editingEmployee.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(employeeData),
     });
+
+    if (cfo && data.departmentId) {
+      await fetch(`/api/departments/${data.departmentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cfo }),
+      });
+    }
+
     setEditingEmployee(null);
     fetchEmployees();
   }
@@ -134,6 +157,25 @@ export default function EmployeesPage() {
     fetchEmployees();
   }
 
+  const handleColumnRename = useCallback(
+    async (columnId: string, newName: string) => {
+      if (!currentScenarioId) return;
+      const existingNames = response?.columnNames ?? {};
+      const updatedNames = { ...existingNames, [columnId]: newName };
+
+      await fetch(`/api/scenarios/${currentScenarioId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columnNames: updatedNames }),
+      });
+
+      if (response) {
+        setResponse({ ...response, columnNames: updatedNames });
+      }
+    },
+    [currentScenarioId, response]
+  );
+
   const columns = useMemo(
     () =>
       getColumns({
@@ -144,9 +186,11 @@ export default function EmployeesPage() {
         hierarchyMode,
         maxDepth: response?.maxDepth ?? 0,
         levelNames: response?.levelNames ?? [],
+        columnNames: response?.columnNames ?? null,
+        onColumnRename: handleColumnRename,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hierarchyMode, response?.maxDepth, response?.levelNames]
+    [hierarchyMode, response?.maxDepth, response?.levelNames, response?.columnNames, handleColumnRename]
   );
 
   if (!currentScenarioId) {
@@ -261,6 +305,7 @@ export default function EmployeesPage() {
             category: editingEmployee.category,
             fte: Number(editingEmployee.fte),
             departmentId: editingEmployee.department.id,
+            cfo: editingEmployee.department.cfo ?? undefined,
           }}
           title="Редактировать сотрудника"
           scenarioId={currentScenarioId}

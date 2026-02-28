@@ -40,6 +40,7 @@ model Scenario {
   description   String?
   isBaseline    Boolean        @default(false)
   status        ScenarioStatus @default(DRAFT)
+  columnNames   Json?
   createdFromId String?
   createdFrom   Scenario?      @relation("ScenarioParent", fields: [createdFromId], references: [id])
   children      Scenario[]     @relation("ScenarioParent")

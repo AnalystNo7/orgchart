@@ -10,8 +10,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { CATEGORY_LABELS } from "@/types";
+import { CATEGORY_LABELS, DEFAULT_COLUMN_NAMES } from "@/types";
 import type { EmployeeCategory } from "@prisma/client";
+import { EditableHeader } from "./EditableHeader";
 
 export interface EmployeeRow {
   id: string;
@@ -33,6 +34,8 @@ interface ColumnOptions {
   hierarchyMode: "detailed" | "compact";
   maxDepth: number;
   levelNames: string[];
+  columnNames: Record<string, string> | null;
+  onColumnRename: (columnId: string, name: string) => void;
 }
 
 const categoryColors: Record<EmployeeCategory, string> = {
@@ -42,14 +45,23 @@ const categoryColors: Record<EmployeeCategory, string> = {
 };
 
 export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
-  const { actions, hierarchyMode, maxDepth, levelNames } = options;
+  const { actions, hierarchyMode, maxDepth, levelNames, columnNames, onColumnRename } = options;
   const columns: ColumnDef<EmployeeRow>[] = [];
 
-  // CFO column
+  function getDisplayName(columnId: string): string {
+    return columnNames?.[columnId] ?? DEFAULT_COLUMN_NAMES[columnId] ?? columnId;
+  }
+
+  // 1. ЦФО
   columns.push({
     id: "cfo",
     accessorFn: (row) => row.department.cfo,
-    header: "ЦФО",
+    header: () => (
+      <EditableHeader
+        value={getDisplayName("cfo")}
+        onSave={(v) => onColumnRename("cfo", v)}
+      />
+    ),
     cell: ({ row }) => (
       <span className="text-sm text-neutral-600">
         {row.original.department.cfo ?? "—"}
@@ -57,14 +69,19 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
     ),
   });
 
-  // Hierarchy columns
+  // 2. Hierarchy columns
   if (hierarchyMode === "detailed") {
     for (let i = 0; i < maxDepth; i++) {
-      const levelName = levelNames[i] ?? `L${i + 1}`;
+      const colId = `hierarchy_${i}`;
       columns.push({
-        id: `hierarchy_${i}`,
+        id: colId,
         accessorFn: (row) => row.hierarchyPath[i]?.name ?? "",
-        header: levelName,
+        header: () => (
+          <EditableHeader
+            value={getDisplayName(colId)}
+            onSave={(v) => onColumnRename(colId, v)}
+          />
+        ),
         cell: ({ row }) => {
           const level = row.original.hierarchyPath[i];
           return level ? (
@@ -79,7 +96,12 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
     columns.push({
       id: "hierarchy_path",
       accessorFn: (row) => row.hierarchyPath.map((h) => h.name).join(" → "),
-      header: "Иерархия",
+      header: () => (
+        <EditableHeader
+          value={getDisplayName("hierarchy_path")}
+          onSave={(v) => onColumnRename("hierarchy_path", v)}
+        />
+      ),
       cell: ({ row }) => (
         <span className="text-sm text-neutral-600">
           {row.original.hierarchyPath.map((h) => h.name).join(" → ")}
@@ -88,34 +110,68 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
     });
   }
 
-  // ФИО
+  // 3. Должность
+  columns.push({
+    accessorKey: "position",
+    header: () => (
+      <EditableHeader
+        value={getDisplayName("position")}
+        onSave={(v) => onColumnRename("position", v)}
+      />
+    ),
+  });
+
+  // 4. ФИО (with sort)
   columns.push({
     accessorKey: "fullName",
     header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="-ml-4"
-      >
-        ФИО
-        <ArrowUpDown className="ml-2 h-4 w-4" />
-      </Button>
+      <div className="flex items-center gap-1">
+        <EditableHeader
+          value={getDisplayName("fullName")}
+          onSave={(v) => onColumnRename("fullName", v)}
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="h-6 w-6 p-0"
+        >
+          <ArrowUpDown className="h-3 w-3" />
+        </Button>
+      </div>
     ),
     cell: ({ row }) => (
       <span className="font-medium">{row.getValue("fullName")}</span>
     ),
   });
 
-  // Должность
+  // 5. FTE
   columns.push({
-    accessorKey: "position",
-    header: "Должность",
+    accessorKey: "fte",
+    header: () => (
+      <div className="text-right">
+        <EditableHeader
+          value={getDisplayName("fte")}
+          onSave={(v) => onColumnRename("fte", v)}
+        />
+      </div>
+    ),
+    cell: ({ row }) => (
+      <div className="text-right">
+        {Number(row.getValue("fte")).toFixed(1)}
+      </div>
+    ),
   });
 
-  // Категория
+  // 6. Тип занятости
   columns.push({
     accessorKey: "category",
-    header: "Кат.",
+    header: () => (
+      <EditableHeader
+        value={getDisplayName("category")}
+        onSave={(v) => onColumnRename("category", v)}
+      />
+    ),
     cell: ({ row }) => {
       const cat = row.getValue("category") as EmployeeCategory;
       return (
@@ -130,18 +186,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
     },
   });
 
-  // FTE
-  columns.push({
-    accessorKey: "fte",
-    header: () => <div className="text-right">FTE</div>,
-    cell: ({ row }) => (
-      <div className="text-right">
-        {Number(row.getValue("fte")).toFixed(1)}
-      </div>
-    ),
-  });
-
-  // Actions
+  // 7. Actions
   columns.push({
     id: "actions",
     cell: ({ row }) => {
