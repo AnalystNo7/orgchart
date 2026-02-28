@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createEmployeeSchema } from "@/lib/validations/employee";
+import { DEFAULT_LEVEL_NAMES } from "@/types";
 
 export async function GET(req: NextRequest) {
   const scenarioId = req.nextUrl.searchParams.get("scenarioId");
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
     prisma.employee.findMany({
       where,
       include: {
-        department: { select: { id: true, name: true } },
+        department: { select: { id: true, name: true, cfo: true } },
       },
       orderBy: { fullName: "asc" },
       skip: (page - 1) * limit,
@@ -33,6 +34,38 @@ export async function GET(req: NextRequest) {
     }),
     prisma.employee.count({ where }),
   ]);
+
+  // Fetch all departments for hierarchy path computation
+  const allDepartments = await prisma.department.findMany({
+    where: { scenarioId },
+    select: { id: true, name: true, parentId: true },
+  });
+
+  const deptMap = new Map(allDepartments.map((d) => [d.id, d]));
+
+  function buildHierarchyPath(
+    depId: string
+  ): Array<{ id: string; name: string; depth: number }> {
+    const path: Array<{ id: string; name: string }> = [];
+    let current = deptMap.get(depId);
+    while (current) {
+      path.unshift({ id: current.id, name: current.name });
+      current = current.parentId ? deptMap.get(current.parentId) : undefined;
+    }
+    return path.map((item, index) => ({ ...item, depth: index }));
+  }
+
+  const enrichedEmployees = employees.map((emp) => ({
+    ...emp,
+    hierarchyPath: buildHierarchyPath(emp.departmentId),
+  }));
+
+  const maxDepth = enrichedEmployees.reduce(
+    (max, emp) => Math.max(max, emp.hierarchyPath.length),
+    0
+  );
+
+  const levelNames = DEFAULT_LEVEL_NAMES.slice(0, maxDepth);
 
   // Category totals for footer
   const categoryTotals = await prisma.employee.groupBy({
@@ -42,11 +75,13 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({
-    data: employees,
+    data: enrichedEmployees,
     total,
     page,
     limit,
     totalPages: Math.ceil(total / limit),
+    maxDepth,
+    levelNames,
     categoryTotals: {
       pp: categoryTotals.find((c) => c.category === "PP")?._count ?? 0,
       opp: categoryTotals.find((c) => c.category === "OPP")?._count ?? 0,

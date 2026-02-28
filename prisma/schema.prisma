@@ -57,6 +57,7 @@ model Department {
   parent     Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
   children   Department[] @relation("DepartmentTree")
   name       String
+  cfo        String?
   shetilType ShetilType
   headId     String?
   head       Employee?  @relation("DepartmentHead", fields: [headId], references: [id])

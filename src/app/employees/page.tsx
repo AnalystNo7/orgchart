@@ -23,6 +23,8 @@ interface APIResponse {
   total: number;
   page: number;
   totalPages: number;
+  maxDepth: number;
+  levelNames: string[];
   categoryTotals: { pp: number; opp: number; aup: number };
 }
 
@@ -32,9 +34,14 @@ export default function EmployeesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const [hierarchyMode, setHierarchyMode] = useState<"detailed" | "compact">(
+    "detailed"
+  );
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(
+    null
+  );
 
   const fetchEmployees = useCallback(async () => {
     if (!currentScenarioId) return;
@@ -108,7 +115,8 @@ export default function EmployeesPage() {
   async function handleImport(rows: ImportRow[]) {
     if (!currentScenarioId) return;
     for (const row of rows) {
-      const cat = row.category === "ОПП" ? "OPP" : row.category === "АУП" ? "AUP" : "PP";
+      const cat =
+        row.category === "ОПП" ? "OPP" : row.category === "АУП" ? "AUP" : "PP";
       await fetch("/api/employees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -129,11 +137,16 @@ export default function EmployeesPage() {
   const columns = useMemo(
     () =>
       getColumns({
-        onEdit: setEditingEmployee,
-        onDelete: handleDelete,
+        actions: {
+          onEdit: setEditingEmployee,
+          onDelete: handleDelete,
+        },
+        hierarchyMode,
+        maxDepth: response?.maxDepth ?? 0,
+        levelNames: response?.levelNames ?? [],
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [hierarchyMode, response?.maxDepth, response?.levelNames]
   );
 
   if (!currentScenarioId) {
@@ -171,7 +184,13 @@ export default function EmployeesPage() {
             className="pl-9"
           />
         </div>
-        <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v === "all" ? "" : v); setPage(1); }}>
+        <Select
+          value={categoryFilter}
+          onValueChange={(v) => {
+            setCategoryFilter(v === "all" ? "" : v);
+            setPage(1);
+          }}
+        >
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Все категории" />
           </SelectTrigger>
@@ -182,6 +201,24 @@ export default function EmployeesPage() {
             <SelectItem value="AUP">АУП</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Hierarchy view toggle */}
+        <div className="flex gap-1">
+          <Button
+            variant={hierarchyMode === "detailed" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setHierarchyMode("detailed")}
+          >
+            Развернуто
+          </Button>
+          <Button
+            variant={hierarchyMode === "compact" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setHierarchyMode("compact")}
+          >
+            Компактно
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -196,8 +233,9 @@ export default function EmployeesPage() {
             onPageChange={setPage}
           />
           <div className="text-sm text-neutral-500">
-            Итого: {response.total} сотрудников | ПП: {response.categoryTotals.pp} | ОПП:{" "}
-            {response.categoryTotals.opp} | АУП: {response.categoryTotals.aup}
+            Итого: {response.total} сотрудников | ПП:{" "}
+            {response.categoryTotals.pp} | ОПП: {response.categoryTotals.opp} |
+            АУП: {response.categoryTotals.aup}
           </div>
         </>
       )}

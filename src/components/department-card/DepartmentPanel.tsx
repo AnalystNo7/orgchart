@@ -12,12 +12,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { DepartmentMetrics } from "./DepartmentMetrics";
 import { DepartmentEmployeeTable } from "./EmployeeTable";
 import { EmployeeFormDialog } from "./DepartmentForm";
+import { AddDepartmentDialog } from "@/components/org-chart/AddDepartmentDialog";
 import { SHETIL_CONFIG } from "@/types";
+import type { MetricsMode } from "@/types";
 import { useOrgChartStore } from "@/lib/store";
 import type { ShetilType, EmployeeCategory } from "@prisma/client";
 
@@ -25,6 +28,7 @@ interface Department {
   id: string;
   scenarioId: string;
   name: string;
+  cfo: string | null;
   shetilType: ShetilType;
   headId: string | null;
   head: { id: string; fullName: string } | null;
@@ -43,14 +47,27 @@ interface DepartmentPanelProps {
 }
 
 export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
-  const { setSelectedDepartmentId, currentScenarioId } = useOrgChartStore();
+  const {
+    setSelectedDepartmentId,
+    currentScenarioId,
+    triggerRefresh,
+    departmentOverrides,
+    setDepartmentOverride,
+    metricsMode,
+  } = useOrgChartStore();
   const [dept, setDept] = useState<Department | null>(null);
   const [name, setName] = useState("");
+  const [cfo, setCfo] = useState("");
   const [shetilType, setShetilType] = useState<ShetilType>("REVENUE");
   const [headId, setHeadId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<Department["employees"][0] | null>(null);
+  const [showAddChild, setShowAddChild] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<
+    Department["employees"][0] | null
+  >(null);
+
+  const currentOverride = departmentOverrides[departmentId] ?? null;
 
   const fetchDepartment = useCallback(async () => {
     const res = await fetch(`/api/departments/${departmentId}`);
@@ -58,6 +75,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
       const data: Department = await res.json();
       setDept(data);
       setName(data.name);
+      setCfo(data.cfo ?? "");
       setShetilType(data.shetilType);
       setHeadId(data.headId);
     }
@@ -72,9 +90,10 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
     await fetch(`/api/departments/${departmentId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, shetilType, headId }),
+      body: JSON.stringify({ name, cfo: cfo || null, shetilType, headId }),
     });
     await fetchDepartment();
+    triggerRefresh();
     setSaving(false);
   }
 
@@ -85,6 +104,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
     });
     if (res.ok) {
       setSelectedDepartmentId(null);
+      triggerRefresh();
     } else {
       const data = await res.json();
       alert(data.error);
@@ -108,6 +128,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
     });
     setShowAddEmployee(false);
     fetchDepartment();
+    triggerRefresh();
   }
 
   async function handleEditEmployee(data: {
@@ -124,10 +145,30 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
     });
     setEditingEmployee(null);
     fetchDepartment();
+    triggerRefresh();
   }
 
   function handleDeleteEmployee() {
     fetchDepartment();
+    triggerRefresh();
+  }
+
+  async function handleAddChildDepartment(data: {
+    name: string;
+    shetilType: ShetilType;
+  }) {
+    await fetch("/api/departments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scenarioId: currentScenarioId,
+        parentId: departmentId,
+        name: data.name,
+        shetilType: data.shetilType,
+      }),
+    });
+    setShowAddChild(false);
+    triggerRefresh();
   }
 
   if (!dept) {
@@ -140,11 +181,18 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
 
   const shetilConfig = SHETIL_CONFIG[shetilType];
 
+  const metricsModeLabel =
+    metricsMode === "own"
+      ? "Собственные"
+      : metricsMode === "all_descendants"
+        ? "Все"
+        : "Уровни";
+
   return (
     <div className="flex w-96 flex-col border-l bg-white">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
-        <h2 className="text-sm font-semibold truncate">{dept.name}</h2>
+        <h2 className="truncate text-sm font-semibold">{dept.name}</h2>
         <Button
           variant="ghost"
           size="icon"
@@ -163,10 +211,23 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
 
+          {/* CFO */}
+          <div className="space-y-2">
+            <Label>ЦФО</Label>
+            <Input
+              value={cfo}
+              onChange={(e) => setCfo(e.target.value)}
+              placeholder="Центр финансовой ответственности"
+            />
+          </div>
+
           {/* Shetil type */}
           <div className="space-y-2">
             <Label>Тип (Шетил)</Label>
-            <Select value={shetilType} onValueChange={(v) => setShetilType(v as ShetilType)}>
+            <Select
+              value={shetilType}
+              onValueChange={(v) => setShetilType(v as ShetilType)}
+            >
               <SelectTrigger>
                 <div className="flex items-center gap-2">
                   <div
@@ -177,19 +238,22 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
                 </div>
               </SelectTrigger>
               <SelectContent>
-                {(Object.entries(SHETIL_CONFIG) as [ShetilType, typeof shetilConfig][]).map(
-                  ([key, cfg]) => (
-                    <SelectItem key={key} value={key}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded"
-                          style={{ backgroundColor: cfg.color }}
-                        />
-                        {cfg.label}
-                      </div>
-                    </SelectItem>
-                  )
-                )}
+                {(
+                  Object.entries(SHETIL_CONFIG) as [
+                    ShetilType,
+                    typeof shetilConfig,
+                  ][]
+                ).map(([key, cfg]) => (
+                  <SelectItem key={key} value={key}>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="h-3 w-3 rounded"
+                        style={{ backgroundColor: cfg.color }}
+                      />
+                      {cfg.label}
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -197,7 +261,10 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
           {/* Head */}
           <div className="space-y-2">
             <Label>Руководитель</Label>
-            <Select value={headId ?? "none"} onValueChange={(v) => setHeadId(v === "none" ? null : v)}>
+            <Select
+              value={headId ?? "none"}
+              onValueChange={(v) => setHeadId(v === "none" ? null : v)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Не назначен" />
               </SelectTrigger>
@@ -221,6 +288,45 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
             aup={dept.metrics.aup}
             totalFte={dept.metrics.totalFte}
           />
+
+          {/* Metrics mode override */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-neutral-700">
+              Режим подсчёта
+            </h3>
+            <RadioGroup
+              value={currentOverride ?? "global"}
+              onValueChange={(v) =>
+                setDepartmentOverride(
+                  departmentId,
+                  v === "global" ? null : (v as MetricsMode)
+                )
+              }
+              className="space-y-1"
+            >
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="global" id="override-global" />
+                <Label
+                  htmlFor="override-global"
+                  className="cursor-pointer text-xs"
+                >
+                  Глобальный ({metricsModeLabel})
+                </Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="own" id="override-own" />
+                <Label htmlFor="override-own" className="cursor-pointer text-xs">
+                  Собственные
+                </Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="all_descendants" id="override-all" />
+                <Label htmlFor="override-all" className="cursor-pointer text-xs">
+                  Все подчиненные
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
 
           <Separator />
 
@@ -250,6 +356,14 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
 
       {/* Footer actions */}
       <div className="flex gap-2 border-t p-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowAddChild(true)}
+        >
+          <Plus className="mr-1 h-4 w-4" />
+          Дочернее
+        </Button>
         <Button onClick={handleSave} disabled={saving} className="flex-1">
           <Save className="mr-1 h-4 w-4" />
           {saving ? "Сохранение..." : "Сохранить"}
@@ -282,6 +396,14 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
           title="Редактировать сотрудника"
         />
       )}
+
+      {/* Add child department dialog */}
+      <AddDepartmentDialog
+        open={showAddChild}
+        onClose={() => setShowAddChild(false)}
+        onSubmit={handleAddChildDepartment}
+        title="Добавить дочернее подразделение"
+      />
     </div>
   );
 }

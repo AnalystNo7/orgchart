@@ -73,19 +73,43 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const cascade = req.nextUrl.searchParams.get("cascade") === "true";
 
-  // Check for children
-  const childCount = await prisma.department.count({ where: { parentId: id } });
-  if (childCount > 0) {
-    return NextResponse.json(
-      { error: "Нельзя удалить подразделение с дочерними элементами" },
-      { status: 400 }
-    );
+  if (!cascade) {
+    const childCount = await prisma.department.count({ where: { parentId: id } });
+    if (childCount > 0) {
+      return NextResponse.json(
+        { error: "Нельзя удалить подразделение с дочерними элементами", childCount },
+        { status: 400 }
+      );
+    }
+  } else {
+    // Cascade: recursively delete all descendants depth-first
+    async function deleteDescendants(parentId: string) {
+      const children = await prisma.department.findMany({
+        where: { parentId },
+        select: { id: true },
+      });
+      for (const child of children) {
+        await deleteDescendants(child.id);
+        // Clear headId before deleting (avoids FK constraint)
+        await prisma.department
+          .update({ where: { id: child.id }, data: { headId: null } })
+          .catch(() => {});
+        await prisma.department.delete({ where: { id: child.id } });
+      }
+    }
+    await deleteDescendants(id);
   }
+
+  // Clear headId on the department itself before deleting
+  await prisma.department
+    .update({ where: { id }, data: { headId: null } })
+    .catch(() => {});
 
   await prisma.department.delete({ where: { id } });
   return NextResponse.json({ success: true });

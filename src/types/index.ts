@@ -38,11 +38,16 @@ export const CATEGORY_LABELS: Record<EmployeeCategory, string> = {
   AUP: "АУП",
 };
 
+export type MetricsMode = "own" | "selected_levels" | "all_descendants";
+
+export const DEFAULT_LEVEL_NAMES = ["ГД", "ЗГД", "Блок", "Управление", "Отдел", "Группа"];
+
 export interface DepartmentWithMetrics {
   id: string;
   scenarioId: string;
   parentId: string | null;
   name: string;
+  cfo: string | null;
   shetilType: ShetilType;
   headId: string | null;
   sortOrder: number;
