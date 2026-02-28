@@ -160,20 +160,22 @@ export default function EmployeesPage() {
   const handleColumnRename = useCallback(
     async (columnId: string, newName: string) => {
       if (!currentScenarioId) return;
-      const existingNames = response?.columnNames ?? {};
-      const updatedNames = { ...existingNames, [columnId]: newName };
 
-      await fetch(`/api/scenarios/${currentScenarioId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columnNames: updatedNames }),
+      setResponse((prev) => {
+        if (!prev) return prev;
+        const existingNames = prev.columnNames ?? {};
+        const updatedNames = { ...existingNames, [columnId]: newName };
+
+        fetch(`/api/scenarios/${currentScenarioId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ columnNames: updatedNames }),
+        });
+
+        return { ...prev, columnNames: updatedNames };
       });
-
-      if (response) {
-        setResponse({ ...response, columnNames: updatedNames });
-      }
     },
-    [currentScenarioId, response]
+    [currentScenarioId]
   );
 
   const columns = useMemo(

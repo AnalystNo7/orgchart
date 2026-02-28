@@ -5,6 +5,8 @@ import { DepartmentPanel } from "@/components/department-card/DepartmentPanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOrgChartStore } from "@/lib/store";
 
+export const dynamic = "force-dynamic";
+
 export default function DashboardPage() {
   const selectedDepartmentId = useOrgChartStore((s) => s.selectedDepartmentId);
 

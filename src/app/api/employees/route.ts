@@ -63,10 +63,18 @@ export async function GET(req: NextRequest) {
     hierarchyPath: buildHierarchyPath(emp.departmentId),
   }));
 
-  const maxDepth = enrichedEmployees.reduce(
-    (max, emp) => Math.max(max, emp.hierarchyPath.length),
-    0
-  );
+  // Compute maxDepth from ALL departments in the scenario (not just current page)
+  // so that hierarchy columns stay consistent across pages and renames
+  const allPaths = allDepartments.map((d) => {
+    const path: string[] = [];
+    let cur = deptMap.get(d.id);
+    while (cur) {
+      path.unshift(cur.id);
+      cur = cur.parentId ? deptMap.get(cur.parentId) : undefined;
+    }
+    return Math.max(0, path.length - HIERARCHY_SKIP_LEVELS);
+  });
+  const maxDepth = allPaths.reduce((max, len) => Math.max(max, len), 0);
 
   const levelNames = DEFAULT_LEVEL_NAMES.slice(0, maxDepth);
 
