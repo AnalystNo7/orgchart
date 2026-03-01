@@ -177,7 +177,11 @@ export function ExcelImport({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent
+        className="max-w-4xl"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Импорт из Excel</DialogTitle>
         </DialogHeader>
@@ -194,7 +198,12 @@ export function ExcelImport({
             />
             <Button
               variant="outline"
-              onClick={() => fileRef.current?.click()}
+              onClick={() => {
+                if (fileRef.current) {
+                  fileRef.current.value = "";
+                  fileRef.current.click();
+                }
+              }}
               disabled={loading}
             >
               <Upload className="mr-2 h-4 w-4" />
