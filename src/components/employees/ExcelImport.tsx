@@ -90,6 +90,7 @@ export function ExcelImport({
   onImportComplete,
 }: ExcelImportProps) {
   const [rows, setRows] = useState<ImportRow[]>([]);
+  const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [modelOrgStructure, setModelOrgStructure] = useState(true);
@@ -103,6 +104,7 @@ export function ExcelImport({
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setFileName(file.name);
     setError("");
 
     try {
@@ -113,6 +115,24 @@ export function ExcelImport({
       const jsonData = XLSX.utils.sheet_to_json<
         Record<string, string | number>
       >(sheet);
+
+      if (jsonData.length === 0) {
+        setError("Файл пуст или не содержит данных");
+        return;
+      }
+
+      // Check which columns were found
+      const sampleRow = jsonData[0];
+      const headers = Object.keys(sampleRow);
+      const nameFound = findColumn(sampleRow, COL_NAME) !== undefined;
+
+      if (!nameFound) {
+        setError(
+          `Не найдена колонка с ФИО. Ожидается одна из: ${COL_NAME.join(", ")}. ` +
+          `Найденные колонки: ${headers.join(", ")}`
+        );
+        return;
+      }
 
       const parsed: ImportRow[] = jsonData.map((row) => ({
         cfo: String(findColumn(row, COL_CFO) ?? ""),
@@ -125,9 +145,21 @@ export function ExcelImport({
         category: String(findColumn(row, COL_CATEGORY) ?? "PP"),
       }));
 
-      setRows(parsed.filter((r) => r.fullName.trim()));
-    } catch {
-      setError("Ошибка чтения файла. Убедитесь, что файл имеет формат .xlsx");
+      const filtered = parsed.filter((r) => r.fullName.trim());
+      if (filtered.length === 0) {
+        setError(
+          `Все ${parsed.length} строк отфильтрованы (пустое ФИО). ` +
+          `Найденные колонки: ${headers.join(", ")}`
+        );
+        return;
+      }
+
+      setRows(filtered);
+    } catch (err) {
+      setError(
+        `Ошибка чтения файла: ${err instanceof Error ? err.message : "неизвестная ошибка"}. ` +
+        "Убедитесь, что файл имеет формат .xlsx"
+      );
     }
   }
 
@@ -169,6 +201,7 @@ export function ExcelImport({
 
   function handleClose() {
     setRows([]);
+    setFileName("");
     setError("");
     setLoading(false);
     if (fileRef.current) fileRef.current.value = "";
@@ -197,12 +230,17 @@ export function ExcelImport({
               onChange={handleFile}
               className="sr-only"
             />
-            <Button variant="outline" disabled={loading} asChild>
-              <label htmlFor="excel-file-input" className="cursor-pointer">
-                <Upload className="mr-2 h-4 w-4" />
-                Выбрать файл
-              </label>
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" disabled={loading} asChild>
+                <label htmlFor="excel-file-input" className="cursor-pointer">
+                  <Upload className="mr-2 h-4 w-4" />
+                  Выбрать файл
+                </label>
+              </Button>
+              {fileName && (
+                <span className="text-sm text-neutral-700">{fileName}</span>
+              )}
+            </div>
             <p className="mt-1 text-xs text-neutral-500">
               Колонки: ЦФО, Блок, Подразделение, Нижестоящее подразделение,
               Должность, Сотрудник (ФИО или вакансия), Плановая ставка, Тип
