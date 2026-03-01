@@ -73,6 +73,11 @@ const COL_NAME = [
 const COL_FTE = ["Плановая ставка", "FTE", "fte", "Ставка"];
 const COL_CATEGORY = ["Тип занятости", "Категория", "Category", "category"];
 
+const ALL_KNOWN_ALIASES = [
+  ...COL_CFO, ...COL_BLOCK, ...COL_DEPT, ...COL_SUB_DEPT,
+  ...COL_POSITION, ...COL_NAME, ...COL_FTE, ...COL_CATEGORY,
+];
+
 function findColumn(
   row: Record<string, string | number>,
   aliases: string[]
@@ -81,6 +86,25 @@ function findColumn(
     if (alias in row) return row[alias];
   }
   return undefined;
+}
+
+// Find the row number (0-based) that contains column headers
+function findHeaderRow(
+  XLSX: typeof import("xlsx"),
+  sheet: import("xlsx").WorkSheet
+): number {
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  for (let r = range.s.r; r <= Math.min(range.e.r, 20); r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+      const val = String(cell.v ?? "").trim();
+      if (ALL_KNOWN_ALIASES.some((alias) => val === alias.replace("\n", " ") || val === alias)) {
+        return r;
+      }
+    }
+  }
+  return 0; // fallback to first row
 }
 
 export function ExcelImport({
@@ -112,29 +136,45 @@ export function ExcelImport({
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+      // Auto-detect header row (handles files with title rows above the table)
+      const headerRowIdx = findHeaderRow(XLSX, sheet);
+      const fullRange = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+      const dataRange = { ...fullRange, s: { ...fullRange.s, r: headerRowIdx } };
+
       const jsonData = XLSX.utils.sheet_to_json<
         Record<string, string | number>
-      >(sheet);
+      >(sheet, { range: dataRange });
 
       if (jsonData.length === 0) {
         setError("Файл пуст или не содержит данных");
         return;
       }
 
+      // Normalize headers: xlsx may preserve newlines from merged cells
+      const normalizedData = jsonData.map((row) => {
+        const out: Record<string, string | number> = {};
+        for (const [key, val] of Object.entries(row)) {
+          out[key.replace(/\r?\n/g, " ").trim()] = val;
+        }
+        return out;
+      });
+
       // Check which columns were found
-      const sampleRow = jsonData[0];
+      const sampleRow = normalizedData[0];
       const headers = Object.keys(sampleRow);
       const nameFound = findColumn(sampleRow, COL_NAME) !== undefined;
 
       if (!nameFound) {
         setError(
           `Не найдена колонка с ФИО. Ожидается одна из: ${COL_NAME.join(", ")}. ` +
-          `Найденные колонки: ${headers.join(", ")}`
+          `Найденные колонки: ${headers.join(", ")}` +
+          (headerRowIdx > 0 ? ` (заголовки найдены в строке ${headerRowIdx + 1})` : "")
         );
         return;
       }
 
-      const parsed: ImportRow[] = jsonData.map((row) => ({
+      const parsed: ImportRow[] = normalizedData.map((row) => ({
         cfo: String(findColumn(row, COL_CFO) ?? ""),
         block: String(findColumn(row, COL_BLOCK) ?? ""),
         department: String(findColumn(row, COL_DEPT) ?? ""),
