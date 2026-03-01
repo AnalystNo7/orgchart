@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { X, Plus, Save, Trash2 } from "lucide-react";
+import { X, Plus, ArrowUp, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import { DepartmentMetrics } from "./DepartmentMetrics";
 import { DepartmentEmployeeTable } from "./EmployeeTable";
 import { EmployeeFormDialog } from "./DepartmentForm";
 import { AddDepartmentDialog } from "@/components/org-chart/AddDepartmentDialog";
+import { AddParentDialog } from "./AddParentDialog";
 import { SHETIL_CONFIG } from "@/types";
 import type { MetricsMode } from "@/types";
 import { useOrgChartStore } from "@/lib/store";
@@ -27,6 +28,7 @@ import type { ShetilType, EmployeeCategory } from "@prisma/client";
 interface Department {
   id: string;
   scenarioId: string;
+  parentId: string | null;
   name: string;
   cfo: string | null;
   shetilType: ShetilType;
@@ -63,6 +65,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
   const [saving, setSaving] = useState(false);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showAddChild, setShowAddChild] = useState(false);
+  const [showAddParent, setShowAddParent] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<
     Department["employees"][0] | null
   >(null);
@@ -355,22 +358,34 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
       </ScrollArea>
 
       {/* Footer actions */}
-      <div className="flex gap-2 border-t p-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowAddChild(true)}
-        >
-          <Plus className="mr-1 h-4 w-4" />
-          Дочернее
-        </Button>
-        <Button onClick={handleSave} disabled={saving} className="flex-1">
-          <Save className="mr-1 h-4 w-4" />
-          {saving ? "Сохранение..." : "Сохранить"}
-        </Button>
-        <Button variant="destructive" size="icon" onClick={handleDelete}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+      <div className="flex flex-col gap-2 border-t p-3">
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAddChild(true)}
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            Дочернее
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAddParent(true)}
+          >
+            <ArrowUp className="mr-1 h-4 w-4" />
+            Вышестоящее
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={handleSave} disabled={saving} className="flex-1">
+            <Save className="mr-1 h-4 w-4" />
+            {saving ? "Сохранение..." : "Сохранить"}
+          </Button>
+          <Button variant="destructive" size="icon" onClick={handleDelete}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Add employee dialog */}
@@ -404,6 +419,22 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
         onSubmit={handleAddChildDepartment}
         title="Добавить дочернее подразделение"
       />
+
+      {/* Add parent department dialog */}
+      {currentScenarioId && (
+        <AddParentDialog
+          open={showAddParent}
+          onClose={() => setShowAddParent(false)}
+          departmentId={departmentId}
+          currentParentId={dept.parentId}
+          scenarioId={currentScenarioId}
+          onComplete={() => {
+            setShowAddParent(false);
+            fetchDepartment();
+            triggerRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

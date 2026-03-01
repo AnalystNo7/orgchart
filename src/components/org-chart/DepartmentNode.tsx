@@ -50,7 +50,7 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
     >
       <div
         className="relative rounded-lg border-2 bg-white shadow-sm transition-shadow hover:shadow-md"
-        style={{ borderColor: config.color, minWidth: 180 }}
+        style={{ borderColor: config.color, width: 200, maxWidth: 200 }}
         onClick={() => data.onSelectDepartment(data.departmentId)}
       >
         <Handle
@@ -65,7 +65,14 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
           style={{ backgroundColor: config.color }}
         >
           <div className="flex items-center justify-between">
-            <span className="truncate">{data.label}</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="truncate">{data.label}</span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                {data.label}
+              </TooltipContent>
+            </Tooltip>
             {data.hasChildren && (
               <button
                 onClick={(e) => {
@@ -87,9 +94,16 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
         {/* Body */}
         <div className="px-3 py-2 text-xs">
           {data.headName && (
-            <div className="mb-1 truncate text-neutral-600">
-              {data.headName}
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="mb-1 truncate text-neutral-600">
+                  {data.headName}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                {data.headName}
+              </TooltipContent>
+            </Tooltip>
           )}
           <div className="flex gap-2 text-neutral-500">
             {data.isAggregated && (
