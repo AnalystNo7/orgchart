@@ -14,7 +14,7 @@ import {
 import { DataTable } from "@/components/employees/data-table";
 import { getColumns, type EmployeeRow } from "@/components/employees/columns";
 import { EmployeeForm } from "@/components/employees/EmployeeForm";
-import { ExcelImport, type ImportRow } from "@/components/employees/ExcelImport";
+import { ExcelImport, type ImportResult } from "@/components/employees/ExcelImport";
 import { useOrgChartStore } from "@/lib/store";
 import type { EmployeeCategory } from "@prisma/client";
 
@@ -30,7 +30,7 @@ interface APIResponse {
 }
 
 export default function EmployeesPage() {
-  const { currentScenarioId } = useOrgChartStore();
+  const { currentScenarioId, triggerRefresh } = useOrgChartStore();
   const [response, setResponse] = useState<APIResponse | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -135,26 +135,11 @@ export default function EmployeesPage() {
     fetchEmployees();
   }
 
-  async function handleImport(rows: ImportRow[]) {
-    if (!currentScenarioId) return;
-    for (const row of rows) {
-      const cat =
-        row.category === "ОПП" ? "OPP" : row.category === "АУП" ? "AUP" : "PP";
-      await fetch("/api/employees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scenarioId: currentScenarioId,
-          departmentId: "", // TODO: match by name
-          fullName: row.fullName,
-          position: row.position,
-          category: cat,
-          fte: row.fte,
-        }),
-      });
-    }
-    setShowImport(false);
+  function handleImportComplete(result: ImportResult) {
     fetchEmployees();
+    if (result.modeledOrgStructure) {
+      triggerRefresh();
+    }
   }
 
   const handleColumnRename = useCallback(
@@ -318,7 +303,8 @@ export default function EmployeesPage() {
       <ExcelImport
         open={showImport}
         onClose={() => setShowImport(false)}
-        onImport={handleImport}
+        scenarioId={currentScenarioId}
+        onImportComplete={handleImportComplete}
       />
     </div>
   );
