@@ -190,24 +190,18 @@ export function ExcelImport({
           {/* File upload */}
           <div>
             <input
+              id="excel-file-input"
               ref={fileRef}
               type="file"
               accept=".xlsx,.xls,.csv"
               onChange={handleFile}
-              className="hidden"
+              className="sr-only"
             />
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (fileRef.current) {
-                  fileRef.current.value = "";
-                  fileRef.current.click();
-                }
-              }}
-              disabled={loading}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Выбрать файл
+            <Button variant="outline" disabled={loading} asChild>
+              <label htmlFor="excel-file-input" className="cursor-pointer">
+                <Upload className="mr-2 h-4 w-4" />
+                Выбрать файл
+              </label>
             </Button>
             <p className="mt-1 text-xs text-neutral-500">
               Колонки: ЦФО, Блок, Подразделение, Нижестоящее подразделение,
