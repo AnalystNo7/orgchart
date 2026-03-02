@@ -65,7 +65,15 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
         <Handle
           type="target"
           position={Position.Top}
+          id="top"
           className="!bg-neutral-300"
+        />
+        {/* Left handle for vertical layout (target — incoming edge) */}
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="left"
+          className="!h-0 !w-0 !border-0 !bg-transparent"
         />
 
         {/* Header with Shetil color */}
@@ -205,7 +213,15 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
         <Handle
           type="source"
           position={Position.Bottom}
+          id="bottom"
           className="!bg-neutral-300"
+        />
+        {/* Right handle for vertical layout (source — outgoing edge) */}
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="right"
+          className="!h-0 !w-0 !border-0 !bg-transparent"
         />
       </div>
     </NodeContextMenu>

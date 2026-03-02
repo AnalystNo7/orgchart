@@ -35,63 +35,198 @@ interface DepartmentAPI {
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
+const H_GAP = 60; // horizontal gap: parent → children in vertical mode
+const V_GAP = 20; // vertical gap between siblings in vertical mode
 
 /**
- * Layout using dagre. For "vertical" parent nodes, we add hidden chain edges
- * between their consecutive children to force dagre to stack them vertically.
+ * Hybrid layout: dagre for horizontal subtrees, manual positioning for vertical.
+ *
+ * Vertical subtrees are removed from dagre. The vertical parent node is enlarged
+ * in dagre to reserve space for its subtree (extends to the right and below).
+ * After dagre runs, vertical children are placed manually.
  */
 function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
   verticalIds: Set<string>,
-  direction = "TB"
+  departments: DepartmentAPI[]
 ): { nodes: Node[]; edges: Edge[] } {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: direction, nodesep: 50, ranksep: 80 });
+  if (nodes.length === 0) return { nodes: [], edges: [] };
+
+  const visibleIdSet = new Set(nodes.map((n) => n.id));
+
+  // Build children map from edges (only visible nodes)
+  const childrenMap = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    const list = childrenMap.get(edge.source) ?? [];
+    list.push(edge.target);
+    childrenMap.set(edge.source, list);
+  });
+
+  // Determine effective vertical status (cascading from ancestors)
+  const effectiveVerticalCache = new Map<string, boolean>();
+  const deptMap = new Map(
+    departments.filter((d) => visibleIdSet.has(d.id)).map((d) => [d.id, d])
+  );
+
+  function isEffectivelyVertical(id: string): boolean {
+    if (effectiveVerticalCache.has(id))
+      return effectiveVerticalCache.get(id)!;
+    let result = false;
+    if (verticalIds.has(id)) {
+      result = true;
+    } else {
+      const dept = deptMap.get(id);
+      if (dept?.parentId && visibleIdSet.has(dept.parentId)) {
+        result = isEffectivelyVertical(dept.parentId);
+      }
+    }
+    effectiveVerticalCache.set(id, result);
+    return result;
+  }
+
+  // Collect manually positioned nodes (children of effectively vertical nodes)
+  const manualNodeIds = new Set<string>();
+  function collectManualDescendants(parentId: string) {
+    const children = childrenMap.get(parentId) ?? [];
+    children.forEach((childId) => {
+      manualNodeIds.add(childId);
+      collectManualDescendants(childId);
+    });
+  }
 
   nodes.forEach((node) => {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-  });
-
-  // Build a map of parent → ordered children (from the real edges)
-  const childrenByParent = new Map<string, string[]>();
-  edges.forEach((edge) => {
-    const list = childrenByParent.get(edge.source) ?? [];
-    list.push(edge.target);
-    childrenByParent.set(edge.source, list);
-  });
-
-  // Add real edges to dagre
-  edges.forEach((edge) => {
-    g.setEdge(edge.source, edge.target);
-  });
-
-  // For vertical parents, add hidden chain edges between consecutive children
-  // to force dagre to place them on different ranks (stacked vertically)
-  verticalIds.forEach((parentId) => {
-    const children = childrenByParent.get(parentId);
-    if (!children || children.length < 2) return;
-    for (let i = 0; i < children.length - 1; i++) {
-      // Add chain edge with minlen=1 to force vertical stacking
-      g.setEdge(children[i], children[i + 1], { minlen: 1 });
+    if (isEffectivelyVertical(node.id) && !manualNodeIds.has(node.id)) {
+      collectManualDescendants(node.id);
     }
   });
 
+  // Compute vertical subtree dimensions (space needed to the right/below)
+  const subtreeSizeCache = new Map<string, { w: number; h: number }>();
+  function computeSubtreeSize(nodeId: string): { w: number; h: number } {
+    if (subtreeSizeCache.has(nodeId)) return subtreeSizeCache.get(nodeId)!;
+
+    const children = (childrenMap.get(nodeId) ?? []).filter((id) =>
+      manualNodeIds.has(id)
+    );
+    if (children.length === 0) {
+      const result = { w: 0, h: 0 };
+      subtreeSizeCache.set(nodeId, result);
+      return result;
+    }
+
+    let totalH = 0;
+    let maxChildTotalW = 0;
+
+    children.forEach((childId, i) => {
+      if (i > 0) totalH += V_GAP;
+      const childSub = computeSubtreeSize(childId);
+      totalH += Math.max(NODE_HEIGHT, childSub.h);
+      const childW =
+        NODE_WIDTH + (childSub.w > 0 ? childSub.w : 0);
+      maxChildTotalW = Math.max(maxChildTotalW, childW);
+    });
+
+    const result = { w: H_GAP + maxChildTotalW, h: totalH };
+    subtreeSizeCache.set(nodeId, result);
+    return result;
+  }
+
+  // Set up dagre with enlarged sizes for vertical parent nodes
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: "TB", nodesep: 50, ranksep: 80 });
+
+  const dagreSizes = new Map<string, { w: number; h: number }>();
+
+  nodes
+    .filter((n) => !manualNodeIds.has(n.id))
+    .forEach((node) => {
+      const isVert = isEffectivelyVertical(node.id);
+      const subtree = isVert
+        ? computeSubtreeSize(node.id)
+        : { w: 0, h: 0 };
+      const w = NODE_WIDTH + subtree.w;
+      const h = Math.max(NODE_HEIGHT, subtree.h);
+      dagreSizes.set(node.id, { w, h });
+      g.setNode(node.id, { width: w, height: h });
+    });
+
+  // Add edges only between dagre nodes
+  edges
+    .filter(
+      (e) => !manualNodeIds.has(e.source) && !manualNodeIds.has(e.target)
+    )
+    .forEach((e) => g.setEdge(e.source, e.target));
+
   dagre.layout(g);
 
-  const layoutedNodes = nodes.map((node) => {
-    const nodeWithPosition = g.node(node.id);
-    return {
-      ...node,
-      position: {
-        x: nodeWithPosition.x - NODE_WIDTH / 2,
-        y: nodeWithPosition.y - NODE_HEIGHT / 2,
-      },
-    };
+  // Extract dagre positions — node visual at left-top of allocated space
+  const positions = new Map<string, { x: number; y: number }>();
+
+  nodes
+    .filter((n) => !manualNodeIds.has(n.id))
+    .forEach((node) => {
+      const dagreNode = g.node(node.id);
+      const size = dagreSizes.get(node.id)!;
+      positions.set(node.id, {
+        x: dagreNode.x - size.w / 2,
+        y: dagreNode.y - size.h / 2,
+      });
+    });
+
+  // Position vertical children manually (to the right, stacked)
+  function positionVerticalChildren(parentId: string) {
+    const parentPos = positions.get(parentId)!;
+    const children = (childrenMap.get(parentId) ?? []).filter((id) =>
+      manualNodeIds.has(id)
+    );
+
+    let currentY = parentPos.y;
+    const childX = parentPos.x + NODE_WIDTH + H_GAP;
+
+    children.forEach((childId, i) => {
+      if (i > 0) currentY += V_GAP;
+      positions.set(childId, { x: childX, y: currentY });
+
+      // Recursively position grandchildren
+      positionVerticalChildren(childId);
+
+      const childSub = computeSubtreeSize(childId);
+      currentY += Math.max(NODE_HEIGHT, childSub.h);
+    });
+  }
+
+  // Find vertical roots in dagre and position their children
+  nodes
+    .filter(
+      (n) => !manualNodeIds.has(n.id) && isEffectivelyVertical(n.id)
+    )
+    .forEach((node) => {
+      positionVerticalChildren(node.id);
+    });
+
+  // Build final nodes with positions
+  const layoutedNodes = nodes.map((node) => ({
+    ...node,
+    position: positions.get(node.id) ?? { x: 0, y: 0 },
+  }));
+
+  // Build edges with correct handles for vertical children
+  const layoutedEdges = edges.map((edge) => {
+    if (manualNodeIds.has(edge.target)) {
+      // Child is in a vertical subtree — use right→left handles
+      return {
+        ...edge,
+        sourceHandle: "right",
+        targetHandle: "left",
+        type: "step",
+      };
+    }
+    return edge;
   });
 
-  return { nodes: layoutedNodes, edges };
+  return { nodes: layoutedNodes, edges: layoutedEdges };
 }
 
 // Client-side metrics aggregation
@@ -204,11 +339,8 @@ export function OrgChart() {
   }, []);
 
   const onCollapseAll = useCallback(() => {
-    // Collapse all nodes that have children
     const withChildren = new Set(
-      departments
-        .filter((d) => d._count.children > 0)
-        .map((d) => d.id)
+      departments.filter((d) => d._count.children > 0).map((d) => d.id)
     );
     setCollapsedIds(withChildren);
   }, [departments]);
@@ -400,11 +532,12 @@ export function OrgChart() {
     const { nodes: layouted, edges: layoutedEdges } = getLayoutedElements(
       visibleNodes,
       visibleEdges,
-      verticalIds
+      verticalIds,
+      departments
     );
     setNodes(layouted);
     setEdges(layoutedEdges);
-  }, [visibleNodes, visibleEdges, verticalIds, setNodes, setEdges]);
+  }, [visibleNodes, visibleEdges, verticalIds, departments, setNodes, setEdges]);
 
   if (!currentScenarioId) {
     return (
