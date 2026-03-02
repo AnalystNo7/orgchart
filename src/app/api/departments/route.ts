@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createDepartmentSchema } from "@/lib/validations/department";
+import { logAction } from "@/lib/action-logger";
 
 export async function GET(req: NextRequest) {
   const scenarioId = req.nextUrl.searchParams.get("scenarioId");
@@ -75,6 +76,26 @@ export async function POST(req: NextRequest) {
       _count: { select: { employees: true, children: true } },
     },
   });
+
+  // Log action for undo
+  await logAction(
+    department.scenarioId,
+    "create_department",
+    {
+      department: {
+        id: department.id,
+        scenarioId: department.scenarioId,
+        parentId: department.parentId,
+        name: department.name,
+        cfo: department.cfo,
+        shetilType: department.shetilType,
+        headId: department.headId,
+        sortOrder: department.sortOrder,
+        originId: department.originId,
+      },
+    },
+    { departmentId: department.id }
+  );
 
   return NextResponse.json(department, { status: 201 });
 }

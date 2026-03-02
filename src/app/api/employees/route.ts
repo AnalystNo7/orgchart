@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createEmployeeSchema } from "@/lib/validations/employee";
+import { logAction } from "@/lib/action-logger";
 import { DEFAULT_LEVEL_NAMES, HIERARCHY_SKIP_LEVELS } from "@/types";
 
 export async function GET(req: NextRequest) {
@@ -129,6 +130,25 @@ export async function POST(req: NextRequest) {
       department: { select: { id: true, name: true } },
     },
   });
+
+  // Log action for undo
+  await logAction(
+    employee.scenarioId,
+    "create_employee",
+    {
+      employee: {
+        id: employee.id,
+        scenarioId: employee.scenarioId,
+        departmentId: employee.departmentId,
+        fullName: employee.fullName,
+        position: employee.position,
+        category: employee.category,
+        fte: employee.fte.toString(),
+        originId: employee.originId,
+      },
+    },
+    { employeeId: employee.id }
+  );
 
   return NextResponse.json(employee, { status: 201 });
 }

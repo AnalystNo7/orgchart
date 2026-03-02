@@ -18,7 +18,9 @@ import { DepartmentNode, type DepartmentNodeData } from "./DepartmentNode";
 import { ShetilLegend } from "./ShetilLegend";
 import { MetricsToolbar } from "./MetricsToolbar";
 import { AddDepartmentDialog } from "./AddDepartmentDialog";
+import { DeleteDepartmentDialog } from "./DeleteDepartmentDialog";
 import { useOrgChartStore } from "@/lib/store";
+import { useUndoRedoKeys } from "@/hooks/useUndoRedoKeys";
 import type { MetricsMode } from "@/types";
 import type { ShetilType } from "@prisma/client";
 
@@ -338,17 +340,29 @@ export function OrgChart() {
     refreshCounter,
     verticalIds,
     toggleVertical,
+    fetchUndoRedoState,
   } = useOrgChartStore();
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
+  // Keyboard shortcuts for undo/redo
+  useUndoRedoKeys();
+
   // Add department dialog state
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     parentId: string | null;
     mode: "child" | "sibling";
+  } | null>(null);
+
+  // Delete department dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    departmentId: string;
+    departmentName: string;
+    childCount: number;
   } | null>(null);
 
   // Fetch departments
@@ -362,7 +376,8 @@ export function OrgChart() {
 
   useEffect(() => {
     refreshDepartments();
-  }, [refreshDepartments, refreshCounter]);
+    fetchUndoRedoState();
+  }, [refreshDepartments, fetchUndoRedoState, refreshCounter]);
 
   const onToggleExpand = useCallback((id: string) => {
     setCollapsedIds((prev) => {
@@ -413,51 +428,46 @@ export function OrgChart() {
   );
 
   const onDeleteDepartment = useCallback(
-    async (departmentId: string) => {
+    (departmentId: string) => {
+      const dept = departments.find((d) => d.id === departmentId);
+      if (!dept) return;
       const childCount = departments.filter(
         (d) => d.parentId === departmentId
       ).length;
+      setDeleteDialog({
+        open: true,
+        departmentId,
+        departmentName: dept.name,
+        childCount,
+      });
+    },
+    [departments]
+  );
 
-      if (childCount > 0) {
-        if (
-          !confirm(
-            `Подразделение имеет ${childCount} дочерних элементов. Удаление приведёт к их каскадному удалению. Продолжить?`
-          )
-        ) {
-          return;
-        }
-        const res = await fetch(
-          `/api/departments/${departmentId}?cascade=true`,
-          { method: "DELETE" }
-        );
-        if (!res.ok) {
-          const data = await res.json();
-          alert(data.error);
-          return;
-        }
-      } else {
-        if (!confirm("Удалить подразделение?")) return;
-        const res = await fetch(`/api/departments/${departmentId}`, {
-          method: "DELETE",
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          alert(data.error);
-          return;
-        }
+  const handleDeleteConfirm = useCallback(
+    async (mode: "cascade" | "reparent" | "simple") => {
+      if (!deleteDialog) return;
+      const { departmentId } = deleteDialog;
+
+      let url = `/api/departments/${departmentId}`;
+      if (mode === "cascade") url += "?cascade=true";
+      else if (mode === "reparent") url += "?reparent=true";
+
+      const res = await fetch(url, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error);
+        setDeleteDialog(null);
+        return;
       }
 
       if (selectedDepartmentId === departmentId) {
         setSelectedDepartmentId(null);
       }
+      setDeleteDialog(null);
       refreshDepartments();
     },
-    [
-      departments,
-      selectedDepartmentId,
-      setSelectedDepartmentId,
-      refreshDepartments,
-    ]
+    [deleteDialog, selectedDepartmentId, setSelectedDepartmentId, refreshDepartments]
   );
 
   async function handleAddDepartment(data: {
@@ -626,6 +636,16 @@ export function OrgChart() {
               ? "Добавить дочернее подразделение"
               : "Добавить параллельное подразделение"
           }
+        />
+      )}
+
+      {deleteDialog && (
+        <DeleteDepartmentDialog
+          open={deleteDialog.open}
+          onClose={() => setDeleteDialog(null)}
+          onConfirm={handleDeleteConfirm}
+          childCount={deleteDialog.childCount}
+          departmentName={deleteDialog.departmentName}
         />
       )}
     </div>

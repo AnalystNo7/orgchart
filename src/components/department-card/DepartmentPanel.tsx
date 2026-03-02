@@ -27,6 +27,7 @@ import { DepartmentMetrics } from "./DepartmentMetrics";
 import { DepartmentEmployeeTable } from "./EmployeeTable";
 import { EmployeeFormDialog } from "./DepartmentForm";
 import { AddDepartmentDialog } from "@/components/org-chart/AddDepartmentDialog";
+import { DeleteDepartmentDialog } from "@/components/org-chart/DeleteDepartmentDialog";
 import { AddParentDialog } from "./AddParentDialog";
 import { SHETIL_CONFIG } from "@/types";
 import type { MetricsMode } from "@/types";
@@ -80,6 +81,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
   const [editingEmployee, setEditingEmployee] = useState<
     Department["employees"][0] | null
   >(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const currentOverride = departmentOverrides[departmentId] ?? null;
 
@@ -111,17 +113,20 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
     setSaving(false);
   }
 
-  async function handleDelete() {
-    if (!confirm("Удалить подразделение?")) return;
-    const res = await fetch(`/api/departments/${departmentId}`, {
-      method: "DELETE",
-    });
+  async function handleDeleteConfirm(mode: "cascade" | "reparent" | "simple") {
+    let url = `/api/departments/${departmentId}`;
+    if (mode === "cascade") url += "?cascade=true";
+    else if (mode === "reparent") url += "?reparent=true";
+
+    const res = await fetch(url, { method: "DELETE" });
     if (res.ok) {
+      setShowDeleteDialog(false);
       setSelectedDepartmentId(null);
       triggerRefresh();
     } else {
       const data = await res.json();
       alert(data.error);
+      setShowDeleteDialog(false);
     }
   }
 
@@ -431,7 +436,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
             <Save className="mr-1 h-4 w-4" />
             {saving ? "Сохранение..." : "Сохранить"}
           </Button>
-          <Button variant="destructive" size="icon" onClick={handleDelete}>
+          <Button variant="destructive" size="icon" onClick={() => setShowDeleteDialog(true)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -484,6 +489,15 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
           }}
         />
       )}
+
+      {/* Delete department dialog */}
+      <DeleteDepartmentDialog
+        open={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={handleDeleteConfirm}
+        childCount={dept._count.children}
+        departmentName={dept.name}
+      />
     </div>
   );
 }

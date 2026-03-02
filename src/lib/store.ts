@@ -24,9 +24,18 @@ interface OrgChartState {
   // Refresh trigger for OrgChart after add/delete
   refreshCounter: number;
   triggerRefresh: () => void;
+
+  // Undo/Redo state
+  canUndo: boolean;
+  canRedo: boolean;
+  undoRedoLoading: boolean;
+  setUndoRedoState: (canUndo: boolean, canRedo: boolean) => void;
+  fetchUndoRedoState: () => Promise<void>;
+  undo: () => Promise<boolean>;
+  redo: () => Promise<boolean>;
 }
 
-export const useOrgChartStore = create<OrgChartState>((set) => ({
+export const useOrgChartStore = create<OrgChartState>((set, get) => ({
   currentScenarioId: null,
   selectedDepartmentId: null,
   setCurrentScenarioId: (id) => set({ currentScenarioId: id }),
@@ -64,4 +73,72 @@ export const useOrgChartStore = create<OrgChartState>((set) => ({
   refreshCounter: 0,
   triggerRefresh: () =>
     set((state) => ({ refreshCounter: state.refreshCounter + 1 })),
+
+  // Undo/Redo
+  canUndo: false,
+  canRedo: false,
+  undoRedoLoading: false,
+  setUndoRedoState: (canUndo, canRedo) => set({ canUndo, canRedo }),
+
+  fetchUndoRedoState: async () => {
+    const scenarioId = get().currentScenarioId;
+    if (!scenarioId) {
+      set({ canUndo: false, canRedo: false });
+      return;
+    }
+    try {
+      const res = await fetch(`/api/actions?scenarioId=${scenarioId}`);
+      if (res.ok) {
+        const data = await res.json();
+        set({ canUndo: data.canUndo, canRedo: data.canRedo });
+      }
+    } catch {
+      // ignore
+    }
+  },
+
+  undo: async () => {
+    const { currentScenarioId, undoRedoLoading } = get();
+    if (!currentScenarioId || undoRedoLoading) return false;
+    set({ undoRedoLoading: true });
+    try {
+      const res = await fetch(
+        `/api/actions/undo?scenarioId=${currentScenarioId}`,
+        { method: "POST" }
+      );
+      if (res.ok) {
+        // Refresh the chart and undo/redo state
+        get().triggerRefresh();
+        await get().fetchUndoRedoState();
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      set({ undoRedoLoading: false });
+    }
+  },
+
+  redo: async () => {
+    const { currentScenarioId, undoRedoLoading } = get();
+    if (!currentScenarioId || undoRedoLoading) return false;
+    set({ undoRedoLoading: true });
+    try {
+      const res = await fetch(
+        `/api/actions/redo?scenarioId=${currentScenarioId}`,
+        { method: "POST" }
+      );
+      if (res.ok) {
+        get().triggerRefresh();
+        await get().fetchUndoRedoState();
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      set({ undoRedoLoading: false });
+    }
+  },
 }));
