@@ -2,7 +2,14 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight, Plus, Sigma } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  Sigma,
+  ArrowDownUp,
+  ArrowLeftRight,
+} from "lucide-react";
 import { SHETIL_CONFIG } from "@/types";
 import { NodeContextMenu } from "./NodeContextMenu";
 import {
@@ -25,11 +32,13 @@ export interface DepartmentNodeData {
   departmentId: string;
   parentId: string | null;
   isAggregated: boolean;
+  isVertical: boolean;
   onToggleExpand: (id: string) => void;
   onSelectDepartment: (id: string) => void;
   onAddChild: (id: string) => void;
   onAddSibling: (id: string, parentId: string | null) => void;
   onDeleteDepartment: (id: string) => void;
+  onToggleVertical: (id: string) => void;
 }
 
 type DepartmentNodeProps = NodeProps & { data: DepartmentNodeData };
@@ -73,21 +82,47 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
                 {data.label}
               </TooltipContent>
             </Tooltip>
-            {data.hasChildren && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  data.onToggleExpand(data.departmentId);
-                }}
-                className="ml-1 rounded p-0.5 hover:bg-white/20"
-              >
-                {data.isExpanded ? (
-                  <ChevronDown className="h-3 w-3" />
-                ) : (
-                  <ChevronRight className="h-3 w-3" />
-                )}
-              </button>
-            )}
+            <div className="flex items-center">
+              {data.hasChildren && (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          data.onToggleVertical(data.departmentId);
+                        }}
+                        className="ml-1 rounded p-0.5 hover:bg-white/20"
+                      >
+                        {data.isVertical ? (
+                          <ArrowDownUp className="h-3 w-3" />
+                        ) : (
+                          <ArrowLeftRight className="h-3 w-3" />
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {data.isVertical
+                        ? "Вертикальная раскладка (нажмите для горизонтальной)"
+                        : "Горизонтальная раскладка (нажмите для вертикальной)"}
+                    </TooltipContent>
+                  </Tooltip>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      data.onToggleExpand(data.departmentId);
+                    }}
+                    className="ml-1 rounded p-0.5 hover:bg-white/20"
+                  >
+                    {data.isExpanded ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 

@@ -17,6 +17,10 @@ interface OrgChartState {
   setDepartmentOverride: (deptId: string, mode: MetricsMode | null) => void;
   clearDepartmentOverrides: () => void;
 
+  // Per-node layout direction (vertical = children stacked, horizontal = default side-by-side)
+  verticalIds: Set<string>;
+  toggleVertical: (id: string) => void;
+
   // Refresh trigger for OrgChart after add/delete
   refreshCounter: number;
   triggerRefresh: () => void;
@@ -44,6 +48,18 @@ export const useOrgChartStore = create<OrgChartState>((set) => ({
       departmentOverrides: { ...state.departmentOverrides, [deptId]: mode },
     })),
   clearDepartmentOverrides: () => set({ departmentOverrides: {} }),
+
+  verticalIds: new Set<string>(),
+  toggleVertical: (id) =>
+    set((state) => {
+      const next = new Set(state.verticalIds);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return { verticalIds: next };
+    }),
 
   refreshCounter: 0,
   triggerRefresh: () =>

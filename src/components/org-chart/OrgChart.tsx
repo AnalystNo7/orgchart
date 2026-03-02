@@ -36,9 +36,14 @@ interface DepartmentAPI {
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
 
+/**
+ * Layout using dagre. For "vertical" parent nodes, we add hidden chain edges
+ * between their consecutive children to force dagre to stack them vertically.
+ */
 function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
+  verticalIds: Set<string>,
   direction = "TB"
 ): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph();
@@ -48,8 +53,29 @@ function getLayoutedElements(
   nodes.forEach((node) => {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   });
+
+  // Build a map of parent → ordered children (from the real edges)
+  const childrenByParent = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    const list = childrenByParent.get(edge.source) ?? [];
+    list.push(edge.target);
+    childrenByParent.set(edge.source, list);
+  });
+
+  // Add real edges to dagre
   edges.forEach((edge) => {
     g.setEdge(edge.source, edge.target);
+  });
+
+  // For vertical parents, add hidden chain edges between consecutive children
+  // to force dagre to place them on different ranks (stacked vertically)
+  verticalIds.forEach((parentId) => {
+    const children = childrenByParent.get(parentId);
+    if (!children || children.length < 2) return;
+    for (let i = 0; i < children.length - 1; i++) {
+      // Add chain edge with minlen=1 to force vertical stacking
+      g.setEdge(children[i], children[i + 1], { minlen: 1 });
+    }
   });
 
   dagre.layout(g);
@@ -133,6 +159,8 @@ export function OrgChart() {
     selectedLevels,
     departmentOverrides,
     refreshCounter,
+    verticalIds,
+    toggleVertical,
   } = useOrgChartStore();
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
@@ -171,11 +199,32 @@ export function OrgChart() {
     });
   }, []);
 
+  const onExpandAll = useCallback(() => {
+    setCollapsedIds(new Set());
+  }, []);
+
+  const onCollapseAll = useCallback(() => {
+    // Collapse all nodes that have children
+    const withChildren = new Set(
+      departments
+        .filter((d) => d._count.children > 0)
+        .map((d) => d.id)
+    );
+    setCollapsedIds(withChildren);
+  }, [departments]);
+
   const onSelectDepartment = useCallback(
     (id: string) => {
       setSelectedDepartmentId(id);
     },
     [setSelectedDepartmentId]
+  );
+
+  const onToggleVertical = useCallback(
+    (id: string) => {
+      toggleVertical(id);
+    },
+    [toggleVertical]
   );
 
   const onAddChild = useCallback((departmentId: string) => {
@@ -304,11 +353,13 @@ export function OrgChart() {
           departmentId: dept.id,
           parentId: dept.parentId,
           isAggregated,
+          isVertical: verticalIds.has(dept.id),
           onToggleExpand,
           onSelectDepartment,
           onAddChild,
           onAddSibling,
           onDeleteDepartment,
+          onToggleVertical,
         } as DepartmentNodeData as unknown as Record<string, unknown>,
       };
     });
@@ -330,11 +381,13 @@ export function OrgChart() {
     metricsMode,
     selectedLevels,
     departmentOverrides,
+    verticalIds,
     onToggleExpand,
     onSelectDepartment,
     onAddChild,
     onAddSibling,
     onDeleteDepartment,
+    onToggleVertical,
   ]);
 
   // Apply layout
@@ -346,11 +399,12 @@ export function OrgChart() {
     }
     const { nodes: layouted, edges: layoutedEdges } = getLayoutedElements(
       visibleNodes,
-      visibleEdges
+      visibleEdges,
+      verticalIds
     );
     setNodes(layouted);
     setEdges(layoutedEdges);
-  }, [visibleNodes, visibleEdges, setNodes, setEdges]);
+  }, [visibleNodes, visibleEdges, verticalIds, setNodes, setEdges]);
 
   if (!currentScenarioId) {
     return (
@@ -362,7 +416,10 @@ export function OrgChart() {
 
   return (
     <div className="relative flex h-full w-full flex-col">
-      <MetricsToolbar />
+      <MetricsToolbar
+        onExpandAll={onExpandAll}
+        onCollapseAll={onCollapseAll}
+      />
       <div className="relative flex-1">
         <ReactFlow
           nodes={nodes}

@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { X, Plus, ArrowUp, Save, Trash2 } from "lucide-react";
+import {
+  X,
+  Plus,
+  ArrowUp,
+  Save,
+  Trash2,
+  ArrowDownUp,
+  ArrowLeftRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +50,7 @@ interface Department {
     fte: number | string;
   }>;
   metrics: { pp: number; opp: number; aup: number; totalFte: number };
+  _count: { children: number };
 }
 
 interface DepartmentPanelProps {
@@ -56,6 +65,8 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
     departmentOverrides,
     setDepartmentOverride,
     metricsMode,
+    verticalIds,
+    toggleVertical,
   } = useOrgChartStore();
   const [dept, setDept] = useState<Department | null>(null);
   const [name, setName] = useState("");
@@ -330,6 +341,44 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
               </div>
             </RadioGroup>
           </div>
+
+          {/* Layout direction for children */}
+          {dept._count.children > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium text-neutral-700">
+                  Раскладка дочерних
+                </h3>
+                <div className="flex gap-2">
+                  <Button
+                    variant={
+                      verticalIds.has(departmentId) ? "outline" : "default"
+                    }
+                    size="sm"
+                    onClick={() => {
+                      if (verticalIds.has(departmentId)) toggleVertical(departmentId);
+                    }}
+                  >
+                    <ArrowLeftRight className="mr-1 h-3 w-3" />
+                    Горизонтально
+                  </Button>
+                  <Button
+                    variant={
+                      verticalIds.has(departmentId) ? "default" : "outline"
+                    }
+                    size="sm"
+                    onClick={() => {
+                      if (!verticalIds.has(departmentId)) toggleVertical(departmentId);
+                    }}
+                  >
+                    <ArrowDownUp className="mr-1 h-3 w-3" />
+                    Вертикально
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
 
           <Separator />
 

@@ -5,8 +5,18 @@ import type { MetricsMode } from "@/types";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 
-export function MetricsToolbar() {
+interface MetricsToolbarProps {
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+}
+
+export function MetricsToolbar({
+  onExpandAll,
+  onCollapseAll,
+}: MetricsToolbarProps) {
   const { metricsMode, setMetricsMode, selectedLevels, toggleLevel } =
     useOrgChartStore();
 
@@ -59,6 +69,27 @@ export function MetricsToolbar() {
           ))}
         </div>
       )}
+
+      <div className="ml-auto flex items-center gap-1 border-l pl-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onExpandAll}
+          title="Развернуть всё"
+        >
+          <ChevronsUpDown className="mr-1 h-4 w-4" />
+          Развернуть
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCollapseAll}
+          title="Свернуть всё"
+        >
+          <ChevronsDownUp className="mr-1 h-4 w-4" />
+          Свернуть
+        </Button>
+      </div>
     </div>
   );
 }
