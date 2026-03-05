@@ -56,6 +56,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
   columns.push({
     id: "cfo",
     accessorFn: (row) => row.department.cfo,
+    meta: { label: getDisplayName("cfo") },
     header: () => (
       <EditableHeader
         value={getDisplayName("cfo")}
@@ -76,6 +77,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
       columns.push({
         id: colId,
         accessorFn: (row) => row.hierarchyPath[i]?.name ?? "",
+        meta: { label: getDisplayName(colId) },
         header: () => (
           <EditableHeader
             value={getDisplayName(colId)}
@@ -96,6 +98,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
     columns.push({
       id: "hierarchy_path",
       accessorFn: (row) => row.hierarchyPath.map((h) => h.name).join(" → "),
+      meta: { label: getDisplayName("hierarchy_path") },
       header: () => (
         <EditableHeader
           value={getDisplayName("hierarchy_path")}
@@ -113,6 +116,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
   // 3. Должность
   columns.push({
     accessorKey: "position",
+    meta: { label: getDisplayName("position") },
     header: () => (
       <EditableHeader
         value={getDisplayName("position")}
@@ -124,6 +128,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
   // 4. ФИО (with sort)
   columns.push({
     accessorKey: "fullName",
+    meta: { label: getDisplayName("fullName") },
     header: ({ column }) => (
       <div className="flex items-center gap-1">
         <EditableHeader
@@ -148,6 +153,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
   // 5. FTE
   columns.push({
     accessorKey: "fte",
+    meta: { label: getDisplayName("fte") },
     header: () => (
       <div className="text-right">
         <EditableHeader
@@ -166,6 +172,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
   // 6. Тип занятости
   columns.push({
     accessorKey: "category",
+    meta: { label: getDisplayName("category") },
     header: () => (
       <EditableHeader
         value={getDisplayName("category")}
@@ -189,6 +196,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
   // 7. Actions
   columns.push({
     id: "actions",
+    enableHiding: false,
     cell: ({ row }) => {
       const employee = row.original;
       return (

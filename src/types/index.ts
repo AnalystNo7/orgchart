@@ -40,14 +40,17 @@ export const CATEGORY_LABELS: Record<EmployeeCategory, string> = {
 
 export type MetricsMode = "own" | "selected_levels" | "all_descendants";
 
-export const HIERARCHY_SKIP_LEVELS = 2;
+export const HIERARCHY_SKIP_LEVELS = 0;
 
-export const DEFAULT_LEVEL_NAMES = ["Блок", "Управление/Центр/ПП", "Подразделение", "Дочернее подразделение"];
+/** Levels 1 and 2 in the raw tree are merged into one column (index 1). */
+export const HIERARCHY_MERGE_LEVELS: [number, number] = [1, 2];
+
+export const DEFAULT_LEVEL_NAMES = ["Генеральный директор", "Блок", "Подразделение", "Дочернее подразделение"];
 
 export const DEFAULT_COLUMN_NAMES: Record<string, string> = {
   cfo: "ЦФО",
-  hierarchy_0: "Блок",
-  hierarchy_1: "Управление/Центр/ПП",
+  hierarchy_0: "Генеральный директор",
+  hierarchy_1: "Блок",
   hierarchy_2: "Подразделение",
   hierarchy_3: "Дочернее подразделение",
   hierarchy_path: "Иерархия",

@@ -265,9 +265,9 @@ export default function EmployeesPage() {
           </Select>
         )}
 
-        {/* Hierarchy level filters */}
+        {/* Hierarchy level filters (skip level 0 = ГД) */}
         {filterOptions?.levels.map((values, i) => (
-          values.length > 0 && (
+          i > 0 && values.length > 0 && (
             <Select
               key={i}
               value={hierarchyFilters[`hierarchy_${i}`] || "all"}
@@ -336,6 +336,7 @@ export default function EmployeesPage() {
             totalPages={response.totalPages}
             total={response.total}
             onPageChange={setPage}
+            initialColumnVisibility={{ hierarchy_0: false }}
           />
           <div className="text-sm text-neutral-500">
             Итого: {response.total} сотрудников | ПП:{" "}

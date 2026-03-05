@@ -55,7 +55,7 @@ export function ExcelExport({
       const exportData = rows.map((row) => {
         const obj: Record<string, string | number> = {};
         obj[getDisplayName("cfo")] = row.department.cfo ?? "";
-        for (let i = 0; i < maxDepth; i++) {
+        for (let i = 1; i < maxDepth; i++) {
           obj[getDisplayName(`hierarchy_${i}`)] = row.hierarchyPath[i]?.name ?? "";
         }
         obj[getDisplayName("position")] = row.position;
