@@ -96,6 +96,7 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
+                        onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           data.onToggleVertical(data.departmentId);
@@ -116,6 +117,7 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
                     </TooltipContent>
                   </Tooltip>
                   <button
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       data.onToggleExpand(data.departmentId);
@@ -200,6 +202,7 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
 
         {/* Add child button */}
         <button
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             data.onAddChild(data.departmentId);
