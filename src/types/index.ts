@@ -42,9 +42,6 @@ export type MetricsMode = "own" | "selected_levels" | "all_descendants";
 
 export const HIERARCHY_SKIP_LEVELS = 0;
 
-/** Levels 1 and 2 in the raw tree are merged into one column (index 1). */
-export const HIERARCHY_MERGE_LEVELS: [number, number] = [1, 2];
-
 export const DEFAULT_LEVEL_NAMES = ["Генеральный директор", "Блок", "Подразделение", "Дочернее подразделение"];
 
 export const DEFAULT_COLUMN_NAMES: Record<string, string> = {

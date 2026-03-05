@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { HIERARCHY_SKIP_LEVELS, HIERARCHY_MERGE_LEVELS } from "@/types";
+import { HIERARCHY_SKIP_LEVELS } from "@/types";
 
 export async function GET(req: NextRequest) {
   const scenarioId = req.nextUrl.searchParams.get("scenarioId");
@@ -15,15 +15,6 @@ export async function GET(req: NextRequest) {
 
   const deptMap = new Map(allDepartments.map((d) => [d.id, d]));
 
-  function mergeLevelNames(path: string[]): string[] {
-    const [a, b] = HIERARCHY_MERGE_LEVELS;
-    if (path.length <= a) return path;
-    const nameA = path[a] ?? "";
-    const nameB = path[b] ?? "";
-    const merged = nameB ? `${nameA} ${nameB}`.trim() : nameA;
-    return [...path.slice(0, a), merged, ...path.slice(b + 1)];
-  }
-
   // Build hierarchy path for each department
   function buildPath(depId: string): string[] {
     const path: string[] = [];
@@ -32,7 +23,7 @@ export async function GET(req: NextRequest) {
       path.unshift(current.name);
       current = current.parentId ? deptMap.get(current.parentId) : undefined;
     }
-    return mergeLevelNames(path.slice(HIERARCHY_SKIP_LEVELS));
+    return path.slice(HIERARCHY_SKIP_LEVELS);
   }
 
   // Collect unique values per hierarchy level + CFO

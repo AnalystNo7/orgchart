@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createEmployeeSchema } from "@/lib/validations/employee";
 import { logAction } from "@/lib/action-logger";
-import { DEFAULT_LEVEL_NAMES, HIERARCHY_SKIP_LEVELS, HIERARCHY_MERGE_LEVELS } from "@/types";
+import { DEFAULT_LEVEL_NAMES, HIERARCHY_SKIP_LEVELS } from "@/types";
 
 /** Remove user-overridden hierarchy_* column names so defaults take effect */
 function stripHierarchyOverrides(
@@ -35,29 +35,6 @@ export async function GET(req: NextRequest) {
 
   const deptMapFull = new Map(allDepartments.map((d) => [d.id, d]));
 
-  // Merge two raw tree levels into one column by concatenating their names
-  function mergeLevelNames(path: string[]): string[] {
-    const [a, b] = HIERARCHY_MERGE_LEVELS;
-    if (path.length <= a) return path;
-    const nameA = path[a] ?? "";
-    const nameB = path[b] ?? "";
-    const merged = nameB ? `${nameA} ${nameB}`.trim() : nameA;
-    return [...path.slice(0, a), merged, ...path.slice(b + 1)];
-  }
-
-  function mergeLevelObjects(
-    path: Array<{ id: string; name: string }>
-  ): Array<{ id: string; name: string }> {
-    const [a, b] = HIERARCHY_MERGE_LEVELS;
-    if (path.length <= a) return path;
-    const objA = path[a];
-    const objB = path[b];
-    const merged = objB
-      ? { id: objB.id, name: `${objA?.name ?? ""} ${objB.name}`.trim() }
-      : objA;
-    return [...path.slice(0, a), merged, ...path.slice(b + 1)];
-  }
-
   // Build hierarchy path for a department (flat names)
   function buildDeptPath(depId: string): string[] {
     const path: string[] = [];
@@ -66,7 +43,7 @@ export async function GET(req: NextRequest) {
       path.unshift(current.name);
       current = current.parentId ? deptMapFull.get(current.parentId) : undefined;
     }
-    return mergeLevelNames(path.slice(HIERARCHY_SKIP_LEVELS));
+    return path.slice(HIERARCHY_SKIP_LEVELS);
   }
 
   // Hierarchy column filters (hierarchy_0=Блок, hierarchy_1=Управление, etc.)
@@ -125,9 +102,7 @@ export async function GET(req: NextRequest) {
       path.unshift({ id: current.id, name: current.name });
       current = current.parentId ? deptMapFull.get(current.parentId) : undefined;
     }
-    const sliced = path.slice(HIERARCHY_SKIP_LEVELS);
-    const merged = mergeLevelObjects(sliced);
-    return merged.map((item, index) => ({ ...item, depth: index }));
+    return path.slice(HIERARCHY_SKIP_LEVELS).map((item, index) => ({ ...item, depth: index }));
   }
 
   const enrichedEmployees = employees.map((emp) => ({
@@ -144,8 +119,7 @@ export async function GET(req: NextRequest) {
       path.unshift(cur.id);
       cur = cur.parentId ? deptMapFull.get(cur.parentId) : undefined;
     }
-    const sliced = path.slice(HIERARCHY_SKIP_LEVELS);
-    return mergeLevelNames(sliced).length;
+    return Math.max(0, path.length - HIERARCHY_SKIP_LEVELS);
   });
   const maxDepth = allPaths.reduce((max, len) => Math.max(max, len), 0);
 
