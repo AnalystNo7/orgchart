@@ -15,6 +15,7 @@ import { DataTable } from "@/components/employees/data-table";
 import { getColumns, type EmployeeRow } from "@/components/employees/columns";
 import { EmployeeForm } from "@/components/employees/EmployeeForm";
 import { ExcelImport, type ImportResult } from "@/components/employees/ExcelImport";
+import { ExcelExport } from "@/components/employees/ExcelExport";
 import { useOrgChartStore } from "@/lib/store";
 import type { EmployeeCategory } from "@prisma/client";
 
@@ -29,12 +30,19 @@ interface APIResponse {
   categoryTotals: { pp: number; opp: number; aup: number };
 }
 
+interface FilterOptions {
+  cfo: string[];
+  levels: string[][];
+}
+
 export default function EmployeesPage() {
   const { currentScenarioId, triggerRefresh } = useOrgChartStore();
   const [response, setResponse] = useState<APIResponse | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const [hierarchyFilters, setHierarchyFilters] = useState<Record<string, string>>({});
+  const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const [hierarchyMode, setHierarchyMode] = useState<"detailed" | "compact">(
     "detailed"
   );
@@ -43,6 +51,16 @@ export default function EmployeesPage() {
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(
     null
   );
+
+  // Fetch filter options when scenario changes
+  useEffect(() => {
+    if (!currentScenarioId) return;
+    setHierarchyFilters({});
+    setCategoryFilter("");
+    fetch(`/api/employees/filters?scenarioId=${currentScenarioId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setFilterOptions(data));
+  }, [currentScenarioId]);
 
   const fetchEmployees = useCallback(async () => {
     if (!currentScenarioId) return;
@@ -53,12 +71,15 @@ export default function EmployeesPage() {
     });
     if (search) params.set("search", search);
     if (categoryFilter) params.set("category", categoryFilter);
+    Object.entries(hierarchyFilters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
 
     const res = await fetch(`/api/employees?${params}`);
     if (res.ok) {
       setResponse(await res.json());
     }
-  }, [currentScenarioId, page, search, categoryFilter]);
+  }, [currentScenarioId, page, search, categoryFilter, hierarchyFilters]);
 
   useEffect(() => {
     fetchEmployees();
@@ -193,6 +214,13 @@ export default function EmployeesPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Справочник сотрудников</h1>
         <div className="flex gap-2">
+          <ExcelExport
+            scenarioId={currentScenarioId}
+            search={search}
+            categoryFilter={categoryFilter}
+            columnNames={response?.columnNames ?? null}
+            maxDepth={response?.maxDepth ?? 0}
+          />
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Импорт Excel
@@ -205,8 +233,8 @@ export default function EmployeesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-4">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
           <Input
             placeholder="Поиск по ФИО..."
@@ -215,6 +243,52 @@ export default function EmployeesPage() {
             className="pl-9"
           />
         </div>
+
+        {/* CFO filter */}
+        {filterOptions && filterOptions.cfo.length > 0 && (
+          <Select
+            value={hierarchyFilters.cfo || "all"}
+            onValueChange={(v) => {
+              setHierarchyFilters((prev) => ({ ...prev, cfo: v === "all" ? "" : v }));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Все ЦФО" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все ЦФО</SelectItem>
+              {filterOptions.cfo.map((v) => (
+                <SelectItem key={v} value={v}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Hierarchy level filters */}
+        {filterOptions?.levels.map((values, i) => (
+          values.length > 0 && (
+            <Select
+              key={i}
+              value={hierarchyFilters[`hierarchy_${i}`] || "all"}
+              onValueChange={(v) => {
+                setHierarchyFilters((prev) => ({ ...prev, [`hierarchy_${i}`]: v === "all" ? "" : v }));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={response?.levelNames?.[i] ?? `Уровень ${i + 1}`} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{response?.levelNames?.[i] ?? `Уровень ${i + 1}`}: все</SelectItem>
+                {values.map((v) => (
+                  <SelectItem key={v} value={v}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )
+        ))}
+
         <Select
           value={categoryFilter}
           onValueChange={(v) => {

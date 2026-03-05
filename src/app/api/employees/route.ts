@@ -16,8 +16,54 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "scenarioId is required" }, { status: 400 });
   }
 
+  // Fetch all departments upfront (needed for hierarchy filtering and path computation)
+  const allDepartments = await prisma.department.findMany({
+    where: { scenarioId },
+    select: { id: true, name: true, parentId: true, cfo: true },
+  });
+
+  const deptMapFull = new Map(allDepartments.map((d) => [d.id, d]));
+
+  // Build hierarchy path for a department (after skipping ГД/ЗГД levels)
+  function buildDeptPath(depId: string): string[] {
+    const path: string[] = [];
+    let current = deptMapFull.get(depId);
+    while (current) {
+      path.unshift(current.name);
+      current = current.parentId ? deptMapFull.get(current.parentId) : undefined;
+    }
+    return path.slice(HIERARCHY_SKIP_LEVELS);
+  }
+
+  // Hierarchy column filters (hierarchy_0=Блок, hierarchy_1=Управление, etc.)
+  const hierarchyFilters: Record<number, string> = {};
+  for (let i = 0; i < 4; i++) {
+    const val = req.nextUrl.searchParams.get(`hierarchy_${i}`);
+    if (val) hierarchyFilters[i] = val;
+  }
+  const cfoFilter = req.nextUrl.searchParams.get("cfo");
+
+  // Compute allowed department IDs based on hierarchy + cfo filters
+  let filteredDeptIds: Set<string> | null = null;
+  if (Object.keys(hierarchyFilters).length > 0 || cfoFilter) {
+    filteredDeptIds = new Set<string>();
+    for (const dept of allDepartments) {
+      if (cfoFilter && dept.cfo !== cfoFilter) continue;
+      const path = buildDeptPath(dept.id);
+      let match = true;
+      for (const [level, name] of Object.entries(hierarchyFilters)) {
+        if (path[Number(level)] !== name) {
+          match = false;
+          break;
+        }
+      }
+      if (match) filteredDeptIds.add(dept.id);
+    }
+  }
+
   const where: Record<string, unknown> = { scenarioId };
   if (departmentId) where.departmentId = departmentId;
+  if (filteredDeptIds) where.departmentId = { in: [...filteredDeptIds] };
   if (category) where.category = category;
   if (search) {
     where.fullName = { contains: search, mode: "insensitive" };
@@ -36,22 +82,14 @@ export async function GET(req: NextRequest) {
     prisma.employee.count({ where }),
   ]);
 
-  // Fetch all departments for hierarchy path computation
-  const allDepartments = await prisma.department.findMany({
-    where: { scenarioId },
-    select: { id: true, name: true, parentId: true },
-  });
-
-  const deptMap = new Map(allDepartments.map((d) => [d.id, d]));
-
   function buildHierarchyPath(
     depId: string
   ): Array<{ id: string; name: string; depth: number }> {
     const path: Array<{ id: string; name: string }> = [];
-    let current = deptMap.get(depId);
+    let current = deptMapFull.get(depId);
     while (current) {
       path.unshift({ id: current.id, name: current.name });
-      current = current.parentId ? deptMap.get(current.parentId) : undefined;
+      current = current.parentId ? deptMapFull.get(current.parentId) : undefined;
     }
     return path
       .map((item, index) => ({ ...item, depth: index }))
@@ -68,10 +106,10 @@ export async function GET(req: NextRequest) {
   // so that hierarchy columns stay consistent across pages and renames
   const allPaths = allDepartments.map((d) => {
     const path: string[] = [];
-    let cur = deptMap.get(d.id);
+    let cur = deptMapFull.get(d.id);
     while (cur) {
       path.unshift(cur.id);
-      cur = cur.parentId ? deptMap.get(cur.parentId) : undefined;
+      cur = cur.parentId ? deptMapFull.get(cur.parentId) : undefined;
     }
     return Math.max(0, path.length - HIERARCHY_SKIP_LEVELS);
   });

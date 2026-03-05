@@ -1,10 +1,12 @@
 export type DiffStatus = "unchanged" | "added" | "removed" | "modified" | "moved";
 
+import type { ShetilType } from "@prisma/client";
+
 export interface DiffDepartment {
   id: string;
   name: string;
   parentId: string | null;
-  shetilType: string;
+  shetilType: ShetilType;
   originId: string | null;
   metrics: { pp: number; opp: number; aup: number; totalFte: number };
   head: { fullName: string } | null;
@@ -17,7 +19,7 @@ interface DeptInput {
   id: string;
   name: string;
   parentId: string | null;
-  shetilType: string;
+  shetilType: ShetilType;
   originId: string | null;
   metrics: { pp: number; opp: number; aup: number; totalFte: number };
   head: { fullName: string } | null;
