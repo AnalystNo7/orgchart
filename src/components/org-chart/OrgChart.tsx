@@ -19,6 +19,7 @@ import { ShetilLegend } from "./ShetilLegend";
 import { MetricsToolbar } from "./MetricsToolbar";
 import { AddDepartmentDialog } from "./AddDepartmentDialog";
 import { DeleteDepartmentDialog } from "./DeleteDepartmentDialog";
+import { AddParentDialog } from "@/components/department-card/AddParentDialog";
 import { useOrgChartStore } from "@/lib/store";
 import { useUndoRedoKeys } from "@/hooks/useUndoRedoKeys";
 import type { MetricsMode } from "@/types";
@@ -358,6 +359,13 @@ export function OrgChart() {
     mode: "child" | "sibling";
   } | null>(null);
 
+  // Add parent dialog state
+  const [addParentDialog, setAddParentDialog] = useState<{
+    open: boolean;
+    departmentId: string;
+    currentParentId: string | null;
+  } | null>(null);
+
   // Delete department dialog state
   const [deleteDialog, setDeleteDialog] = useState<{
     open: boolean;
@@ -427,6 +435,38 @@ export function OrgChart() {
     setCollapsedIds(withChildren);
   }, [departments]);
 
+  // Expand to specific level (task 6)
+  const onExpandToLevel = useCallback(
+    (level: number) => {
+      // Compute depth for each department (root = 0, children of root = 1, etc.)
+      const depthMap = new Map<string, number>();
+      const parentMap = new Map(departments.map((d) => [d.id, d.parentId]));
+
+      function getDepth(id: string): number {
+        if (depthMap.has(id)) return depthMap.get(id)!;
+        const pid = parentMap.get(id);
+        if (!pid) {
+          depthMap.set(id, 0);
+          return 0;
+        }
+        const d = getDepth(pid) + 1;
+        depthMap.set(id, d);
+        return d;
+      }
+
+      departments.forEach((d) => getDepth(d.id));
+
+      // Collapse nodes at depth >= level that have children
+      const toCollapse = new Set(
+        departments
+          .filter((d) => d._count.children > 0 && getDepth(d.id) >= level)
+          .map((d) => d.id)
+      );
+      setCollapsedIds(toCollapse);
+    },
+    [departments]
+  );
+
   const onSelectDepartment = useCallback(
     (id: string) => {
       setSelectedDepartmentId(id);
@@ -450,6 +490,19 @@ export function OrgChart() {
       setAddDialog({ open: true, parentId, mode: "sibling" });
     },
     []
+  );
+
+  const onAddParent = useCallback(
+    (departmentId: string) => {
+      const dept = departments.find((d) => d.id === departmentId);
+      if (!dept) return;
+      setAddParentDialog({
+        open: true,
+        departmentId,
+        currentParentId: dept.parentId,
+      });
+    },
+    [departments]
   );
 
   const onDeleteDepartment = useCallback(
@@ -590,6 +643,7 @@ export function OrgChart() {
           onSelectDepartment,
           onAddChild,
           onAddSibling,
+          onAddParent,
           onDeleteDepartment,
           onToggleVertical,
         } as DepartmentNodeData as unknown as Record<string, unknown>,
@@ -618,6 +672,7 @@ export function OrgChart() {
     onSelectDepartment,
     onAddChild,
     onAddSibling,
+    onAddParent,
     onDeleteDepartment,
     onToggleVertical,
   ]);
@@ -652,6 +707,7 @@ export function OrgChart() {
       <MetricsToolbar
         onExpandAll={onExpandAll}
         onCollapseAll={onCollapseAll}
+        onExpandToLevel={onExpandToLevel}
       />
       <div className="relative flex-1">
         <ReactFlow
@@ -694,6 +750,20 @@ export function OrgChart() {
           onConfirm={handleDeleteConfirm}
           childCount={deleteDialog.childCount}
           departmentName={deleteDialog.departmentName}
+        />
+      )}
+
+      {addParentDialog && currentScenarioId && (
+        <AddParentDialog
+          open={addParentDialog.open}
+          onClose={() => setAddParentDialog(null)}
+          departmentId={addParentDialog.departmentId}
+          currentParentId={addParentDialog.currentParentId}
+          scenarioId={currentScenarioId}
+          onComplete={() => {
+            setAddParentDialog(null);
+            refreshDepartments();
+          }}
         />
       )}
     </div>

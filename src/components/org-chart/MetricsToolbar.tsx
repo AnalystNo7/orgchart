@@ -6,16 +6,24 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { ChevronsDownUp, ChevronsUpDown, Undo2, Redo2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronsDownUp, ChevronsUpDown, ChevronDown, Undo2, Redo2 } from "lucide-react";
 
 interface MetricsToolbarProps {
   onExpandAll: () => void;
   onCollapseAll: () => void;
+  onExpandToLevel: (level: number) => void;
 }
 
 export function MetricsToolbar({
   onExpandAll,
   onCollapseAll,
+  onExpandToLevel,
 }: MetricsToolbarProps) {
   const {
     metricsMode,
@@ -102,15 +110,32 @@ export function MetricsToolbar({
       )}
 
       <div className="ml-auto flex items-center gap-1 border-l pl-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onExpandAll}
-          title="Развернуть всё"
-        >
-          <ChevronsUpDown className="mr-1 h-4 w-4" />
-          Развернуть
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" title="Показать до уровня">
+              <ChevronsUpDown className="mr-1 h-4 w-4" />
+              Уровень
+              <ChevronDown className="ml-1 h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onExpandToLevel(1)}>
+              L1 — только блоки
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onExpandToLevel(2)}>
+              L2 — управления
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onExpandToLevel(3)}>
+              L3 — подразделения
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onExpandToLevel(4)}>
+              L4 — дочерние
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onExpandAll}>
+              Все уровни
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           variant="ghost"
           size="sm"

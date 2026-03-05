@@ -38,7 +38,13 @@ interface OrgChartState {
 export const useOrgChartStore = create<OrgChartState>((set, get) => ({
   currentScenarioId: null,
   selectedDepartmentId: null,
-  setCurrentScenarioId: (id) => set({ currentScenarioId: id }),
+  setCurrentScenarioId: (id) =>
+    set({
+      currentScenarioId: id,
+      selectedDepartmentId: null,
+      departmentOverrides: {},
+      verticalIds: new Set<string>(),
+    }),
   setSelectedDepartmentId: (id) => set({ selectedDepartmentId: id }),
 
   metricsMode: "own",

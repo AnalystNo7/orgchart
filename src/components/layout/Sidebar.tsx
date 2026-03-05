@@ -6,9 +6,9 @@ import { LayoutDashboard, Users, FolderKanban, GitCompare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
+  { href: "/scenarios", label: "Сценарии", icon: FolderKanban },
   { href: "/", label: "Оргструктура", icon: LayoutDashboard },
   { href: "/employees", label: "Сотрудники", icon: Users },
-  { href: "/scenarios", label: "Сценарии", icon: FolderKanban },
   { href: "/compare", label: "Сравнение", icon: GitCompare },
 ];
 

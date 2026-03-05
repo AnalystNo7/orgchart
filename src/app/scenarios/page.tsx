@@ -171,9 +171,34 @@ export default function ScenariosPage() {
         <div className="rounded-lg border p-4 space-y-3">
           <h2 className="text-lg font-semibold">{selected.name}</h2>
           <div className="text-sm text-neutral-500">
-            <p>
-              Статус: <Badge variant="secondary" className={statusColors[selected.status]}>{statusLabels[selected.status]}</Badge>
-            </p>
+            <div className="flex items-center gap-2">
+              <span>Статус:</span>
+              <Select
+                value={selected.status}
+                onValueChange={async (status) => {
+                  await fetch(`/api/scenarios/${selected.id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status }),
+                  });
+                  setSelected({ ...selected, status });
+                  fetchScenarios();
+                }}
+              >
+                <SelectTrigger className="h-7 w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(statusLabels).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      <Badge variant="secondary" className={statusColors[key]}>
+                        {label}
+                      </Badge>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {selected.description && <p className="mt-1">{selected.description}</p>}
             <p className="mt-1">
               Подразделений: {selected._count.departments} | Сотрудников: {selected._count.employees}

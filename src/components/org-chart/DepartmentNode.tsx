@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Plus,
+  CopyPlus,
   Sigma,
   ArrowDownUp,
   ArrowLeftRight,
@@ -37,6 +38,7 @@ export interface DepartmentNodeData {
   onSelectDepartment: (id: string) => void;
   onAddChild: (id: string) => void;
   onAddSibling: (id: string, parentId: string | null) => void;
+  onAddParent: (id: string) => void;
   onDeleteDepartment: (id: string) => void;
   onToggleVertical: (id: string) => void;
 }
@@ -54,12 +56,16 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
       onAddSibling={() =>
         data.onAddSibling(data.departmentId, data.parentId)
       }
+      onAddParent={() => data.onAddParent(data.departmentId)}
       onDelete={() => data.onDeleteDepartment(data.departmentId)}
       isRoot={isRoot}
     >
       <div
-        className="relative rounded-lg border-2 bg-white shadow-sm transition-shadow hover:shadow-md"
-        style={{ borderColor: config.color, width: 200, maxWidth: 200 }}
+        className={cn(
+          "relative rounded-lg border-2 bg-white shadow-sm transition-shadow hover:shadow-md",
+          isRoot && "border-neutral-700 shadow-md"
+        )}
+        style={{ borderColor: isRoot ? undefined : config.color, width: 200, maxWidth: 200 }}
         onClick={() => data.onSelectDepartment(data.departmentId)}
       >
         <Handle
@@ -76,10 +82,15 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
           className="!h-0 !w-0 !border-0 !bg-transparent"
         />
 
-        {/* Header with Shetil color */}
+        {/* Header — white/neutral for root, shetil-colored for others */}
         <div
-          className="rounded-t-md px-3 py-1.5 text-xs font-medium text-white"
-          style={{ backgroundColor: config.color }}
+          className={cn(
+            "rounded-t-md px-3 py-1.5 text-xs font-medium",
+            isRoot
+              ? "bg-neutral-800 text-white"
+              : "text-white"
+          )}
+          style={isRoot ? undefined : { backgroundColor: config.color }}
         >
           <div className="flex items-center justify-between">
             <Tooltip>
@@ -202,7 +213,7 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
           )}
         </div>
 
-        {/* Add child button */}
+        {/* Add child button (bottom) */}
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
@@ -215,6 +226,22 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
         >
           <Plus className="h-3 w-3" />
         </button>
+
+        {/* Add sibling button (right side) — hidden for root */}
+        {!isRoot && (
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onAddSibling(data.departmentId, data.parentId);
+            }}
+            className="nopan nodrag absolute -right-3 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white text-neutral-400 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600"
+            title="Добавить параллельное"
+          >
+            <CopyPlus className="h-3 w-3" />
+          </button>
+        )}
 
         <Handle
           type="source"
