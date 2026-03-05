@@ -63,9 +63,9 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
       <div
         className={cn(
           "relative rounded-lg border-2 bg-white shadow-sm transition-shadow hover:shadow-md",
-          isRoot && "border-neutral-700 shadow-md"
+          isRoot && "shadow-md"
         )}
-        style={{ borderColor: isRoot ? undefined : config.color, width: 200, maxWidth: 200 }}
+        style={{ borderColor: isRoot ? "#0d3b66" : config.color, width: 200, maxWidth: 200 }}
         onClick={() => data.onSelectDepartment(data.departmentId)}
       >
         <Handle
@@ -82,15 +82,19 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
           className="!h-0 !w-0 !border-0 !bg-transparent"
         />
 
-        {/* Header — white/neutral for root, shetil-colored for others */}
+        {/* Header — cosmic dark-blue gradient for root, shetil-colored for others */}
         <div
           className={cn(
             "rounded-t-md px-3 py-1.5 text-xs font-medium",
             isRoot
-              ? "bg-neutral-800 text-white"
+              ? "text-white"
               : "text-white"
           )}
-          style={isRoot ? undefined : { backgroundColor: config.color }}
+          style={
+            isRoot
+              ? { background: "linear-gradient(135deg, #0a1628 0%, #0d3b66 50%, #1a5276 100%)" }
+              : { backgroundColor: config.color }
+          }
         >
           <div className="flex items-center justify-between">
             <Tooltip>

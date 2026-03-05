@@ -8,27 +8,27 @@ export const SHETIL_CONFIG: Record<
 > = {
   REVENUE: {
     label: "Зарабатывающее",
-    color: "#22C55E",
-    bg: "bg-green-50",
-    border: "border-green-500",
+    color: "#6DBFB8",
+    bg: "bg-teal-50",
+    border: "border-teal-500",
   },
   RESOURCE: {
     label: "Ресурсный центр",
-    color: "#3B82F6",
-    bg: "bg-blue-50",
-    border: "border-blue-500",
+    color: "#0D3B66",
+    bg: "bg-sky-50",
+    border: "border-sky-900",
   },
   SERVICE: {
     label: "Сервисное",
-    color: "#EAB308",
-    bg: "bg-yellow-50",
-    border: "border-yellow-500",
+    color: "#F5A000",
+    bg: "bg-amber-50",
+    border: "border-amber-500",
   },
   BACKOFFICE: {
     label: "Бэк-офис",
-    color: "#EF4444",
+    color: "#C62200",
     bg: "bg-red-50",
-    border: "border-red-500",
+    border: "border-red-700",
   },
 };
 
