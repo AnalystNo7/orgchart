@@ -7,7 +7,7 @@ const types: ShetilType[] = ["REVENUE", "RESOURCE", "SERVICE", "BACKOFFICE"];
 
 export function ShetilLegend() {
   return (
-    <div className="absolute bottom-4 left-4 z-10 flex items-center gap-4 rounded-lg border bg-white/90 px-4 py-2 shadow-sm backdrop-blur-sm">
+    <div className="absolute bottom-4 right-4 z-10 flex items-center gap-4 rounded-lg border bg-white/90 px-4 py-2 shadow-sm backdrop-blur-sm">
       {types.map((type) => {
         const config = SHETIL_CONFIG[type];
         return (

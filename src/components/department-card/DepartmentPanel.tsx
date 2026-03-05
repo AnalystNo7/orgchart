@@ -65,7 +65,6 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
     triggerRefresh,
     departmentOverrides,
     setDepartmentOverride,
-    metricsMode,
     verticalIds,
     toggleVertical,
   } = useOrgChartStore();
@@ -74,6 +73,12 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
   const [cfo, setCfo] = useState("");
   const [shetilType, setShetilType] = useState<ShetilType>("REVENUE");
   const [headId, setHeadId] = useState<string | null>(null);
+  const [initial, setInitial] = useState<{
+    name: string;
+    cfo: string;
+    shetilType: ShetilType;
+    headId: string | null;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showAddChild, setShowAddChild] = useState(false);
@@ -85,6 +90,13 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
 
   const currentOverride = departmentOverrides[departmentId] ?? null;
 
+  const isDirty =
+    initial !== null &&
+    (name !== initial.name ||
+      cfo !== initial.cfo ||
+      shetilType !== initial.shetilType ||
+      headId !== initial.headId);
+
   const fetchDepartment = useCallback(async () => {
     const res = await fetch(`/api/departments/${departmentId}`);
     if (res.ok) {
@@ -94,6 +106,12 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
       setCfo(data.cfo ?? "");
       setShetilType(data.shetilType);
       setHeadId(data.headId);
+      setInitial({
+        name: data.name,
+        cfo: data.cfo ?? "",
+        shetilType: data.shetilType,
+        headId: data.headId,
+      });
     }
   }, [departmentId]);
 
@@ -200,13 +218,6 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
 
   const shetilConfig = SHETIL_CONFIG[shetilType];
 
-  const metricsModeLabel =
-    metricsMode === "own"
-      ? "Собственные"
-      : metricsMode === "all_descendants"
-        ? "Все"
-        : "Уровни";
-
   return (
     <div className="flex w-96 flex-col border-l bg-white">
       {/* Header */}
@@ -242,19 +253,13 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
 
           {/* Shetil type */}
           <div className="space-y-2">
-            <Label>Тип (Шетил)</Label>
+            <Label>Тип</Label>
             <Select
               value={shetilType}
               onValueChange={(v) => setShetilType(v as ShetilType)}
             >
               <SelectTrigger>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="h-3 w-3 rounded"
-                    style={{ backgroundColor: shetilConfig.color }}
-                  />
-                  <SelectValue />
-                </div>
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {(
@@ -314,24 +319,12 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
               Режим подсчёта
             </h3>
             <RadioGroup
-              value={currentOverride ?? "global"}
+              value={currentOverride ?? "own"}
               onValueChange={(v) =>
-                setDepartmentOverride(
-                  departmentId,
-                  v === "global" ? null : (v as MetricsMode)
-                )
+                setDepartmentOverride(departmentId, v as MetricsMode)
               }
               className="space-y-1"
             >
-              <div className="flex items-center gap-1.5">
-                <RadioGroupItem value="global" id="override-global" />
-                <Label
-                  htmlFor="override-global"
-                  className="cursor-pointer text-xs"
-                >
-                  Глобальный ({metricsModeLabel})
-                </Label>
-              </div>
               <div className="flex items-center gap-1.5">
                 <RadioGroupItem value="own" id="override-own" />
                 <Label htmlFor="override-own" className="cursor-pointer text-xs">
@@ -341,7 +334,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
               <div className="flex items-center gap-1.5">
                 <RadioGroupItem value="all_descendants" id="override-all" />
                 <Label htmlFor="override-all" className="cursor-pointer text-xs">
-                  Все подчиненные
+                  Все подчинённые
                 </Label>
               </div>
             </RadioGroup>
@@ -353,7 +346,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
               <Separator />
               <div className="space-y-2">
                 <h3 className="text-sm font-medium text-neutral-700">
-                  Раскладка дочерних
+                  Раскладка дочерних подразделений
                 </h3>
                 <div className="flex gap-2">
                   <Button
@@ -432,7 +425,7 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
           </Button>
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleSave} disabled={saving} className="flex-1">
+          <Button onClick={handleSave} disabled={saving || !isDirty} className="flex-1">
             <Save className="mr-1 h-4 w-4" />
             {saving ? "Сохранение..." : "Сохранить"}
           </Button>

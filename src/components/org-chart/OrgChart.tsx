@@ -344,6 +344,7 @@ export function OrgChart() {
   } = useOrgChartStore();
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [initialCollapseApplied, setInitialCollapseApplied] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
@@ -378,6 +379,23 @@ export function OrgChart() {
     refreshDepartments();
     fetchUndoRedoState();
   }, [refreshDepartments, fetchUndoRedoState, refreshCounter]);
+
+  // On first load, collapse all except root → show only L1 (direct children of root)
+  useEffect(() => {
+    if (departments.length > 0 && !initialCollapseApplied) {
+      const roots = new Set(
+        departments.filter((d) => d.parentId === null).map((d) => d.id)
+      );
+      // Collapse every non-root node that has children (so only L1 visible)
+      const toCollapse = new Set(
+        departments
+          .filter((d) => !roots.has(d.id) && d._count.children > 0)
+          .map((d) => d.id)
+      );
+      setCollapsedIds(toCollapse);
+      setInitialCollapseApplied(true);
+    }
+  }, [departments, initialCollapseApplied]);
 
   const onToggleExpand = useCallback((id: string) => {
     setCollapsedIds((prev) => {
@@ -449,6 +467,36 @@ export function OrgChart() {
       if (!deleteDialog) return;
       const { departmentId } = deleteDialog;
 
+      // Close dialog and panel immediately
+      setDeleteDialog(null);
+      if (selectedDepartmentId === departmentId) {
+        setSelectedDepartmentId(null);
+      }
+
+      // Optimistically remove from local state
+      setDepartments((prev) => {
+        if (mode === "cascade") {
+          const toRemove = new Set<string>();
+          function collectTree(id: string) {
+            toRemove.add(id);
+            prev.filter((d) => d.parentId === id).forEach((d) => collectTree(d.id));
+          }
+          collectTree(departmentId);
+          return prev.filter((d) => !toRemove.has(d.id));
+        }
+        if (mode === "reparent") {
+          const deleted = prev.find((d) => d.id === departmentId);
+          return prev
+            .filter((d) => d.id !== departmentId)
+            .map((d) =>
+              d.parentId === departmentId
+                ? { ...d, parentId: deleted?.parentId ?? null }
+                : d
+            );
+        }
+        return prev.filter((d) => d.id !== departmentId);
+      });
+
       let url = `/api/departments/${departmentId}`;
       if (mode === "cascade") url += "?cascade=true";
       else if (mode === "reparent") url += "?reparent=true";
@@ -457,14 +505,7 @@ export function OrgChart() {
       if (!res.ok) {
         const data = await res.json();
         alert(data.error);
-        setDeleteDialog(null);
-        return;
       }
-
-      if (selectedDepartmentId === departmentId) {
-        setSelectedDepartmentId(null);
-      }
-      setDeleteDialog(null);
       refreshDepartments();
     },
     [deleteDialog, selectedDepartmentId, setSelectedDepartmentId, refreshDepartments]
