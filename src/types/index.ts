@@ -14,9 +14,9 @@ export const SHETIL_CONFIG: Record<
   },
   RESOURCE: {
     label: "Ресурсный центр",
-    color: "#0D3B66",
+    color: "#3AAEE0",
     bg: "bg-sky-50",
-    border: "border-sky-900",
+    border: "border-sky-500",
   },
   SERVICE: {
     label: "Сервисное",

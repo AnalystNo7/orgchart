@@ -38,15 +38,15 @@ export function DepartmentMetrics({
         </div>
         <div className="mt-1 space-y-0.5 border-l-2 border-neutral-200 pl-3">
           <div className="flex justify-between">
-            <span className="text-green-600">ПП:</span>
+            <span className="text-neutral-700">ПП:</span>
             <span className={isAggregated ? "italic" : ""}>{pp}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-blue-600">ОПП:</span>
+            <span className="text-neutral-700">ОПП:</span>
             <span className={isAggregated ? "italic" : ""}>{opp}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-red-600">АУП:</span>
+            <span className="text-neutral-700">АУП:</span>
             <span className={isAggregated ? "italic" : ""}>{aup}</span>
           </div>
         </div>

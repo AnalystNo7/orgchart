@@ -179,10 +179,8 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
             <span>
               <span
                 className={cn(
-                  "font-medium",
-                  data.isAggregated
-                    ? "italic text-green-700"
-                    : "text-green-600"
+                  "font-medium text-neutral-900",
+                  data.isAggregated && "italic"
                 )}
               >
                 {data.pp}
@@ -192,8 +190,8 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
             <span>
               <span
                 className={cn(
-                  "font-medium",
-                  data.isAggregated ? "italic text-blue-700" : "text-blue-600"
+                  "font-medium text-neutral-900",
+                  data.isAggregated && "italic"
                 )}
               >
                 {data.opp}
@@ -203,8 +201,8 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
             <span>
               <span
                 className={cn(
-                  "font-medium",
-                  data.isAggregated ? "italic text-red-700" : "text-red-600"
+                  "font-medium text-neutral-900",
+                  data.isAggregated && "italic"
                 )}
               >
                 {data.aup}
