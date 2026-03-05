@@ -97,11 +97,12 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
                     <TooltipTrigger asChild>
                       <button
                         onPointerDown={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           data.onToggleVertical(data.departmentId);
                         }}
-                        className="ml-1 rounded p-0.5 hover:bg-white/20"
+                        className="nopan nodrag ml-1 rounded p-0.5 hover:bg-white/20"
                       >
                         {data.isVertical ? (
                           <ArrowDownUp className="h-3 w-3" />
@@ -118,11 +119,12 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
                   </Tooltip>
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       data.onToggleExpand(data.departmentId);
                     }}
-                    className="ml-1 rounded p-0.5 hover:bg-white/20"
+                    className="nopan nodrag ml-1 rounded p-0.5 hover:bg-white/20"
                   >
                     {data.isExpanded ? (
                       <ChevronDown className="h-3 w-3" />
@@ -203,11 +205,12 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
         {/* Add child button */}
         <button
           onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             data.onAddChild(data.departmentId);
           }}
-          className="absolute -bottom-3 left-1/2 z-10 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border bg-white text-neutral-400 shadow-sm transition-colors hover:border-green-300 hover:bg-green-50 hover:text-green-600"
+          className="nopan nodrag absolute -bottom-3 left-1/2 z-10 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border bg-white text-neutral-400 shadow-sm transition-colors hover:border-green-300 hover:bg-green-50 hover:text-green-600"
           title="Добавить дочернее"
         >
           <Plus className="h-3 w-3" />

@@ -380,9 +380,11 @@ export function OrgChart() {
     fetchUndoRedoState();
   }, [refreshDepartments, fetchUndoRedoState, refreshCounter]);
 
-  // Reset initial collapse flag when scenario changes
+  // Reset initial collapse flag and clear stale data when scenario changes
   useEffect(() => {
     setInitialCollapseApplied(false);
+    setDepartments([]);
+    setCollapsedIds(new Set());
   }, [currentScenarioId]);
 
   // On first load, collapse all except root → show only L1 (direct children of root)
