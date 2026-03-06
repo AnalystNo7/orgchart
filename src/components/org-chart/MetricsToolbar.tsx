@@ -91,7 +91,7 @@ export function MetricsToolbar({
 
       {metricsMode === "selected_levels" && (
         <div className="flex items-center gap-3 border-l pl-4">
-          {[1, 2, 3, 4].map((level) => (
+          {[1, 2, 3].map((level) => (
             <div key={level} className="flex items-center gap-1">
               <Checkbox
                 id={`level-${level}`}
@@ -120,16 +120,13 @@ export function MetricsToolbar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onExpandToLevel(1)}>
-              L1 — только блоки
+              L1 — Только блоки
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onExpandToLevel(2)}>
-              L2 — управления
+              L2 — Подразделения
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onExpandToLevel(3)}>
-              L3 — подразделения
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onExpandToLevel(4)}>
-              L4 — дочерние
+              L3 — Дочерние подразделения
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onExpandAll}>
               Все уровни
