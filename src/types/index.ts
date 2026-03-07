@@ -1,6 +1,6 @@
-import type { ShetilType, EmployeeCategory, ScenarioStatus } from "@prisma/client";
+import type { ShetilType, EmployeeCategory, ScenarioStatus, ContractType, ContractStatus, RevenueProvisionStatus } from "@prisma/client";
 
-export type { ShetilType, EmployeeCategory, ScenarioStatus };
+export type { ShetilType, EmployeeCategory, ScenarioStatus, ContractType, ContractStatus, RevenueProvisionStatus };
 
 export const SHETIL_CONFIG: Record<
   ShetilType,
@@ -36,6 +36,22 @@ export const CATEGORY_LABELS: Record<EmployeeCategory, string> = {
   PP: "ПП",
   OPP: "ОПП",
   AUP: "АУП",
+};
+
+export const CONTRACT_TYPE_LABELS: Record<ContractType, string> = {
+  REVENUE: "Доходный",
+  EXPENSE: "Расходный",
+};
+
+export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
+  CONCLUDED: "Заключённый",
+  PLANNED: "Планируемый",
+};
+
+export const REVENUE_PROVISION_LABELS: Record<RevenueProvisionStatus, string> = {
+  PROVIDED: "Обеспечен",
+  PLANNED: "Запланирован",
+  NOT_PROVIDED: "Не обеспечен",
 };
 
 export type MetricsMode = "own" | "selected_levels" | "all_descendants";

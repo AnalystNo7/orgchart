@@ -5,25 +5,31 @@ import type { Prisma } from "@prisma/client";
 type Json = any;
 
 export async function logAction(
-  scenarioId: string,
+  scenarioId: string | null,
   actionType: string,
   payload: Json,
   undoPayload: Json
 ) {
   // Clear redo stack (delete undone actions)
-  await prisma.actionLog.deleteMany({
-    where: { scenarioId, undone: true },
-  });
+  if (scenarioId) {
+    await prisma.actionLog.deleteMany({
+      where: { scenarioId, undone: true },
+    });
+  } else {
+    await prisma.actionLog.deleteMany({
+      where: { scenarioId: null, undone: true },
+    });
+  }
 
   return prisma.actionLog.create({
     data: { scenarioId, actionType, payload, undoPayload },
   });
 }
 
-export async function executeUndo(scenarioId: string) {
+export async function executeUndo(scenarioId: string | null) {
   // Find the most recent non-undone action
   const action = await prisma.actionLog.findFirst({
-    where: { scenarioId, undone: false },
+    where: { scenarioId: scenarioId ?? null, undone: false },
     orderBy: { createdAt: "desc" },
   });
 
@@ -189,6 +195,111 @@ export async function executeUndo(scenarioId: string) {
       });
       break;
     }
+
+    case "update_tariff": {
+      const tariffId = undoPayload.tariffId as string;
+      const prev = undoPayload.previousValues as Json;
+      await prisma.tariff.update({
+        where: { id: tariffId },
+        data: { rate: parseFloat(prev.rate), description: prev.description },
+      });
+      break;
+    }
+
+    case "create_contract": {
+      const contractId = undoPayload.contractId as string;
+      await prisma.contract.delete({ where: { id: contractId } }).catch(() => {});
+      break;
+    }
+
+    case "update_contract": {
+      const contractId = undoPayload.contractId as string;
+      const prev = undoPayload.previousValues as Json;
+      await prisma.contract.update({
+        where: { id: contractId },
+        data: {
+          name: prev.name,
+          type: prev.type,
+          status: prev.status,
+          amount: prev.amount ? parseFloat(prev.amount) : null,
+          expectedAmount: prev.expectedAmount ? parseFloat(prev.expectedAmount) : null,
+          periodStart: new Date(prev.periodStart),
+          periodEnd: new Date(prev.periodEnd),
+          description: prev.description,
+        },
+      });
+      break;
+    }
+
+    case "delete_contract": {
+      const contract = undoPayload.contract as Json;
+      await prisma.contract.create({
+        data: {
+          id: contract.id,
+          name: contract.name,
+          type: contract.type,
+          status: contract.status,
+          amount: contract.amount ? parseFloat(contract.amount) : null,
+          expectedAmount: contract.expectedAmount ? parseFloat(contract.expectedAmount) : null,
+          periodStart: new Date(contract.periodStart),
+          periodEnd: new Date(contract.periodEnd),
+          description: contract.description,
+        },
+      });
+      // Restore employee contracts
+      const ecs = (undoPayload.employeeContracts ?? []) as Json[];
+      for (const ec of ecs) {
+        await prisma.employeeContract.create({
+          data: {
+            id: ec.id,
+            employeeId: ec.employeeId,
+            contractId: ec.contractId,
+            revenueStatus: ec.revenueStatus,
+            fte: parseFloat(ec.fte),
+            periodStart: new Date(ec.periodStart),
+            periodEnd: new Date(ec.periodEnd),
+          },
+        }).catch(() => {});
+      }
+      break;
+    }
+
+    case "create_employee_contract": {
+      const ecId = undoPayload.employeeContractId as string;
+      await prisma.employeeContract.delete({ where: { id: ecId } }).catch(() => {});
+      break;
+    }
+
+    case "update_employee_contract": {
+      const ecId = undoPayload.employeeContractId as string;
+      const prev = undoPayload.previousValues as Json;
+      await prisma.employeeContract.update({
+        where: { id: ecId },
+        data: {
+          revenueStatus: prev.revenueStatus,
+          fte: parseFloat(prev.fte),
+          periodStart: new Date(prev.periodStart),
+          periodEnd: new Date(prev.periodEnd),
+        },
+      });
+      break;
+    }
+
+    case "delete_employee_contract": {
+      const ec = undoPayload.employeeContract as Json;
+      await prisma.employeeContract.create({
+        data: {
+          id: ec.id,
+          employeeId: ec.employeeId,
+          contractId: ec.contractId,
+          revenueStatus: ec.revenueStatus,
+          fte: parseFloat(ec.fte),
+          periodStart: new Date(ec.periodStart),
+          periodEnd: new Date(ec.periodEnd),
+        },
+      }).catch(() => {});
+      break;
+    }
   }
 
   // Mark as undone
@@ -200,10 +311,10 @@ export async function executeUndo(scenarioId: string) {
   return action;
 }
 
-export async function executeRedo(scenarioId: string) {
+export async function executeRedo(scenarioId: string | null) {
   // Find the oldest undone action (first one undone = most recent in time that was undone last)
   const action = await prisma.actionLog.findFirst({
-    where: { scenarioId, undone: true },
+    where: { scenarioId: scenarioId ?? null, undone: true },
     orderBy: { createdAt: "asc" },
   });
 
@@ -345,6 +456,80 @@ export async function executeRedo(scenarioId: string) {
         where: { id: deptId },
         data: { parentId: newParentId },
       });
+      break;
+    }
+
+    case "update_tariff": {
+      const tariffId = payload.tariffId as string;
+      const changes = payload.changes as Json;
+      await prisma.tariff.update({ where: { id: tariffId }, data: changes });
+      break;
+    }
+
+    case "create_contract": {
+      const contract = payload.contract as Json;
+      await prisma.contract.create({
+        data: {
+          id: contract.id,
+          name: contract.name,
+          type: contract.type,
+          status: contract.status,
+          amount: contract.amount ? parseFloat(contract.amount) : null,
+          expectedAmount: contract.expectedAmount ? parseFloat(contract.expectedAmount) : null,
+          periodStart: new Date(contract.periodStart),
+          periodEnd: new Date(contract.periodEnd),
+          description: contract.description,
+        },
+      });
+      break;
+    }
+
+    case "update_contract": {
+      const contractId = payload.contractId as string;
+      const changes = payload.changes as Json;
+      const data: Record<string, unknown> = { ...changes };
+      if (changes.periodStart) data.periodStart = new Date(changes.periodStart);
+      if (changes.periodEnd) data.periodEnd = new Date(changes.periodEnd);
+      await prisma.contract.update({ where: { id: contractId }, data });
+      break;
+    }
+
+    case "delete_contract": {
+      const contractId = payload.contractId as string;
+      await prisma.employeeContract.deleteMany({ where: { contractId } });
+      await prisma.contract.delete({ where: { id: contractId } }).catch(() => {});
+      break;
+    }
+
+    case "create_employee_contract": {
+      const ec = payload.employeeContract as Json;
+      await prisma.employeeContract.create({
+        data: {
+          id: ec.id,
+          employeeId: ec.employeeId,
+          contractId: ec.contractId,
+          revenueStatus: ec.revenueStatus,
+          fte: parseFloat(ec.fte),
+          periodStart: new Date(ec.periodStart),
+          periodEnd: new Date(ec.periodEnd),
+        },
+      }).catch(() => {});
+      break;
+    }
+
+    case "update_employee_contract": {
+      const ecId = payload.employeeContractId as string;
+      const changes = payload.changes as Json;
+      const data: Record<string, unknown> = { ...changes };
+      if (changes.periodStart) data.periodStart = new Date(changes.periodStart);
+      if (changes.periodEnd) data.periodEnd = new Date(changes.periodEnd);
+      await prisma.employeeContract.update({ where: { id: ecId }, data });
+      break;
+    }
+
+    case "delete_employee_contract": {
+      const ec = undoPayload.employeeContract as Json;
+      await prisma.employeeContract.delete({ where: { id: ec.id } }).catch(() => {});
       break;
     }
   }

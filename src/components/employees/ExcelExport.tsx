@@ -48,6 +48,8 @@ export function ExcelExport({
         position: string;
         category: EmployeeCategory;
         fte: number | string;
+        costRate: number | string | null;
+        tariff: { name: string; rate: number | string } | null;
         department: { cfo: string | null };
         hierarchyPath: Array<{ name: string }>;
       }>;
@@ -62,6 +64,8 @@ export function ExcelExport({
         obj[getDisplayName("fullName")] = row.fullName;
         obj[getDisplayName("fte")] = Number(row.fte);
         obj[getDisplayName("category")] = CATEGORY_LABELS[row.category] ?? row.category;
+        obj["Ставка себестоимости"] = row.costRate != null ? Number(row.costRate) : "";
+        obj["Тарифная ставка"] = row.tariff ? `${row.tariff.name} (${Number(row.tariff.rate)})` : "";
         return obj;
       });
 

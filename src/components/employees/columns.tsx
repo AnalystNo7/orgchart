@@ -1,7 +1,7 @@
 "use client";
 
 import { type ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, ArrowUpDown } from "lucide-react";
+import { MoreHorizontal, ArrowUpDown, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,6 +10,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CATEGORY_LABELS, DEFAULT_COLUMN_NAMES } from "@/types";
 import type { EmployeeCategory } from "@prisma/client";
 import { EditableHeader } from "./EditableHeader";
@@ -20,6 +26,10 @@ export interface EmployeeRow {
   position: string;
   category: EmployeeCategory;
   fte: number | string;
+  costRate: number | string | null;
+  tariffId: string | null;
+  tariff: { id: string; name: string; rate: number | string } | null;
+  _count?: { contracts: number };
   department: { id: string; name: string; cfo: string | null };
   hierarchyPath: Array<{ id: string; name: string; depth: number }>;
 }
@@ -27,6 +37,7 @@ export interface EmployeeRow {
 interface ColumnActions {
   onEdit: (employee: EmployeeRow) => void;
   onDelete: (id: string) => void;
+  onContracts: (employee: EmployeeRow) => void;
 }
 
 interface ColumnOptions {
@@ -44,8 +55,23 @@ const categoryColors: Record<EmployeeCategory, string> = {
   AUP: "bg-red-100 text-red-800",
 };
 
+function TruncatedCell({ text }: { text: string }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="block max-w-[180px] truncate">{text}</span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="max-w-xs">{text}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
-  const { actions, hierarchyMode, maxDepth, levelNames, columnNames, onColumnRename } = options;
+  const { actions, hierarchyMode, maxDepth, columnNames, onColumnRename } = options;
   const columns: ColumnDef<EmployeeRow>[] = [];
 
   function getDisplayName(columnId: string): string {
@@ -87,7 +113,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
         cell: ({ row }) => {
           const level = row.original.hierarchyPath[i];
           return level ? (
-            <span className="text-sm">{level.name}</span>
+            <TruncatedCell text={level.name} />
           ) : (
             <span className="text-neutral-300">—</span>
           );
@@ -106,9 +132,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
         />
       ),
       cell: ({ row }) => (
-        <span className="text-sm text-neutral-600">
-          {row.original.hierarchyPath.map((h) => h.name).join(" → ")}
-        </span>
+        <TruncatedCell text={row.original.hierarchyPath.map((h) => h.name).join(" → ")} />
       ),
     });
   }
@@ -123,6 +147,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
         onSave={(v) => onColumnRename("position", v)}
       />
     ),
+    cell: ({ row }) => <TruncatedCell text={row.getValue("position")} />,
   });
 
   // 4. ФИО (with sort)
@@ -193,7 +218,70 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
     },
   });
 
-  // 7. Actions
+  // 7. Ставка себестоимости
+  columns.push({
+    id: "costRate",
+    accessorFn: (row) => row.costRate,
+    meta: { label: "Ставка себестоимости" },
+    header: () => <span className="whitespace-nowrap text-sm">Ставка с/с</span>,
+    cell: ({ row }) => {
+      const val = row.original.costRate;
+      return (
+        <div className="text-right">
+          {val != null ? Number(val).toLocaleString("ru-RU") : "—"}
+        </div>
+      );
+    },
+  });
+
+  // 8. Тарифная ставка
+  columns.push({
+    id: "tariff",
+    accessorFn: (row) => row.tariff?.name,
+    meta: { label: "Тарифная ставка" },
+    header: () => <span className="whitespace-nowrap text-sm">Тариф</span>,
+    cell: ({ row }) => {
+      const tariff = row.original.tariff;
+      if (!tariff) return <span className="text-neutral-300">—</span>;
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-sm">
+                {tariff.name} ({Number(tariff.rate).toLocaleString("ru-RU")} ₽)
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{tariff.name}: {Number(tariff.rate).toLocaleString("ru-RU")} руб.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    },
+  });
+
+  // 9. Договоры (кол-во + кнопка)
+  columns.push({
+    id: "contracts",
+    meta: { label: "Договоры" },
+    header: () => <span className="whitespace-nowrap text-sm">Договоры</span>,
+    cell: ({ row }) => {
+      const count = row.original._count?.contracts ?? 0;
+      return (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1"
+          onClick={() => actions.onContracts(row.original)}
+        >
+          <FileText className="h-3.5 w-3.5" />
+          {count}
+        </Button>
+      );
+    },
+  });
+
+  // 10. Actions
   columns.push({
     id: "actions",
     enableHiding: false,
@@ -209,6 +297,9 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => actions.onEdit(employee)}>
               Редактировать
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions.onContracts(employee)}>
+              Договоры
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-red-600"

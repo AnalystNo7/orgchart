@@ -85,6 +85,8 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         department: { select: { id: true, name: true, cfo: true } },
+        tariff: { select: { id: true, name: true, rate: true } },
+        _count: { select: { contracts: true } },
       },
       orderBy: { fullName: "asc" },
       skip: (page - 1) * limit,
@@ -173,9 +175,12 @@ export async function POST(req: NextRequest) {
       position: parsed.data.position,
       category: parsed.data.category,
       fte: parsed.data.fte ?? 1.0,
+      costRate: parsed.data.costRate,
+      tariffId: parsed.data.tariffId,
     },
     include: {
       department: { select: { id: true, name: true } },
+      tariff: { select: { id: true, name: true, rate: true } },
     },
   });
 

@@ -201,9 +201,27 @@ async function main() {
     { fullName: "Сергеев А.А.", position: "Рабочий", category: "PP" },
   ]);
 
+  // Seed tariffs (K-1 through K-6) - global, idempotent
+  const tariffData = [
+    { name: "K-1", rate: 1500, description: "Начальный уровень" },
+    { name: "K-2", rate: 2000, description: "Базовый уровень" },
+    { name: "K-3", rate: 2800, description: "Средний уровень" },
+    { name: "K-4", rate: 3500, description: "Продвинутый уровень" },
+    { name: "K-5", rate: 4500, description: "Экспертный уровень" },
+    { name: "K-6", rate: 6000, description: "Высший уровень" },
+  ];
+  for (const t of tariffData) {
+    await prisma.tariff.upsert({
+      where: { name: t.name },
+      update: {},
+      create: t,
+    });
+  }
+
   const totalDepts = await prisma.department.count({ where: { scenarioId: sId } });
   const totalEmps = await prisma.employee.count({ where: { scenarioId: sId } });
-  console.log(`Seed completed: ${totalDepts} departments, ${totalEmps} employees`);
+  const totalTariffs = await prisma.tariff.count();
+  console.log(`Seed completed: ${totalDepts} departments, ${totalEmps} employees, ${totalTariffs} tariffs`);
 }
 
 main()

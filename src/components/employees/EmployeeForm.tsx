@@ -21,6 +21,12 @@ import {
 } from "@/components/ui/dialog";
 import type { EmployeeCategory } from "@prisma/client";
 
+interface Tariff {
+  id: string;
+  name: string;
+  rate: number | string;
+}
+
 interface EmployeeFormData {
   fullName: string;
   position: string;
@@ -28,6 +34,8 @@ interface EmployeeFormData {
   fte: number;
   departmentId: string;
   cfo?: string;
+  costRate?: number | null;
+  tariffId?: string | null;
 }
 
 interface Department {
@@ -54,15 +62,18 @@ export function EmployeeForm({
   scenarioId,
 }: EmployeeFormProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [tariffs, setTariffs] = useState<Tariff[]>([]);
   const [selectedCfo, setSelectedCfo] = useState<string>("");
+  const [selectedTariffId, setSelectedTariffId] = useState<string>("");
   const { register, handleSubmit, setValue, watch, reset } =
-    useForm<Omit<EmployeeFormData, "cfo">>({
+    useForm<Omit<EmployeeFormData, "cfo" | "tariffId">>({
       defaultValues: {
         fullName: defaultValues?.fullName ?? "",
         position: defaultValues?.position ?? "",
         category: defaultValues?.category ?? "PP",
         fte: defaultValues?.fte ?? 1.0,
         departmentId: defaultValues?.departmentId ?? "",
+        costRate: defaultValues?.costRate ?? null,
       },
     });
 
@@ -78,10 +89,16 @@ export function EmployeeForm({
   }, [departments]);
 
   useEffect(() => {
-    if (!open || !scenarioId) return;
-    fetch(`/api/departments?scenarioId=${scenarioId}`)
+    if (!open) return;
+    if (scenarioId) {
+      fetch(`/api/departments?scenarioId=${scenarioId}`)
+        .then((r) => r.json())
+        .then((data) => setDepartments(data))
+        .catch(() => {});
+    }
+    fetch("/api/tariffs")
       .then((r) => r.json())
-      .then((data) => setDepartments(data))
+      .then((data) => setTariffs(data))
       .catch(() => {});
   }, [open, scenarioId]);
 
@@ -93,12 +110,13 @@ export function EmployeeForm({
         category: defaultValues.category ?? "PP",
         fte: defaultValues.fte ?? 1.0,
         departmentId: defaultValues.departmentId ?? "",
+        costRate: defaultValues.costRate ?? null,
       });
       setSelectedCfo(defaultValues.cfo ?? "");
+      setSelectedTariffId(defaultValues.tariffId ?? "");
     }
   }, [open, defaultValues, reset]);
 
-  // Auto-fill ЦФО when department changes
   useEffect(() => {
     if (departmentId) {
       const dept = departments.find((d) => d.id === departmentId);
@@ -108,9 +126,15 @@ export function EmployeeForm({
     }
   }, [departmentId, departments]);
 
-  function handleFormSubmit(data: Omit<EmployeeFormData, "cfo">) {
-    onSubmit({ ...data, cfo: selectedCfo || undefined });
+  function handleFormSubmit(data: Omit<EmployeeFormData, "cfo" | "tariffId">) {
+    onSubmit({
+      ...data,
+      cfo: selectedCfo || undefined,
+      tariffId: selectedTariffId || null,
+    });
   }
+
+  const selectedTariff = tariffs.find((t) => t.id === selectedTariffId);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -163,10 +187,7 @@ export function EmployeeForm({
           </div>
           <div className="space-y-2">
             <Label>ЦФО</Label>
-            <Select
-              value={selectedCfo}
-              onValueChange={setSelectedCfo}
-            >
+            <Select value={selectedCfo} onValueChange={setSelectedCfo}>
               <SelectTrigger>
                 <SelectValue placeholder="Выберите ЦФО" />
               </SelectTrigger>
@@ -191,6 +212,40 @@ export function EmployeeForm({
               max="2"
               {...register("fte", { valueAsNumber: true })}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Ставка себестоимости (руб.)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              {...register("costRate", { valueAsNumber: true })}
+              placeholder="Не указана"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Тарифная ставка</Label>
+            <Select
+              value={selectedTariffId || "none"}
+              onValueChange={(v) => setSelectedTariffId(v === "none" ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Не выбрана" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Не выбрана</SelectItem>
+                {tariffs.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name} — {Number(t.rate).toLocaleString("ru-RU")} ₽
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedTariff && (
+              <p className="text-xs text-neutral-500">
+                Ставка: {Number(selectedTariff.rate).toLocaleString("ru-RU")} руб.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, FolderKanban, GitCompare } from "lucide-react";
+import { LayoutDashboard, BookOpen, FolderKanban, GitCompare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/scenarios", label: "Сценарии", icon: FolderKanban },
   { href: "/", label: "Оргструктура", icon: LayoutDashboard },
-  { href: "/employees", label: "Сотрудники", icon: Users },
+  { href: "/references", label: "Справочники", icon: BookOpen },
   { href: "/compare", label: "Сравнение", icon: GitCompare },
 ];
 

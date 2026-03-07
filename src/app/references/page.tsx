@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function OldEmployeesPage() {
+export default function ReferencesPage() {
   redirect("/references/employees");
 }

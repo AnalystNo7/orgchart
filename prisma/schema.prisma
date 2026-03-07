@@ -26,6 +26,22 @@ enum EmployeeCategory {
   AUP
 }
 
+enum ContractType {
+  REVENUE
+  EXPENSE
+}
+
+enum ContractStatus {
+  CONCLUDED
+  PLANNED
+}
+
+enum RevenueProvisionStatus {
+  PROVIDED
+  PLANNED
+  NOT_PROVIDED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -75,8 +91,8 @@ model Department {
 
 model ActionLog {
   id          String   @id @default(uuid())
-  scenarioId  String
-  scenario    Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  scenarioId  String?
+  scenario    Scenario? @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
   actionType  String
   payload     Json
   undoPayload Json
@@ -97,11 +113,58 @@ model Employee {
   position     String
   category     EmployeeCategory
   fte          Decimal          @default(1.0)
+  costRate     Decimal?
+  tariffId     String?
+  tariff       Tariff?          @relation(fields: [tariffId], references: [id])
   headOf       Department[]     @relation("DepartmentHead")
+  contracts    EmployeeContract[]
   originId     String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   @@index([scenarioId])
   @@index([departmentId])
+}
+
+model Tariff {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  rate        Decimal
+  description String?
+  employees   Employee[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Contract {
+  id             String         @id @default(uuid())
+  name           String
+  type           ContractType
+  status         ContractStatus
+  amount         Decimal?
+  expectedAmount Decimal?
+  periodStart    DateTime
+  periodEnd      DateTime
+  description    String?
+  employees      EmployeeContract[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model EmployeeContract {
+  id            String                 @id @default(uuid())
+  employeeId    String
+  employee      Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  contractId    String
+  contract      Contract               @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  revenueStatus RevenueProvisionStatus
+  fte           Decimal
+  periodStart   DateTime
+  periodEnd     DateTime
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@unique([employeeId, contractId])
+  @@index([employeeId])
+  @@index([contractId])
 }

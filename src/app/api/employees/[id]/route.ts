@@ -12,6 +12,10 @@ export async function GET(
     where: { id },
     include: {
       department: { select: { id: true, name: true } },
+      tariff: { select: { id: true, name: true, rate: true } },
+      contracts: {
+        include: { contract: true },
+      },
     },
   });
 
@@ -37,7 +41,10 @@ export async function PUT(
   // Snapshot current state for undo
   const previous = await prisma.employee.findUnique({
     where: { id },
-    select: { fullName: true, position: true, category: true, fte: true, scenarioId: true },
+    select: {
+      fullName: true, position: true, category: true, fte: true,
+      costRate: true, tariffId: true, scenarioId: true,
+    },
   });
 
   const employee = await prisma.employee.update({
@@ -45,6 +52,7 @@ export async function PUT(
     data: parsed.data,
     include: {
       department: { select: { id: true, name: true } },
+      tariff: { select: { id: true, name: true, rate: true } },
     },
   });
 
@@ -61,6 +69,8 @@ export async function PUT(
           position: previous.position,
           category: previous.category,
           fte: previous.fte.toString(),
+          costRate: previous.costRate?.toString() ?? null,
+          tariffId: previous.tariffId,
         },
       }
     );
