@@ -33,8 +33,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { EditableHeader } from "./EditableHeader";
 import { REVENUE_PROVISION_LABELS } from "@/types";
 import type { ContractStatus, RevenueProvisionStatus } from "@prisma/client";
+
+const EC_COLUMN_DEFAULTS: Record<string, string> = {
+  contractName: "Наименование договора",
+  revenueStatus: "Доходный договор",
+  fte: "FTE",
+  period: "Период обеспечения",
+};
+
+const EC_STORAGE_KEY = "employee-contract-column-names";
 
 interface Contract {
   id: string;
@@ -88,6 +98,30 @@ export function EmployeeContractsModal({
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [columnNames, setColumnNames] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem(EC_STORAGE_KEY) || "{}");
+    } catch { return {}; }
+  });
+
+  function getColName(id: string) {
+    return columnNames[id] ?? EC_COLUMN_DEFAULTS[id] ?? id;
+  }
+
+  function renameColumn(id: string, name: string) {
+    setColumnNames((prev) => {
+      const next = { ...prev, [id]: name };
+      localStorage.setItem(EC_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editRevenueStatus, setEditRevenueStatus] = useState<RevenueProvisionStatus>("PROVIDED");
+  const [editFte, setEditFte] = useState("");
+  const [editPeriodStart, setEditPeriodStart] = useState("");
+  const [editPeriodEnd, setEditPeriodEnd] = useState("");
 
   // Add form state
   const [selectedContractId, setSelectedContractId] = useState("");
@@ -159,6 +193,34 @@ export function EmployeeContractsModal({
     }
   }
 
+  function startRowEdit(ec: EmployeeContractRow) {
+    setEditingRowId(ec.id);
+    setEditRevenueStatus(ec.revenueStatus);
+    setEditFte(String(Number(ec.fte)));
+    setEditPeriodStart(toDateInput(ec.periodStart));
+    setEditPeriodEnd(toDateInput(ec.periodEnd));
+  }
+
+  async function saveRowEdit(id: string) {
+    const res = await fetch(`/api/employee-contracts/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        revenueStatus: editRevenueStatus,
+        fte: parseFloat(editFte),
+        periodStart: editPeriodStart,
+        periodEnd: editPeriodEnd,
+      }),
+    });
+    if (res.ok) {
+      setEditingRowId(null);
+      fetchContracts();
+    } else {
+      const err = await res.json();
+      alert(err.error || "Ошибка");
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("Убрать привязку к договору?")) return;
     await fetch(`/api/employee-contracts/${id}`, { method: "DELETE" });
@@ -197,10 +259,18 @@ export function EmployeeContractsModal({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Наименование договора</TableHead>
-                  <TableHead className="w-[130px]">Доходный договор</TableHead>
-                  <TableHead className="w-[80px]">FTE</TableHead>
-                  <TableHead className="w-[180px]">Период обеспечения</TableHead>
+                  <TableHead>
+                    <EditableHeader value={getColName("contractName")} onSave={(v) => renameColumn("contractName", v)} />
+                  </TableHead>
+                  <TableHead className="w-[130px]">
+                    <EditableHeader value={getColName("revenueStatus")} onSave={(v) => renameColumn("revenueStatus", v)} />
+                  </TableHead>
+                  <TableHead className="w-[80px]">
+                    <EditableHeader value={getColName("fte")} onSave={(v) => renameColumn("fte", v)} />
+                  </TableHead>
+                  <TableHead className="w-[180px]">
+                    <EditableHeader value={getColName("period")} onSave={(v) => renameColumn("period", v)} />
+                  </TableHead>
                   <TableHead className="w-[50px]" />
                 </TableRow>
               </TableHeader>
@@ -227,28 +297,95 @@ export function EmployeeContractsModal({
                         </Tooltip>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={provisionColors[ec.revenueStatus]}
-                        >
-                          {REVENUE_PROVISION_LABELS[ec.revenueStatus]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {Number(ec.fte).toFixed(1)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-sm">
-                        {formatDate(ec.periodStart)} – {formatDate(ec.periodEnd)}
+                        {editingRowId === ec.id ? (
+                          <Select
+                            value={editRevenueStatus}
+                            onValueChange={(v) => setEditRevenueStatus(v as RevenueProvisionStatus)}
+                          >
+                            <SelectTrigger className="h-8 w-[130px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="PROVIDED">Обеспечен</SelectItem>
+                              <SelectItem value="PLANNED">Запланирован</SelectItem>
+                              <SelectItem value="NOT_PROVIDED">Не обеспечен</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge
+                            variant="secondary"
+                            className={`cursor-pointer ${provisionColors[ec.revenueStatus]}`}
+                            onClick={() => startRowEdit(ec)}
+                          >
+                            {REVENUE_PROVISION_LABELS[ec.revenueStatus]}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
-                          onClick={() => handleDelete(ec.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {editingRowId === ec.id ? (
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="1"
+                            value={editFte}
+                            onChange={(e) => setEditFte(e.target.value)}
+                            className="h-8 w-20"
+                          />
+                        ) : (
+                          <span
+                            className="cursor-pointer text-right hover:text-blue-600"
+                            onClick={() => startRowEdit(ec)}
+                          >
+                            {Number(ec.fte).toFixed(1)}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editingRowId === ec.id ? (
+                          <div className="flex gap-1">
+                            <Input
+                              type="date"
+                              value={editPeriodStart}
+                              onChange={(e) => setEditPeriodStart(e.target.value)}
+                              className="h-8 w-[130px]"
+                            />
+                            <Input
+                              type="date"
+                              value={editPeriodEnd}
+                              onChange={(e) => setEditPeriodEnd(e.target.value)}
+                              className="h-8 w-[130px]"
+                            />
+                          </div>
+                        ) : (
+                          <span
+                            className="cursor-pointer whitespace-nowrap text-sm hover:text-blue-600"
+                            onClick={() => startRowEdit(ec)}
+                          >
+                            {formatDate(ec.periodStart)} – {formatDate(ec.periodEnd)}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editingRowId === ec.id ? (
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => saveRowEdit(ec.id)}>
+                              OK
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingRowId(null)}>
+                              ✕
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                            onClick={() => handleDelete(ec.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

@@ -18,7 +18,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { EditableHeader } from "@/components/employees/EditableHeader";
 import * as XLSX from "xlsx";
+
+const TARIFF_COLUMN_DEFAULTS: Record<string, string> = {
+  name: "Наименование",
+  rate: "Тарифная ставка (руб.)",
+  description: "Описание",
+};
+
+const STORAGE_KEY = "tariff-column-names";
 
 interface Tariff {
   id: string;
@@ -29,7 +38,26 @@ interface Tariff {
 
 export default function TariffsPage() {
   const [tariffs, setTariffs] = useState<Tariff[]>([]);
+  const [columnNames, setColumnNames] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    } catch { return {}; }
+  });
+
+  function getColName(id: string) {
+    return columnNames[id] ?? TARIFF_COLUMN_DEFAULTS[id] ?? id;
+  }
+
+  function renameColumn(id: string, name: string) {
+    setColumnNames((prev) => {
+      const next = { ...prev, [id]: name };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editField, setEditField] = useState<"rate" | "description" | null>(null);
   const [editRate, setEditRate] = useState("");
   const [editDesc, setEditDesc] = useState("");
 
@@ -42,28 +70,42 @@ export default function TariffsPage() {
     fetchTariffs();
   }, [fetchTariffs]);
 
-  function startEdit(tariff: Tariff) {
-    setEditingId(tariff.id);
-    setEditRate(String(Number(tariff.rate)));
-    setEditDesc(tariff.description ?? "");
-  }
-
-  async function saveEdit(id: string) {
+  async function saveField(id: string, field: "rate" | "description", value: string) {
+    const payload: Record<string, unknown> = {};
+    if (field === "rate") {
+      payload.rate = parseFloat(value);
+      if (isNaN(payload.rate as number)) return;
+    } else {
+      payload.description = value || null;
+    }
     await fetch(`/api/tariffs/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rate: parseFloat(editRate),
-        description: editDesc || null,
-      }),
+      body: JSON.stringify(payload),
     });
     setEditingId(null);
+    setEditField(null);
     fetchTariffs();
   }
 
-  function handleKeyDown(e: React.KeyboardEvent, id: string) {
-    if (e.key === "Enter") saveEdit(id);
-    if (e.key === "Escape") setEditingId(null);
+  function startEdit(tariff: Tariff, field: "rate" | "description") {
+    setEditingId(tariff.id);
+    setEditField(field);
+    if (field === "rate") {
+      setEditRate(String(Number(tariff.rate)));
+    } else {
+      setEditDesc(tariff.description ?? "");
+    }
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditField(null);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent, id: string, field: "rate" | "description") {
+    if (e.key === "Enter") saveField(id, field, field === "rate" ? editRate : editDesc);
+    if (e.key === "Escape") cancelEdit();
   }
 
   function handleExport() {
@@ -135,10 +177,15 @@ export default function TariffsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[120px]">Наименование</TableHead>
-                <TableHead className="w-[180px]">Тарифная ставка (руб.)</TableHead>
-                <TableHead>Описание</TableHead>
-                <TableHead className="w-[100px]">Действия</TableHead>
+                <TableHead className="w-[120px]">
+                  <EditableHeader value={getColName("name")} onSave={(v) => renameColumn("name", v)} />
+                </TableHead>
+                <TableHead className="w-[180px]">
+                  <EditableHeader value={getColName("rate")} onSave={(v) => renameColumn("rate", v)} />
+                </TableHead>
+                <TableHead>
+                  <EditableHeader value={getColName("description")} onSave={(v) => renameColumn("description", v)} />
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -146,40 +193,41 @@ export default function TariffsPage() {
                 <TableRow key={tariff.id}>
                   <TableCell className="font-medium">{tariff.name}</TableCell>
                   <TableCell>
-                    {editingId === tariff.id ? (
+                    {editingId === tariff.id && editField === "rate" ? (
                       <Input
                         type="number"
                         value={editRate}
                         onChange={(e) => setEditRate(e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, tariff.id)}
-                        onBlur={() => saveEdit(tariff.id)}
+                        onKeyDown={(e) => handleKeyDown(e, tariff.id, "rate")}
+                        onBlur={() => saveField(tariff.id, "rate", editRate)}
                         className="h-8 w-32"
                         autoFocus
                       />
                     ) : (
                       <span
                         className="cursor-pointer hover:text-blue-600"
-                        onClick={() => startEdit(tariff)}
+                        onClick={() => startEdit(tariff, "rate")}
                       >
                         {Number(tariff.rate).toLocaleString("ru-RU")}
                       </span>
                     )}
                   </TableCell>
                   <TableCell>
-                    {editingId === tariff.id ? (
+                    {editingId === tariff.id && editField === "description" ? (
                       <Input
                         value={editDesc}
                         onChange={(e) => setEditDesc(e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, tariff.id)}
-                        onBlur={() => saveEdit(tariff.id)}
+                        onKeyDown={(e) => handleKeyDown(e, tariff.id, "description")}
+                        onBlur={() => saveField(tariff.id, "description", editDesc)}
                         className="h-8"
+                        autoFocus
                       />
                     ) : (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span
                             className="block max-w-[300px] cursor-pointer truncate hover:text-blue-600"
-                            onClick={() => startEdit(tariff)}
+                            onClick={() => startEdit(tariff, "description")}
                           >
                             {tariff.description ?? "—"}
                           </span>
@@ -190,22 +238,6 @@ export default function TariffsPage() {
                           </TooltipContent>
                         )}
                       </Tooltip>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {editingId === tariff.id ? (
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => saveEdit(tariff.id)}>
-                          OK
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                          Отмена
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button size="sm" variant="ghost" onClick={() => startEdit(tariff)}>
-                        Изменить
-                      </Button>
                     )}
                   </TableCell>
                 </TableRow>

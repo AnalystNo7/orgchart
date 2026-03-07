@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Download, Upload, Search, MoreHorizontal } from "lucide-react";
+import { EditableHeader } from "@/components/employees/EditableHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -63,12 +64,42 @@ function TruncatedCell({ text, maxWidth = "max-w-[200px]" }: { text: string; max
   );
 }
 
+const CONTRACT_COLUMN_DEFAULTS: Record<string, string> = {
+  name: "Наименование",
+  type: "Вид",
+  status: "Признак",
+  amount: "Сумма",
+  period: "Период",
+  description: "Описание",
+  employees: "Сотр.",
+};
+
+const CONTRACT_STORAGE_KEY = "contract-column-names";
+
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [columnNames, setColumnNames] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem(CONTRACT_STORAGE_KEY) || "{}");
+    } catch { return {}; }
+  });
+
+  function getColName(id: string) {
+    return columnNames[id] ?? CONTRACT_COLUMN_DEFAULTS[id] ?? id;
+  }
+
+  function renameColumn(id: string, name: string) {
+    setColumnNames((prev) => {
+      const next = { ...prev, [id]: name };
+      localStorage.setItem(CONTRACT_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
 
   // Debounce search
   useEffect(() => {
@@ -240,13 +271,27 @@ export default function ContractsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Наименование</TableHead>
-                <TableHead className="w-[110px]">Вид</TableHead>
-                <TableHead className="w-[130px]">Признак</TableHead>
-                <TableHead className="w-[140px]">Сумма</TableHead>
-                <TableHead className="w-[140px]">Период</TableHead>
-                <TableHead>Описание</TableHead>
-                <TableHead className="w-[80px]">Сотр.</TableHead>
+                <TableHead>
+                  <EditableHeader value={getColName("name")} onSave={(v) => renameColumn("name", v)} />
+                </TableHead>
+                <TableHead className="w-[110px]">
+                  <EditableHeader value={getColName("type")} onSave={(v) => renameColumn("type", v)} />
+                </TableHead>
+                <TableHead className="w-[130px]">
+                  <EditableHeader value={getColName("status")} onSave={(v) => renameColumn("status", v)} />
+                </TableHead>
+                <TableHead className="w-[140px]">
+                  <EditableHeader value={getColName("amount")} onSave={(v) => renameColumn("amount", v)} />
+                </TableHead>
+                <TableHead className="w-[140px]">
+                  <EditableHeader value={getColName("period")} onSave={(v) => renameColumn("period", v)} />
+                </TableHead>
+                <TableHead>
+                  <EditableHeader value={getColName("description")} onSave={(v) => renameColumn("description", v)} />
+                </TableHead>
+                <TableHead className="w-[80px]">
+                  <EditableHeader value={getColName("employees")} onSave={(v) => renameColumn("employees", v)} />
+                </TableHead>
                 <TableHead className="w-[50px]" />
               </TableRow>
             </TableHeader>

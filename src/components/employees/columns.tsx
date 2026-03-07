@@ -247,9 +247,7 @@ export function getColumns(options: ColumnOptions): ColumnDef<EmployeeRow>[] {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-sm">
-                {tariff.name} ({Number(tariff.rate).toLocaleString("ru-RU")} ₽)
-              </span>
+              <span className="text-sm">{tariff.name}</span>
             </TooltipTrigger>
             <TooltipContent>
               <p>{tariff.name}: {Number(tariff.rate).toLocaleString("ru-RU")} руб.</p>
