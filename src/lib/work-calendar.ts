@@ -28,37 +28,43 @@ const DEFAULT_MONTHLY_HOURS = 168;
 /**
  * Get total working hours for a date range.
  * Prorates partial months proportionally.
+ * Uses UTC consistently to avoid timezone issues on server.
  */
 export function getWorkingHours(startDate: Date, endDate: Date): number {
   if (endDate <= startDate) return 0;
 
   let totalHours = 0;
-  const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-  const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  // Use UTC year/month to stay consistent with Date objects from new Date("YYYY-MM-DD")
+  let curYear = startDate.getUTCFullYear();
+  let curMonth = startDate.getUTCMonth();
+  const endYear = endDate.getUTCFullYear();
+  const endMonth = endDate.getUTCMonth();
 
-  while (current <= end) {
-    const year = current.getFullYear();
-    const month = current.getMonth();
-    const key = `${year}-${String(month + 1).padStart(2, "0")}`;
+  while (curYear < endYear || (curYear === endYear && curMonth <= endMonth)) {
+    const key = `${curYear}-${String(curMonth + 1).padStart(2, "0")}`;
     const monthHours = WORKING_HOURS[key] ?? DEFAULT_MONTHLY_HOURS;
 
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const monthStart = new Date(year, month, 1);
-    const monthEnd = new Date(year, month + 1, 0); // last day of month
+    const daysInMonth = new Date(Date.UTC(curYear, curMonth + 1, 0)).getUTCDate();
+    const monthStartMs = Date.UTC(curYear, curMonth, 1);
+    const monthEndMs = Date.UTC(curYear, curMonth + 1, 0); // last day of month
 
     // Calculate overlap with requested range
-    const overlapStart = startDate > monthStart ? startDate : monthStart;
-    const overlapEnd = endDate < monthEnd ? endDate : monthEnd;
+    const overlapStartMs = Math.max(startDate.getTime(), monthStartMs);
+    const overlapEndMs = Math.min(endDate.getTime(), monthEndMs);
 
-    if (overlapStart <= overlapEnd) {
+    if (overlapStartMs <= overlapEndMs) {
       const overlapDays = Math.floor(
-        (overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)
+        (overlapEndMs - overlapStartMs) / (1000 * 60 * 60 * 24)
       ) + 1;
       const fraction = overlapDays / daysInMonth;
       totalHours += monthHours * fraction;
     }
 
-    current.setMonth(current.getMonth() + 1);
+    curMonth++;
+    if (curMonth > 11) {
+      curMonth = 0;
+      curYear++;
+    }
   }
 
   return Math.round(totalHours * 100) / 100;

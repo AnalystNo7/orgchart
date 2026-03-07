@@ -87,6 +87,7 @@ export function PnlHeatmap() {
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
   const [pnlData, setPnlData] = useState<PnlDataItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [calculatedAt, setCalculatedAt] = useState<string | null>(null);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [initialCollapseApplied, setInitialCollapseApplied] = useState(false);
@@ -153,24 +154,23 @@ export function PnlHeatmap() {
   const runCalculation = useCallback(async () => {
     if (!currentScenarioId) return;
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch("/api/pnl", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scenarioId: currentScenarioId,
-          mode: pnlDisplayMode,
-          periodStart,
-          periodEnd,
-        }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setPnlData(json.data);
-        setCalculatedAt(json.calculatedAt);
+      const res = await fetch(
+        `/api/pnl?scenarioId=${currentScenarioId}&mode=${pnlDisplayMode}&periodStart=${periodStart}&periodEnd=${periodEnd}`
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error || `HTTP ${res.status}`);
+        console.error("[PnlHeatmap] API error:", json);
+        return;
       }
-    } catch {
-      // ignore
+      setPnlData(json.data ?? []);
+      setCalculatedAt(json.calculatedAt);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      console.error("[PnlHeatmap] Fetch error:", msg);
     } finally {
       setLoading(false);
     }
@@ -289,6 +289,11 @@ export function PnlHeatmap() {
         thresholds={thresholds}
         setThresholds={setThresholds}
       />
+      {error && (
+        <div className="mx-4 mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          Ошибка расчёта: {error}
+        </div>
+      )}
       <div className="relative flex-1">
         <ReactFlow
           nodes={nodes}

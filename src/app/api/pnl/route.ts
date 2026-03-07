@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { calculateAndCachePnl, type PnlMode } from "@/lib/pnl-calculator";
+import { calculatePnl, type PnlMode } from "@/lib/pnl-calculator";
 
 /**
  * GET /api/pnl?scenarioId=...&mode=...&periodStart=...&periodEnd=...
- * Returns cached P&L data. If no cache, returns empty with calculatedAt=null.
+ * Calculates P&L on-the-fly (no cache dependency).
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -20,30 +19,33 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
+  try {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    const results = await calculatePnl(scenarioId, mode, start, end);
 
-  const cached = await prisma.pnlCache.findMany({
-    where: { scenarioId, mode, periodStart: start, periodEnd: end },
-  });
-
-  if (cached.length === 0) {
-    return NextResponse.json({ data: [], calculatedAt: null });
+    return NextResponse.json({
+      data: results.map((r) => ({
+        departmentId: r.departmentId,
+        departmentName: r.departmentName,
+        shetilType: r.shetilType,
+        isEarning: r.isEarning,
+        revenue: r.revenue,
+        cost: r.cost,
+        pnl: r.pnl,
+        childrenPnl: r.childrenPnl,
+        totalPnl: r.totalPnl,
+        warningCount: r.warnings.length,
+      })),
+      calculatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("[GET /api/pnl] Error:", e);
+    return NextResponse.json(
+      { error: String(e instanceof Error ? e.message : e) },
+      { status: 500 }
+    );
   }
-
-  const calculatedAt = cached[0].calculatedAt;
-
-  const data = cached.map((c) => ({
-    departmentId: c.departmentId,
-    mode: c.mode,
-    revenue: Number(c.revenue),
-    cost: Number(c.cost),
-    pnl: Number(c.pnl),
-    details: c.details,
-    warnings: c.warnings,
-  }));
-
-  return NextResponse.json({ data, calculatedAt });
 }
 
 /**
@@ -69,24 +71,32 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const start = new Date(periodStart);
-  const end = new Date(periodEnd);
+  try {
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
 
-  const results = await calculateAndCachePnl(scenarioId, mode, start, end);
+    const results = await calculatePnl(scenarioId, mode, start, end);
 
-  return NextResponse.json({
-    data: results.map((r) => ({
-      departmentId: r.departmentId,
-      departmentName: r.departmentName,
-      shetilType: r.shetilType,
-      isEarning: r.isEarning,
-      revenue: r.revenue,
-      cost: r.cost,
-      pnl: r.pnl,
-      childrenPnl: r.childrenPnl,
-      totalPnl: r.totalPnl,
-      warningCount: r.warnings.length,
-    })),
-    calculatedAt: new Date().toISOString(),
-  });
+    return NextResponse.json({
+      data: results.map((r) => ({
+        departmentId: r.departmentId,
+        departmentName: r.departmentName,
+        shetilType: r.shetilType,
+        isEarning: r.isEarning,
+        revenue: r.revenue,
+        cost: r.cost,
+        pnl: r.pnl,
+        childrenPnl: r.childrenPnl,
+        totalPnl: r.totalPnl,
+        warningCount: r.warnings.length,
+      })),
+      calculatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("[POST /api/pnl] Error:", e);
+    return NextResponse.json(
+      { error: String(e instanceof Error ? e.message : e) },
+      { status: 500 }
+    );
+  }
 }
