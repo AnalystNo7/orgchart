@@ -168,3 +168,22 @@ model EmployeeContract {
   @@index([employeeId])
   @@index([contractId])
 }
+
+model PnlCache {
+  id            String   @id @default(uuid())
+  scenarioId    String
+  departmentId  String
+  mode          String   // "forecast" | "plan" | "combined"
+  periodStart   DateTime
+  periodEnd     DateTime
+  revenue       Decimal  @default(0)
+  cost          Decimal  @default(0)
+  pnl           Decimal  @default(0)
+  details       Json     // {employees: [...], contracts: [...]}
+  warnings      Json?    // [{employeeId, message}]
+  calculatedAt  DateTime @default(now())
+
+  @@unique([scenarioId, departmentId, mode, periodStart, periodEnd])
+  @@index([scenarioId])
+  @@index([scenarioId, mode])
+}

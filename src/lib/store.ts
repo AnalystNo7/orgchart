@@ -1,11 +1,24 @@
 import { create } from "zustand";
 import type { MetricsMode } from "@/types";
 
+export type ViewMode = "orgchart" | "pnl-heatmap";
+export type PnlDisplayMode = "plan" | "forecast" | "combined";
+
 interface OrgChartState {
   currentScenarioId: string | null;
   selectedDepartmentId: string | null;
   setCurrentScenarioId: (id: string | null) => void;
   setSelectedDepartmentId: (id: string | null) => void;
+
+  // View mode
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+
+  // P&L Heatmap state
+  pnlDisplayMode: PnlDisplayMode;
+  setPnlDisplayMode: (mode: PnlDisplayMode) => void;
+  pnlDrillDownDeptId: string | null;
+  setPnlDrillDownDeptId: (id: string | null) => void;
 
   // Metrics display mode
   metricsMode: MetricsMode;
@@ -46,6 +59,26 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
       verticalIds: new Set<string>(),
     }),
   setSelectedDepartmentId: (id) => set({ selectedDepartmentId: id }),
+
+  // View mode
+  viewMode: (typeof window !== "undefined"
+    ? (localStorage.getItem("viewMode") as ViewMode) || "orgchart"
+    : "orgchart") as ViewMode,
+  setViewMode: (mode) => {
+    localStorage.setItem("viewMode", mode);
+    set({ viewMode: mode });
+  },
+
+  // P&L Heatmap
+  pnlDisplayMode: (typeof window !== "undefined"
+    ? (localStorage.getItem("pnlDisplayMode") as PnlDisplayMode) || "plan"
+    : "plan") as PnlDisplayMode,
+  setPnlDisplayMode: (mode) => {
+    localStorage.setItem("pnlDisplayMode", mode);
+    set({ pnlDisplayMode: mode });
+  },
+  pnlDrillDownDeptId: null,
+  setPnlDrillDownDeptId: (id) => set({ pnlDrillDownDeptId: id }),
 
   metricsMode: "own",
   selectedLevels: [1],

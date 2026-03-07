@@ -219,6 +219,151 @@ async function main() {
     { fullName: "Сергеев А.А.", position: "Рабочий", category: "PP" },
   ]);
 
+  // --- P&L seed data: costRate for employees + contracts ---
+
+  // Set costRate on all employees based on category
+  const costRateByCategory: Record<string, number> = {
+    PP: 2000,
+    OPP: 1800,
+    AUP: 2500,
+  };
+  const allEmps = await prisma.employee.findMany({ where: { scenarioId: sId } });
+  for (const emp of allEmps) {
+    await prisma.employee.update({
+      where: { id: emp.id },
+      data: { costRate: costRateByCategory[emp.category] ?? 2000 },
+    });
+  }
+  console.log(`CostRate set for ${allEmps.length} employees`);
+
+  // Find departments for contract linking
+  const allDepts = await prisma.department.findMany({
+    where: { scenarioId: sId },
+    include: { employees: true },
+  });
+  const deptByName = new Map(allDepts.map((d) => [d.name, d]));
+
+  // Create contracts and link employees
+  async function createContract(
+    name: string,
+    type: "REVENUE" | "EXPENSE",
+    status: "CONCLUDED" | "PLANNED",
+    amount: number,
+    expectedAmount: number | null,
+    periodStart: Date,
+    periodEnd: Date,
+    deptNames: string[], // link all employees from these departments
+    fte: number = 0.5
+  ) {
+    const contract = await prisma.contract.create({
+      data: {
+        name,
+        type,
+        status,
+        amount: status === "CONCLUDED" ? amount : null,
+        expectedAmount: expectedAmount,
+        periodStart,
+        periodEnd,
+      },
+    });
+
+    for (const deptName of deptNames) {
+      const dept = deptByName.get(deptName);
+      if (!dept) continue;
+      for (const emp of dept.employees) {
+        await prisma.employeeContract.create({
+          data: {
+            employeeId: emp.id,
+            contractId: contract.id,
+            revenueStatus: status === "CONCLUDED" ? "PROVIDED" : "PLANNED",
+            fte,
+            periodStart,
+            periodEnd,
+          },
+        });
+      }
+    }
+    return contract;
+  }
+
+  // Concluded contracts (for "forecast" mode)
+  await createContract(
+    "Контракт Альфа-2025",
+    "REVENUE",
+    "CONCLUDED",
+    8000000,
+    null,
+    new Date("2025-01-01"),
+    new Date("2025-12-31"),
+    ["Цех №1", "Участок №1-А"],
+    0.5
+  );
+
+  await createContract(
+    "Контракт Бета-2025",
+    "REVENUE",
+    "CONCLUDED",
+    5000000,
+    null,
+    new Date("2025-03-01"),
+    new Date("2025-09-30"),
+    ["Цех №2", "Участок №2-А"],
+    0.4
+  );
+
+  await createContract(
+    "Контракт Гамма-2025",
+    "REVENUE",
+    "CONCLUDED",
+    3000000,
+    null,
+    new Date("2025-06-01"),
+    new Date("2026-05-31"),
+    ["Цех №1", "Участок №1-Б"],
+    0.3
+  );
+
+  // Planned contracts (for "plan" mode)
+  await createContract(
+    "Контракт Дельта-2026 (план)",
+    "REVENUE",
+    "PLANNED",
+    0,
+    12000000,
+    new Date("2026-01-01"),
+    new Date("2026-12-31"),
+    ["Цех №1", "Участок №1-А", "Участок №1-Б"],
+    0.6
+  );
+
+  await createContract(
+    "Контракт Эпсилон-2026 (план)",
+    "REVENUE",
+    "PLANNED",
+    0,
+    7000000,
+    new Date("2026-04-01"),
+    new Date("2026-12-31"),
+    ["Цех №2", "Участок №2-А"],
+    0.5
+  );
+
+  await createContract(
+    "Контракт Зета-2026 (план)",
+    "REVENUE",
+    "PLANNED",
+    0,
+    4000000,
+    new Date("2026-01-01"),
+    new Date("2026-06-30"),
+    ["Склад готовой продукции"],
+    0.3
+  );
+
+  const totalContracts = await prisma.contract.count();
+  const totalLinks = await prisma.employeeContract.count();
+  console.log(`Contracts seeded: ${totalContracts} contracts, ${totalLinks} employee links`);
+
   const totalDepts = await prisma.department.count({ where: { scenarioId: sId } });
   const totalEmps = await prisma.employee.count({ where: { scenarioId: sId } });
   const totalTariffs = await prisma.tariff.count();
