@@ -107,14 +107,26 @@ export function PnlHeatmap() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  // Thresholds for color scale
-  const [thresholds, setThresholds] = useState({
-    deepRed: -500000,
-    red: -100000,
-    yellow: 0,
-    green: 500000,
-    deepGreen: 1000000,
+  // Thresholds for color scale (persisted to localStorage)
+  const [thresholds, setThresholdsRaw] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("pnlThresholds");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return {
+      deepRed: -500000,
+      red: -100000,
+      yellow: 0,
+      green: 500000,
+      deepGreen: 1000000,
+    };
   });
+  const setThresholds = useCallback((t: typeof thresholds) => {
+    setThresholdsRaw(t);
+    localStorage.setItem("pnlThresholds", JSON.stringify(t));
+  }, []);
 
   // Fetch departments
   useEffect(() => {
