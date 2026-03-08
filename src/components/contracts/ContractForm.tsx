@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput } from "@/components/ui/money-input";
 import {
   Select,
   SelectContent,
@@ -129,11 +130,9 @@ export function ContractForm({
           {contractStatus === "CONCLUDED" && (
             <div className="space-y-2">
               <Label>Сумма договора (руб.)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                {...register("amount", { valueAsNumber: true })}
+              <MoneyInput
+                value={watch("amount")}
+                onChange={(v) => setValue("amount", v)}
               />
             </div>
           )}
@@ -141,11 +140,9 @@ export function ContractForm({
           {contractStatus === "PLANNED" && (
             <div className="space-y-2">
               <Label>Ожидаемая сумма (руб.)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                {...register("expectedAmount", { valueAsNumber: true })}
+              <MoneyInput
+                value={watch("expectedAmount")}
+                onChange={(v) => setValue("expectedAmount", v)}
               />
             </div>
           )}

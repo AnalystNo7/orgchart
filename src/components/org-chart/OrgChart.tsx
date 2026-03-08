@@ -342,10 +342,13 @@ export function OrgChart() {
     verticalIds,
     toggleVertical,
     fetchUndoRedoState,
+    collapsedIds,
+    setCollapsedIds,
+    toggleCollapsed,
+    collapseInitialized,
+    setCollapseInitialized,
   } = useOrgChartStore();
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const [initialCollapseApplied, setInitialCollapseApplied] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
@@ -388,41 +391,30 @@ export function OrgChart() {
     fetchUndoRedoState();
   }, [refreshDepartments, fetchUndoRedoState, refreshCounter]);
 
-  // Reset initial collapse flag and clear stale data when scenario changes
+  // Reset stale data when scenario changes (collapse state reset handled by store)
   useEffect(() => {
-    setInitialCollapseApplied(false);
     setDepartments([]);
-    setCollapsedIds(new Set());
   }, [currentScenarioId]);
 
   // On first load, collapse all except root → show only L1 (direct children of root)
   useEffect(() => {
-    if (departments.length > 0 && !initialCollapseApplied) {
+    if (departments.length > 0 && !collapseInitialized) {
       const roots = new Set(
         departments.filter((d) => d.parentId === null).map((d) => d.id)
       );
-      // Collapse every non-root node that has children (so only L1 visible)
       const toCollapse = new Set(
         departments
           .filter((d) => !roots.has(d.id) && d._count.children > 0)
           .map((d) => d.id)
       );
       setCollapsedIds(toCollapse);
-      setInitialCollapseApplied(true);
+      setCollapseInitialized(true);
     }
-  }, [departments, initialCollapseApplied]);
+  }, [departments, collapseInitialized, setCollapsedIds, setCollapseInitialized]);
 
   const onToggleExpand = useCallback((id: string) => {
-    setCollapsedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
+    toggleCollapsed(id);
+  }, [toggleCollapsed]);
 
   const onExpandAll = useCallback(() => {
     setCollapsedIds(new Set());

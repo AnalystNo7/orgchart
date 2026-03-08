@@ -172,9 +172,9 @@ export default function TariffsPage() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-md border">
+      <div className="inline-block rounded-md border">
         <TooltipProvider>
-          <Table>
+          <Table className="w-auto">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[120px]">

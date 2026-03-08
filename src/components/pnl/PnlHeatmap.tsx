@@ -17,7 +17,7 @@ import dagre from "dagre";
 import { HeatmapNode, type HeatmapNodeData } from "./HeatmapNode";
 import { PnlFilterPanel } from "./PnlFilterPanel";
 import { PnlLegend } from "./PnlLegend";
-import { useOrgChartStore, type PnlDisplayMode } from "@/lib/store";
+import { useOrgChartStore } from "@/lib/store";
 
 interface DepartmentAPI {
   id: string;
@@ -82,6 +82,11 @@ export function PnlHeatmap() {
     currentScenarioId,
     pnlDisplayMode,
     setPnlDrillDownDeptId,
+    collapsedIds,
+    setCollapsedIds,
+    toggleCollapsed,
+    collapseInitialized,
+    setCollapseInitialized,
   } = useOrgChartStore();
 
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
@@ -89,8 +94,6 @@ export function PnlHeatmap() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calculatedAt, setCalculatedAt] = useState<string | null>(null);
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const [initialCollapseApplied, setInitialCollapseApplied] = useState(false);
 
   // Period state
   const currentYear = new Date().getFullYear();
@@ -120,14 +123,13 @@ export function PnlHeatmap() {
       .then((r) => r.json())
       .then((data: DepartmentAPI[]) => {
         setDepartments(data);
-        setInitialCollapseApplied(false);
       })
       .catch(() => {});
   }, [currentScenarioId]);
 
-  // Auto-collapse on first load
+  // Auto-collapse on first load (only if not yet initialized for this scenario)
   useEffect(() => {
-    if (departments.length > 0 && !initialCollapseApplied) {
+    if (departments.length > 0 && !collapseInitialized) {
       const roots = new Set(
         departments.filter((d) => d.parentId === null).map((d) => d.id)
       );
@@ -137,18 +139,51 @@ export function PnlHeatmap() {
           .map((d) => d.id)
       );
       setCollapsedIds(toCollapse);
-      setInitialCollapseApplied(true);
+      setCollapseInitialized(true);
     }
-  }, [departments, initialCollapseApplied]);
+  }, [departments, collapseInitialized, setCollapsedIds, setCollapseInitialized]);
 
   const onToggleExpand = useCallback((id: string) => {
-    setCollapsedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+    toggleCollapsed(id);
+  }, [toggleCollapsed]);
+
+  // Expand/Collapse controls
+  const onExpandAll = useCallback(() => {
+    setCollapsedIds(new Set());
+  }, [setCollapsedIds]);
+
+  const onCollapseAll = useCallback(() => {
+    const withChildren = new Set(
+      departments.filter((d) => d._count.children > 0).map((d) => d.id)
+    );
+    setCollapsedIds(withChildren);
+  }, [departments, setCollapsedIds]);
+
+  const onExpandToLevel = useCallback(
+    (level: number) => {
+      const depthMap = new Map<string, number>();
+      const parentMap = new Map(departments.map((d) => [d.id, d.parentId]));
+
+      function getDepth(id: string): number {
+        if (depthMap.has(id)) return depthMap.get(id)!;
+        const pid = parentMap.get(id);
+        if (!pid) { depthMap.set(id, 0); return 0; }
+        const d = getDepth(pid) + 1;
+        depthMap.set(id, d);
+        return d;
+      }
+
+      departments.forEach((d) => getDepth(d.id));
+
+      const toCollapse = new Set(
+        departments
+          .filter((d) => d._count.children > 0 && getDepth(d.id) >= level)
+          .map((d) => d.id)
+      );
+      setCollapsedIds(toCollapse);
+    },
+    [departments, setCollapsedIds]
+  );
 
   // Calculate P&L
   const runCalculation = useCallback(async () => {
@@ -288,6 +323,9 @@ export function PnlHeatmap() {
         onRecalculate={runCalculation}
         thresholds={thresholds}
         setThresholds={setThresholds}
+        onExpandAll={onExpandAll}
+        onCollapseAll={onCollapseAll}
+        onExpandToLevel={onExpandToLevel}
       />
       {error && (
         <div className="mx-4 mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -312,7 +350,7 @@ export function PnlHeatmap() {
           <Controls />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         </ReactFlow>
-        <PnlLegend thresholds={thresholds} />
+        <PnlLegend thresholds={thresholds} setThresholds={setThresholds} />
       </div>
     </div>
   );

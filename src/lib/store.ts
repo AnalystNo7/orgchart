@@ -30,6 +30,13 @@ interface OrgChartState {
   setDepartmentOverride: (deptId: string, mode: MetricsMode | null) => void;
   clearDepartmentOverrides: () => void;
 
+  // Shared collapsed state (persists across view switches within scenario)
+  collapsedIds: Set<string>;
+  setCollapsedIds: (ids: Set<string>) => void;
+  toggleCollapsed: (id: string) => void;
+  collapseInitialized: boolean;
+  setCollapseInitialized: (v: boolean) => void;
+
   // Per-node layout direction (vertical = children stacked, horizontal = default side-by-side)
   verticalIds: Set<string>;
   toggleVertical: (id: string) => void;
@@ -57,6 +64,8 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
       selectedDepartmentId: null,
       departmentOverrides: {},
       verticalIds: new Set<string>(),
+      collapsedIds: new Set<string>(),
+      collapseInitialized: false,
     }),
   setSelectedDepartmentId: (id) => set({ selectedDepartmentId: id }),
 
@@ -96,6 +105,18 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
       departmentOverrides: { ...state.departmentOverrides, [deptId]: mode },
     })),
   clearDepartmentOverrides: () => set({ departmentOverrides: {} }),
+
+  collapsedIds: new Set<string>(),
+  setCollapsedIds: (ids) => set({ collapsedIds: ids }),
+  toggleCollapsed: (id) =>
+    set((state) => {
+      const next = new Set(state.collapsedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { collapsedIds: next };
+    }),
+  collapseInitialized: false,
+  setCollapseInitialized: (v) => set({ collapseInitialized: v }),
 
   verticalIds: new Set<string>(),
   toggleVertical: (id) =>

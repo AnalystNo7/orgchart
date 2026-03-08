@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput } from "@/components/ui/money-input";
 import {
   Select,
   SelectContent,
@@ -138,7 +139,7 @@ export function EmployeeForm({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -215,11 +216,9 @@ export function EmployeeForm({
           </div>
           <div className="space-y-2">
             <Label>Ставка себестоимости (руб.)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              {...register("costRate", { valueAsNumber: true })}
+            <MoneyInput
+              value={watch("costRate")}
+              onChange={(v) => setValue("costRate", v)}
               placeholder="Не указана"
             />
           </div>
@@ -236,16 +235,11 @@ export function EmployeeForm({
                 <SelectItem value="none">Не выбрана</SelectItem>
                 {tariffs.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {t.name} — {Number(t.rate).toLocaleString("ru-RU")} ₽
+                    {t.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {selectedTariff && (
-              <p className="text-xs text-neutral-500">
-                Ставка: {Number(selectedTariff.rate).toLocaleString("ru-RU")} руб.
-              </p>
-            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

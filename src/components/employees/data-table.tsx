@@ -24,8 +24,11 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -33,7 +36,9 @@ interface DataTableProps<TData, TValue> {
   page: number;
   totalPages: number;
   total: number;
+  limit: number;
   onPageChange: (page: number) => void;
+  onLimitChange: (limit: number) => void;
   initialColumnVisibility?: VisibilityState;
 }
 
@@ -43,7 +48,9 @@ export function DataTable<TData, TValue>({
   page,
   totalPages,
   total,
+  limit,
   onPageChange,
+  onLimitChange,
   initialColumnVisibility,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -128,9 +135,29 @@ export function DataTable<TData, TValue>({
         </Table>
       </div>
       <div className="flex items-center justify-between px-2 py-4">
-        <p className="text-sm text-neutral-500">
-          Показано {(page - 1) * 20 + 1}-{Math.min(page * 20, total)} из {total}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-neutral-500">
+            Показано {(page - 1) * limit + 1}-{Math.min(page * limit, total)} из {total}
+          </p>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-7 text-xs">
+                {limit} / стр.
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <DropdownMenuItem
+                  key={size}
+                  onClick={() => onLimitChange(size)}
+                  className={limit === size ? "bg-neutral-100 font-medium" : ""}
+                >
+                  {size} записей
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <div className="flex gap-2">
           <Button
             variant="outline"

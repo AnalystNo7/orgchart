@@ -40,6 +40,7 @@ export default function EmployeesPage() {
   const { currentScenarioId, triggerRefresh } = useOrgChartStore();
   const [response, setResponse] = useState<APIResponse | null>(null);
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [hierarchyFilters, setHierarchyFilters] = useState<Record<string, string>>({});
@@ -69,7 +70,7 @@ export default function EmployeesPage() {
     const params = new URLSearchParams({
       scenarioId: currentScenarioId,
       page: String(page),
-      limit: "20",
+      limit: String(limit),
     });
     if (search) params.set("search", search);
     if (categoryFilter) params.set("category", categoryFilter);
@@ -81,7 +82,7 @@ export default function EmployeesPage() {
     if (res.ok) {
       setResponse(await res.json());
     }
-  }, [currentScenarioId, page, search, categoryFilter, hierarchyFilters]);
+  }, [currentScenarioId, page, limit, search, categoryFilter, hierarchyFilters]);
 
   useEffect(() => {
     fetchEmployees();
@@ -342,7 +343,9 @@ export default function EmployeesPage() {
             page={response.page}
             totalPages={response.totalPages}
             total={response.total}
+            limit={limit}
             onPageChange={setPage}
+            onLimitChange={(l) => { setLimit(l); setPage(1); }}
             initialColumnVisibility={{ hierarchy_0: false }}
           />
           <div className="text-sm text-neutral-500">

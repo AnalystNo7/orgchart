@@ -82,6 +82,8 @@ export default function ContractsPage() {
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [editingDescId, setEditingDescId] = useState<string | null>(null);
+  const [editingDescValue, setEditingDescValue] = useState("");
   const [columnNames, setColumnNames] = useState<Record<string, string>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -117,6 +119,16 @@ export default function ContractsPage() {
   useEffect(() => {
     fetchContracts();
   }, [fetchContracts]);
+
+  async function saveDescription(id: string) {
+    await fetch(`/api/contracts/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: editingDescValue || null }),
+    });
+    setEditingDescId(null);
+    fetchContracts();
+  }
 
   async function handleAdd(data: {
     name: string;
@@ -286,11 +298,11 @@ export default function ContractsPage() {
                 <TableHead className="w-[140px]">
                   <EditableHeader value={getColName("period")} onSave={(v) => renameColumn("period", v)} />
                 </TableHead>
-                <TableHead>
-                  <EditableHeader value={getColName("description")} onSave={(v) => renameColumn("description", v)} />
-                </TableHead>
                 <TableHead className="w-[80px]">
                   <EditableHeader value={getColName("employees")} onSave={(v) => renameColumn("employees", v)} />
+                </TableHead>
+                <TableHead>
+                  <EditableHeader value={getColName("description")} onSave={(v) => renameColumn("description", v)} />
                 </TableHead>
                 <TableHead className="w-[50px]" />
               </TableRow>
@@ -332,15 +344,37 @@ export default function ContractsPage() {
                     <TableCell className="whitespace-nowrap text-sm">
                       {formatDate(contract.periodStart)} – {formatDate(contract.periodEnd)}
                     </TableCell>
-                    <TableCell>
-                      {contract.description ? (
-                        <TruncatedCell text={contract.description} maxWidth="max-w-[200px]" />
-                      ) : (
-                        <span className="text-neutral-300">—</span>
-                      )}
-                    </TableCell>
                     <TableCell className="text-center text-sm">
                       {contract._count.employees}
+                    </TableCell>
+                    <TableCell>
+                      {editingDescId === contract.id ? (
+                        <Input
+                          value={editingDescValue}
+                          onChange={(e) => setEditingDescValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveDescription(contract.id);
+                            if (e.key === "Escape") setEditingDescId(null);
+                          }}
+                          onBlur={() => saveDescription(contract.id)}
+                          className="h-8"
+                          autoFocus
+                        />
+                      ) : (
+                        <span
+                          className="block max-w-[200px] cursor-pointer truncate hover:text-blue-600"
+                          onClick={() => {
+                            setEditingDescId(contract.id);
+                            setEditingDescValue(contract.description ?? "");
+                          }}
+                        >
+                          {contract.description ? (
+                            <TruncatedCell text={contract.description} maxWidth="max-w-[200px]" />
+                          ) : (
+                            <span className="text-neutral-300">—</span>
+                          )}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

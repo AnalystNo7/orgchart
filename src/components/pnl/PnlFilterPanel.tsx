@@ -1,18 +1,21 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOrgChartStore, type PnlDisplayMode } from "@/lib/store";
-import { RefreshCw, Settings } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  RefreshCw,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  ChevronDown,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface PnlFilterPanelProps {
   periodStart: string;
@@ -36,6 +39,9 @@ interface PnlFilterPanelProps {
     green: number;
     deepGreen: number;
   }) => void;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+  onExpandToLevel: (level: number) => void;
 }
 
 const MODE_LABELS: Record<PnlDisplayMode, string> = {
@@ -52,12 +58,12 @@ export function PnlFilterPanel({
   loading,
   calculatedAt,
   onRecalculate,
-  thresholds,
-  setThresholds,
+  onExpandAll,
+  onCollapseAll,
+  onExpandToLevel,
 }: PnlFilterPanelProps) {
   const pnlDisplayMode = useOrgChartStore((s) => s.pnlDisplayMode);
   const setPnlDisplayMode = useOrgChartStore((s) => s.setPnlDisplayMode);
-  const [thresholdDraft, setThresholdDraft] = useState(thresholds);
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-b bg-neutral-50 px-4 py-2">
@@ -104,59 +110,48 @@ export function PnlFilterPanel({
         {loading ? "Расчёт..." : "Пересчитать"}
       </Button>
 
-      {/* Threshold settings */}
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button size="sm" variant="ghost" title="Настройки порогов">
-            <Settings className="h-4 w-4" />
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Пороги цветовой шкалы</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            {(
-              [
-                ["deepRed", "Тёмно-красный ≤"],
-                ["red", "Красный ≤"],
-                ["yellow", "Жёлтый ≤"],
-                ["green", "Зелёный ≤"],
-                ["deepGreen", "Тёмно-зелёный ≥"],
-              ] as const
-            ).map(([key, label]) => (
-              <div key={key}>
-                <Label className="text-xs">{label}</Label>
-                <Input
-                  type="number"
-                  className="h-8 text-xs"
-                  value={thresholdDraft[key]}
-                  onChange={(e) =>
-                    setThresholdDraft({
-                      ...thresholdDraft,
-                      [key]: Number(e.target.value),
-                    })
-                  }
-                />
-              </div>
-            ))}
-          </div>
-          <Button
-            size="sm"
-            onClick={() => setThresholds(thresholdDraft)}
-            className="mt-2"
-          >
-            Применить
-          </Button>
-        </DialogContent>
-      </Dialog>
-
       {/* Calculated at */}
       {calculatedAt && (
         <span className="text-[10px] text-neutral-400">
           Рассчитано: {new Date(calculatedAt).toLocaleString("ru-RU")}
         </span>
       )}
+
+      {/* Level / Collapse controls */}
+      <div className="ml-auto flex items-center gap-1 border-l pl-4">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" title="Показать до уровня">
+              <ChevronsUpDown className="mr-1 h-4 w-4" />
+              Уровень
+              <ChevronDown className="ml-1 h-3 w-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onExpandToLevel(1)}>
+              L1 — Только блоки
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onExpandToLevel(2)}>
+              L2 — Подразделения
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onExpandToLevel(3)}>
+              L3 — Дочерние подразделения
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onExpandAll}>
+              Все уровни
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCollapseAll}
+          title="Свернуть всё"
+        >
+          <ChevronsDownUp className="mr-1 h-4 w-4" />
+          Свернуть
+        </Button>
+      </div>
     </div>
   );
 }
