@@ -30,12 +30,14 @@ interface OrgChartState {
   setDepartmentOverride: (deptId: string, mode: MetricsMode | null) => void;
   clearDepartmentOverrides: () => void;
 
-  // Shared collapsed state (persists across view switches within scenario)
+  // Shared collapsed state (persists across view & scenario switches)
   collapsedIds: Set<string>;
   setCollapsedIds: (ids: Set<string>) => void;
   toggleCollapsed: (id: string) => void;
-  collapseInitializedForScenario: string | null;
-  setCollapseInitializedForScenario: (scenarioId: string | null) => void;
+  // Per-scenario persistence: saves/restores collapse state when switching scenarios
+  collapsedIdsPerScenario: Record<string, string[]>;
+  initializedScenarios: Set<string>;
+  markScenarioInitialized: (scenarioId: string) => void;
 
   // Per-node layout direction (vertical = children stacked, horizontal = default side-by-side)
   verticalIds: Set<string>;
@@ -58,14 +60,27 @@ interface OrgChartState {
 export const useOrgChartStore = create<OrgChartState>((set, get) => ({
   currentScenarioId: null,
   selectedDepartmentId: null,
-  setCurrentScenarioId: (id) =>
+  setCurrentScenarioId: (id) => {
+    const state = get();
+    const prev = state.currentScenarioId;
+    // Save current scenario's collapse state before switching
+    const updatedMap = { ...state.collapsedIdsPerScenario };
+    if (prev) {
+      updatedMap[prev] = Array.from(state.collapsedIds);
+    }
+    // Restore target scenario's saved collapse state (or empty if first visit)
+    const restored = id && updatedMap[id]
+      ? new Set<string>(updatedMap[id])
+      : new Set<string>();
     set({
       currentScenarioId: id,
       selectedDepartmentId: null,
       departmentOverrides: {},
       verticalIds: new Set<string>(),
-      collapsedIds: new Set<string>(),
-    }),
+      collapsedIds: restored,
+      collapsedIdsPerScenario: updatedMap,
+    });
+  },
   setSelectedDepartmentId: (id) => set({ selectedDepartmentId: id }),
 
   // View mode
@@ -106,16 +121,29 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
   clearDepartmentOverrides: () => set({ departmentOverrides: {} }),
 
   collapsedIds: new Set<string>(),
-  setCollapsedIds: (ids) => set({ collapsedIds: ids }),
+  setCollapsedIds: (ids) => {
+    const scenarioId = get().currentScenarioId;
+    const map = { ...get().collapsedIdsPerScenario };
+    if (scenarioId) map[scenarioId] = Array.from(ids);
+    set({ collapsedIds: ids, collapsedIdsPerScenario: map });
+  },
   toggleCollapsed: (id) =>
     set((state) => {
       const next = new Set(state.collapsedIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return { collapsedIds: next };
+      const map = { ...state.collapsedIdsPerScenario };
+      if (state.currentScenarioId) map[state.currentScenarioId] = Array.from(next);
+      return { collapsedIds: next, collapsedIdsPerScenario: map };
     }),
-  collapseInitializedForScenario: null,
-  setCollapseInitializedForScenario: (scenarioId) => set({ collapseInitializedForScenario: scenarioId }),
+  collapsedIdsPerScenario: {},
+  initializedScenarios: new Set<string>(),
+  markScenarioInitialized: (scenarioId) =>
+    set((state) => {
+      const next = new Set(state.initializedScenarios);
+      next.add(scenarioId);
+      return { initializedScenarios: next };
+    }),
 
   verticalIds: new Set<string>(),
   toggleVertical: (id) =>

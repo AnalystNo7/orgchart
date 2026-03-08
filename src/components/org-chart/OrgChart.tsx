@@ -345,8 +345,8 @@ export function OrgChart() {
     collapsedIds,
     setCollapsedIds,
     toggleCollapsed,
-    collapseInitializedForScenario,
-    setCollapseInitializedForScenario,
+    initializedScenarios,
+    markScenarioInitialized,
   } = useOrgChartStore();
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -396,9 +396,9 @@ export function OrgChart() {
     setDepartments([]);
   }, [currentScenarioId]);
 
-  // On first load or scenario switch, collapse all except root → show only L1
+  // On first load of a scenario (not yet initialized this session), collapse to L1
   useEffect(() => {
-    if (departments.length > 0 && currentScenarioId && collapseInitializedForScenario !== currentScenarioId) {
+    if (departments.length > 0 && currentScenarioId && !initializedScenarios.has(currentScenarioId)) {
       const roots = new Set(
         departments.filter((d) => d.parentId === null).map((d) => d.id)
       );
@@ -408,9 +408,9 @@ export function OrgChart() {
           .map((d) => d.id)
       );
       setCollapsedIds(toCollapse);
-      setCollapseInitializedForScenario(currentScenarioId);
+      markScenarioInitialized(currentScenarioId);
     }
-  }, [departments, currentScenarioId, collapseInitializedForScenario, setCollapsedIds, setCollapseInitializedForScenario]);
+  }, [departments, currentScenarioId, initializedScenarios, setCollapsedIds, markScenarioInitialized]);
 
   const onToggleExpand = useCallback((id: string) => {
     toggleCollapsed(id);
