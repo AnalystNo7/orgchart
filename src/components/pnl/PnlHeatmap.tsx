@@ -13,6 +13,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useRouter } from "next/navigation";
 import dagre from "dagre";
 import { HeatmapNode, type HeatmapNodeData } from "./HeatmapNode";
 import { PnlFilterPanel } from "./PnlFilterPanel";
@@ -87,7 +88,9 @@ export function PnlHeatmap() {
     toggleCollapsed,
     initializedScenarios,
     markScenarioInitialized,
+    setEmployeeDeptFilter,
   } = useOrgChartStore();
+  const router = useRouter();
 
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
   const [pnlData, setPnlData] = useState<PnlDataItem[]>([]);
@@ -158,6 +161,15 @@ export function PnlHeatmap() {
   const onToggleExpand = useCallback((id: string) => {
     toggleCollapsed(id);
   }, [toggleCollapsed]);
+
+  // Double-click on a node → navigate to Employees filtered by this department
+  const onNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    const dept = departments.find((d) => d.id === node.id);
+    if (dept) {
+      setEmployeeDeptFilter({ id: dept.id, name: dept.name });
+      router.push("/references/employees");
+    }
+  }, [departments, setEmployeeDeptFilter, router]);
 
   // Expand/Collapse controls
   const onExpandAll = useCallback(() => {
@@ -350,6 +362,7 @@ export function PnlHeatmap() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeDoubleClick={onNodeDoubleClick}
           nodeTypes={nodeTypes}
           fitView
           minZoom={0.1}

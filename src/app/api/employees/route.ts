@@ -72,6 +72,26 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Recursive department filter: include department + all descendants
+  const rootDeptId = req.nextUrl.searchParams.get("rootDepartmentId");
+  if (rootDeptId) {
+    const descendantIds = new Set<string>([rootDeptId]);
+    let frontier = [rootDeptId];
+    while (frontier.length > 0) {
+      const nextFrontier: string[] = [];
+      for (const dept of allDepartments) {
+        if (dept.parentId && frontier.includes(dept.parentId) && !descendantIds.has(dept.id)) {
+          descendantIds.add(dept.id);
+          nextFrontier.push(dept.id);
+        }
+      }
+      frontier = nextFrontier;
+    }
+    filteredDeptIds = filteredDeptIds
+      ? new Set([...filteredDeptIds].filter((id) => descendantIds.has(id)))
+      : descendantIds;
+  }
+
   const where: Record<string, unknown> = { scenarioId };
   if (departmentId) where.departmentId = departmentId;
   if (filteredDeptIds) where.departmentId = { in: [...filteredDeptIds] };

@@ -39,6 +39,10 @@ interface OrgChartState {
   initializedScenarios: Set<string>;
   markScenarioInitialized: (scenarioId: string) => void;
 
+  // Cross-page navigation: filter employees by department (set from orgchart double-click)
+  employeeDeptFilter: { id: string; name: string } | null;
+  setEmployeeDeptFilter: (filter: { id: string; name: string } | null) => void;
+
   // Per-node layout direction (vertical = children stacked, horizontal = default side-by-side)
   verticalIds: Set<string>;
   toggleVertical: (id: string) => void;
@@ -144,6 +148,9 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
       next.add(scenarioId);
       return { initializedScenarios: next };
     }),
+
+  employeeDeptFilter: null,
+  setEmployeeDeptFilter: (filter) => set({ employeeDeptFilter: filter }),
 
   verticalIds: new Set<string>(),
   toggleVertical: (id) =>

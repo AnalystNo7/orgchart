@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, FileSpreadsheet, Search } from "lucide-react";
+import { Plus, FileSpreadsheet, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,7 +37,7 @@ interface FilterOptions {
 }
 
 export default function EmployeesPage() {
-  const { currentScenarioId, triggerRefresh } = useOrgChartStore();
+  const { currentScenarioId, triggerRefresh, employeeDeptFilter, setEmployeeDeptFilter } = useOrgChartStore();
   const [response, setResponse] = useState<APIResponse | null>(null);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
@@ -60,6 +60,7 @@ export default function EmployeesPage() {
     if (!currentScenarioId) return;
     setHierarchyFilters({});
     setCategoryFilter("");
+    setEmployeeDeptFilter(null);
     fetch(`/api/employees/filters?scenarioId=${currentScenarioId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => setFilterOptions(data));
@@ -74,6 +75,7 @@ export default function EmployeesPage() {
     });
     if (search) params.set("search", search);
     if (categoryFilter) params.set("category", categoryFilter);
+    if (employeeDeptFilter) params.set("rootDepartmentId", employeeDeptFilter.id);
     Object.entries(hierarchyFilters).forEach(([key, value]) => {
       if (value) params.set(key, value);
     });
@@ -82,7 +84,7 @@ export default function EmployeesPage() {
     if (res.ok) {
       setResponse(await res.json());
     }
-  }, [currentScenarioId, page, limit, search, categoryFilter, hierarchyFilters]);
+  }, [currentScenarioId, page, limit, search, categoryFilter, hierarchyFilters, employeeDeptFilter]);
 
   useEffect(() => {
     fetchEmployees();
@@ -220,7 +222,21 @@ export default function EmployeesPage() {
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Сотрудники</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">Сотрудники</h2>
+          {employeeDeptFilter && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
+              {employeeDeptFilter.name} (+ дочерние)
+              <button
+                onClick={() => setEmployeeDeptFilter(null)}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-blue-200"
+                title="Сбросить фильтр"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           <ExcelExport
             scenarioId={currentScenarioId}

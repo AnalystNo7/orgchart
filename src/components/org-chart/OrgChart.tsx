@@ -13,6 +13,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useRouter } from "next/navigation";
 import dagre from "dagre";
 import { DepartmentNode, type DepartmentNodeData } from "./DepartmentNode";
 import { ShetilLegend } from "./ShetilLegend";
@@ -347,7 +348,9 @@ export function OrgChart() {
     toggleCollapsed,
     initializedScenarios,
     markScenarioInitialized,
+    setEmployeeDeptFilter,
   } = useOrgChartStore();
+  const router = useRouter();
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -415,6 +418,15 @@ export function OrgChart() {
   const onToggleExpand = useCallback((id: string) => {
     toggleCollapsed(id);
   }, [toggleCollapsed]);
+
+  // Double-click on a node → navigate to Employees filtered by this department
+  const onNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    const dept = departments.find((d) => d.id === node.id);
+    if (dept) {
+      setEmployeeDeptFilter({ id: dept.id, name: dept.name });
+      router.push("/references/employees");
+    }
+  }, [departments, setEmployeeDeptFilter, router]);
 
   const onExpandAll = useCallback(() => {
     setCollapsedIds(new Set());
@@ -707,6 +719,7 @@ export function OrgChart() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeDoubleClick={onNodeDoubleClick}
           nodeTypes={nodeTypes}
           fitView
           minZoom={0.1}
