@@ -44,12 +44,6 @@ interface PnlFilterPanelProps {
   onExpandToLevel: (level: number) => void;
 }
 
-const MODE_LABELS: Record<PnlDisplayMode, string> = {
-  plan: "План",
-  forecast: "Факт (заключённые)",
-  combined: "План + Факт",
-};
-
 export function PnlFilterPanel({
   periodStart,
   periodEnd,
@@ -65,20 +59,49 @@ export function PnlFilterPanel({
   const pnlDisplayMode = useOrgChartStore((s) => s.pnlDisplayMode);
   const setPnlDisplayMode = useOrgChartStore((s) => s.setPnlDisplayMode);
 
+  const planActive = pnlDisplayMode === "plan" || pnlDisplayMode === "combined";
+  const forecastActive = pnlDisplayMode === "forecast" || pnlDisplayMode === "combined";
+
+  function togglePlan() {
+    if (planActive && forecastActive) {
+      setPnlDisplayMode("forecast");
+    } else if (planActive) {
+      // Can't deactivate the only active button
+      return;
+    } else {
+      setPnlDisplayMode(forecastActive ? "combined" : "plan");
+    }
+  }
+
+  function toggleForecast() {
+    if (forecastActive && planActive) {
+      setPnlDisplayMode("plan");
+    } else if (forecastActive) {
+      // Can't deactivate the only active button
+      return;
+    } else {
+      setPnlDisplayMode(planActive ? "combined" : "forecast");
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-3 border-b bg-neutral-50 px-4 py-2">
-      {/* Mode selector */}
+      {/* Mode toggle buttons */}
       <div className="flex items-center gap-1">
-        {(Object.keys(MODE_LABELS) as PnlDisplayMode[]).map((mode) => (
-          <Button
-            key={mode}
-            variant={pnlDisplayMode === mode ? "default" : "outline"}
-            size="sm"
-            onClick={() => setPnlDisplayMode(mode)}
-          >
-            {MODE_LABELS[mode]}
-          </Button>
-        ))}
+        <Button
+          variant={planActive ? "default" : "outline"}
+          size="sm"
+          onClick={togglePlan}
+        >
+          План
+        </Button>
+        <Button
+          variant={forecastActive ? "default" : "outline"}
+          size="sm"
+          onClick={toggleForecast}
+        >
+          Прогноз
+        </Button>
       </div>
 
       {/* Period pickers */}

@@ -11,12 +11,14 @@ interface MoneyInputProps {
 }
 
 function formatMoney(value: string): string {
+  // Preserve leading minus
+  const negative = value.startsWith("-");
   // Remove non-digit chars except dots
   const clean = value.replace(/[^\d.]/g, "");
   const parts = clean.split(".");
   // Format integer part with spaces every 3 digits
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return parts.join(".");
+  return (negative ? "-" : "") + parts.join(".");
 }
 
 function parseMoney(formatted: string): number {

@@ -139,7 +139,7 @@ export function EmployeeForm({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto overflow-x-hidden">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

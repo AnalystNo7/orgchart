@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput } from "@/components/ui/money-input";
 import {
   Dialog,
   DialogContent,
@@ -111,12 +111,11 @@ export function PnlLegend({ thresholds, setThresholds }: PnlLegendProps) {
               (key) => (
                 <div key={key}>
                   <Label className="text-xs">{THRESHOLD_LABELS[key]}</Label>
-                  <Input
-                    type="number"
+                  <MoneyInput
                     className="h-8 text-xs"
                     value={draft[key]}
-                    onChange={(e) =>
-                      setDraft({ ...draft, [key]: Number(e.target.value) })
+                    onChange={(v) =>
+                      setDraft({ ...draft, [key]: v ?? 0 })
                     }
                   />
                 </div>

@@ -34,8 +34,8 @@ interface OrgChartState {
   collapsedIds: Set<string>;
   setCollapsedIds: (ids: Set<string>) => void;
   toggleCollapsed: (id: string) => void;
-  collapseInitialized: boolean;
-  setCollapseInitialized: (v: boolean) => void;
+  collapseInitializedForScenario: string | null;
+  setCollapseInitializedForScenario: (scenarioId: string | null) => void;
 
   // Per-node layout direction (vertical = children stacked, horizontal = default side-by-side)
   verticalIds: Set<string>;
@@ -65,7 +65,6 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
       departmentOverrides: {},
       verticalIds: new Set<string>(),
       collapsedIds: new Set<string>(),
-      collapseInitialized: false,
     }),
   setSelectedDepartmentId: (id) => set({ selectedDepartmentId: id }),
 
@@ -115,8 +114,8 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
       else next.add(id);
       return { collapsedIds: next };
     }),
-  collapseInitialized: false,
-  setCollapseInitialized: (v) => set({ collapseInitialized: v }),
+  collapseInitializedForScenario: null,
+  setCollapseInitializedForScenario: (scenarioId) => set({ collapseInitializedForScenario: scenarioId }),
 
   verticalIds: new Set<string>(),
   toggleVertical: (id) =>

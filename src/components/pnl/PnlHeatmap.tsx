@@ -85,8 +85,8 @@ export function PnlHeatmap() {
     collapsedIds,
     setCollapsedIds,
     toggleCollapsed,
-    collapseInitialized,
-    setCollapseInitialized,
+    collapseInitializedForScenario,
+    setCollapseInitializedForScenario,
   } = useOrgChartStore();
 
   const [departments, setDepartments] = useState<DepartmentAPI[]>([]);
@@ -139,9 +139,9 @@ export function PnlHeatmap() {
       .catch(() => {});
   }, [currentScenarioId]);
 
-  // Auto-collapse on first load (only if not yet initialized for this scenario)
+  // Auto-collapse on first load or scenario switch → show only L1
   useEffect(() => {
-    if (departments.length > 0 && !collapseInitialized) {
+    if (departments.length > 0 && currentScenarioId && collapseInitializedForScenario !== currentScenarioId) {
       const roots = new Set(
         departments.filter((d) => d.parentId === null).map((d) => d.id)
       );
@@ -151,9 +151,9 @@ export function PnlHeatmap() {
           .map((d) => d.id)
       );
       setCollapsedIds(toCollapse);
-      setCollapseInitialized(true);
+      setCollapseInitializedForScenario(currentScenarioId);
     }
-  }, [departments, collapseInitialized, setCollapsedIds, setCollapseInitialized]);
+  }, [departments, currentScenarioId, collapseInitializedForScenario, setCollapsedIds, setCollapseInitializedForScenario]);
 
   const onToggleExpand = useCallback((id: string) => {
     toggleCollapsed(id);
