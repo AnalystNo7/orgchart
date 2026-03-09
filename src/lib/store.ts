@@ -43,6 +43,15 @@ interface OrgChartState {
   employeeDeptFilter: { id: string; name: string } | null;
   setEmployeeDeptFilter: (filter: { id: string; name: string } | null) => void;
 
+  // Persistent employee filters (survive navigation between pages/tabs)
+  employeeSearch: string;
+  employeeCategoryFilter: string;
+  employeeHierarchyFilters: Record<string, string>;
+  setEmployeeSearch: (search: string) => void;
+  setEmployeeCategoryFilter: (category: string) => void;
+  setEmployeeHierarchyFilters: (filters: Record<string, string>) => void;
+  setEmployeeHierarchyFilter: (key: string, value: string) => void;
+
   // Per-node layout direction (vertical = children stacked, horizontal = default side-by-side)
   verticalIds: Set<string>;
   toggleVertical: (id: string) => void;
@@ -151,6 +160,18 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
 
   employeeDeptFilter: null,
   setEmployeeDeptFilter: (filter) => set({ employeeDeptFilter: filter }),
+
+  // Persistent employee filters
+  employeeSearch: "",
+  employeeCategoryFilter: "",
+  employeeHierarchyFilters: {},
+  setEmployeeSearch: (search) => set({ employeeSearch: search }),
+  setEmployeeCategoryFilter: (category) => set({ employeeCategoryFilter: category }),
+  setEmployeeHierarchyFilters: (filters) => set({ employeeHierarchyFilters: filters }),
+  setEmployeeHierarchyFilter: (key, value) =>
+    set((state) => ({
+      employeeHierarchyFilters: { ...state.employeeHierarchyFilters, [key]: value },
+    })),
 
   verticalIds: new Set<string>(),
   toggleVertical: (id) =>

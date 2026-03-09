@@ -37,13 +37,21 @@ interface FilterOptions {
 }
 
 export default function EmployeesPage() {
-  const { currentScenarioId, triggerRefresh, employeeDeptFilter, setEmployeeDeptFilter } = useOrgChartStore();
+  const {
+    currentScenarioId,
+    triggerRefresh,
+    employeeDeptFilter,
+    setEmployeeDeptFilter,
+    employeeSearch: search,
+    employeeCategoryFilter: categoryFilter,
+    employeeHierarchyFilters: hierarchyFilters,
+    setEmployeeSearch: setSearch,
+    setEmployeeCategoryFilter,
+    setEmployeeHierarchyFilter,
+  } = useOrgChartStore();
   const [response, setResponse] = useState<APIResponse | null>(null);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("");
-  const [hierarchyFilters, setHierarchyFilters] = useState<Record<string, string>>({});
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const [hierarchyMode, setHierarchyMode] = useState<"detailed" | "compact">(
     "detailed"
@@ -58,9 +66,6 @@ export default function EmployeesPage() {
   // Fetch filter options when scenario changes
   useEffect(() => {
     if (!currentScenarioId) return;
-    setHierarchyFilters({});
-    setCategoryFilter("");
-    setEmployeeDeptFilter(null);
     fetch(`/api/employees/filters?scenarioId=${currentScenarioId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => setFilterOptions(data));
@@ -90,8 +95,8 @@ export default function EmployeesPage() {
     fetchEmployees();
   }, [fetchEmployees]);
 
-  // Debounce search
-  const [searchInput, setSearchInput] = useState("");
+  // Debounce search — initialize from store
+  const [searchInput, setSearchInput] = useState(search);
   useEffect(() => {
     const t = setTimeout(() => {
       setSearch(searchInput);
@@ -273,7 +278,7 @@ export default function EmployeesPage() {
           <Select
             value={hierarchyFilters.cfo || "all"}
             onValueChange={(v) => {
-              setHierarchyFilters((prev) => ({ ...prev, cfo: v === "all" ? "" : v }));
+              setEmployeeHierarchyFilter("cfo", v === "all" ? "" : v);
               setPage(1);
             }}
           >
@@ -296,7 +301,7 @@ export default function EmployeesPage() {
               key={i}
               value={hierarchyFilters[`hierarchy_${i}`] || "all"}
               onValueChange={(v) => {
-                setHierarchyFilters((prev) => ({ ...prev, [`hierarchy_${i}`]: v === "all" ? "" : v }));
+                setEmployeeHierarchyFilter(`hierarchy_${i}`, v === "all" ? "" : v);
                 setPage(1);
               }}
             >
@@ -316,7 +321,7 @@ export default function EmployeesPage() {
         <Select
           value={categoryFilter}
           onValueChange={(v) => {
-            setCategoryFilter(v === "all" ? "" : v);
+            setEmployeeCategoryFilter(v === "all" ? "" : v);
             setPage(1);
           }}
         >
