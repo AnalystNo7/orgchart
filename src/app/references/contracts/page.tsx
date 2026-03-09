@@ -142,7 +142,7 @@ export default function ContractsPage() {
     periodEnd: string;
     description: string;
   }) {
-    await fetch("/api/contracts", {
+    const res = await fetch("/api/contracts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -150,6 +150,10 @@ export default function ContractsPage() {
         description: data.description || null,
       }),
     });
+    if (!res.ok) {
+      alert("Ошибка при создании договора");
+      return;
+    }
     setShowAdd(false);
     fetchContracts();
   }
@@ -166,7 +170,7 @@ export default function ContractsPage() {
     description: string;
   }) {
     if (!editingContract) return;
-    await fetch(`/api/contracts/${editingContract.id}`, {
+    const res = await fetch(`/api/contracts/${editingContract.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -174,6 +178,10 @@ export default function ContractsPage() {
         description: data.description || null,
       }),
     });
+    if (!res.ok) {
+      alert("Ошибка при сохранении договора");
+      return;
+    }
     setEditingContract(null);
     fetchContracts();
   }
