@@ -59,7 +59,7 @@ export async function GET(
         fte,
         workingHours,
         subtotal: 0,
-        warning: "Не задана тарифная ставка (К-1). Исключён из расчёта.",
+        warning: "Не задана тарифная ставка. Исключён из расчёта.",
       });
       continue;
     }

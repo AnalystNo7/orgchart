@@ -184,7 +184,7 @@ export function ContractForm({
                   {(contractStatus === "CONCLUDED" ? watch("amount") : watch("expectedAmount")) != null
                     ? Number(contractStatus === "CONCLUDED" ? watch("amount") : watch("expectedAmount")).toLocaleString("ru-RU") + " ₽"
                     : "Нет сотрудников с тарифной ставкой"}
-                  <span className="ml-2 text-xs text-muted-foreground">(К-1 × FTE × раб. часы)</span>
+                  <span className="ml-2 text-xs text-muted-foreground">(тариф × FTE × раб. часы)</span>
                 </div>
               ) : (
                 <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
