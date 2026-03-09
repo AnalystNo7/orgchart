@@ -157,81 +157,51 @@ export function ContractForm({
             </div>
           </div>
 
-          {contractStatus === "CONCLUDED" && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Сумма договора (руб.)</Label>
-                {contractId && (
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="auto-calc-switch" className="text-xs text-muted-foreground">
-                      Авторасчёт
-                    </Label>
-                    <Switch
-                      id="auto-calc-switch"
-                      checked={amountAutoCalc}
-                      onCheckedChange={(checked) => {
-                        setValue("amountAutoCalc", checked);
-                        if (checked) {
-                          fetchCalculatedAmount();
-                        }
-                      }}
-                    />
-                  </div>
-                )}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>
+                {contractStatus === "CONCLUDED" ? "Сумма договора (руб.)" : "Ожидаемая сумма (руб.)"}
+              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="auto-calc-switch" className="text-xs text-muted-foreground">
+                  Авторасчёт
+                </Label>
+                <Switch
+                  id="auto-calc-switch"
+                  checked={amountAutoCalc}
+                  onCheckedChange={(checked) => {
+                    setValue("amountAutoCalc", checked);
+                    if (checked && contractId) {
+                      fetchCalculatedAmount();
+                    }
+                  }}
+                />
               </div>
-              {amountAutoCalc && contractId ? (
+            </div>
+            {amountAutoCalc ? (
+              contractId ? (
                 <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">
-                  {watch("amount") != null
-                    ? Number(watch("amount")).toLocaleString("ru-RU") + " ₽"
+                  {(contractStatus === "CONCLUDED" ? watch("amount") : watch("expectedAmount")) != null
+                    ? Number(contractStatus === "CONCLUDED" ? watch("amount") : watch("expectedAmount")).toLocaleString("ru-RU") + " ₽"
                     : "Нет сотрудников с тарифной ставкой"}
                   <span className="ml-2 text-xs text-muted-foreground">(К-1 × FTE × раб. часы)</span>
                 </div>
               ) : (
-                <MoneyInput
-                  value={watch("amount")}
-                  onChange={(v) => setValue("amount", v)}
-                />
-              )}
-            </div>
-          )}
-
-          {contractStatus === "PLANNED" && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Ожидаемая сумма (руб.)</Label>
-                {contractId && (
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="auto-calc-switch-planned" className="text-xs text-muted-foreground">
-                      Авторасчёт
-                    </Label>
-                    <Switch
-                      id="auto-calc-switch-planned"
-                      checked={amountAutoCalc}
-                      onCheckedChange={(checked) => {
-                        setValue("amountAutoCalc", checked);
-                        if (checked) {
-                          fetchCalculatedAmount();
-                        }
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-              {amountAutoCalc && contractId ? (
-                <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">
-                  {watch("expectedAmount") != null
-                    ? Number(watch("expectedAmount")).toLocaleString("ru-RU") + " ₽"
-                    : "Нет сотрудников с тарифной ставкой"}
-                  <span className="ml-2 text-xs text-muted-foreground">(К-1 × FTE × раб. часы)</span>
+                <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  Сумма будет рассчитана после сохранения и добавления сотрудников
                 </div>
-              ) : (
-                <MoneyInput
-                  value={watch("expectedAmount")}
-                  onChange={(v) => setValue("expectedAmount", v)}
-                />
-              )}
-            </div>
-          )}
+              )
+            ) : (
+              <MoneyInput
+                value={contractStatus === "CONCLUDED" ? watch("amount") : watch("expectedAmount")}
+                onChange={(v) =>
+                  contractStatus === "CONCLUDED"
+                    ? setValue("amount", v)
+                    : setValue("expectedAmount", v)
+                }
+              />
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
