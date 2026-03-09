@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createEmployeeContractSchema } from "@/lib/validations/employee-contract";
 import { logAction } from "@/lib/action-logger";
+import { recalcContractAmount } from "@/lib/contract-auto-calc";
 
 export async function GET(req: NextRequest) {
   const employeeId = req.nextUrl.searchParams.get("employeeId");
@@ -84,6 +85,9 @@ export async function POST(req: NextRequest) {
     },
     { employeeContractId: employeeContract.id }
   );
+
+  // Recalculate contract amount if auto-calc is enabled
+  await recalcContractAmount(parsed.data.contractId);
 
   return NextResponse.json(employeeContract, { status: 201 });
 }

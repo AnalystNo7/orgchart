@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { updateEmployeeContractSchema } from "@/lib/validations/employee-contract";
 import { logAction } from "@/lib/action-logger";
+import { recalcContractAmount } from "@/lib/contract-auto-calc";
 
 export async function PUT(
   req: NextRequest,
@@ -64,6 +65,9 @@ export async function PUT(
     }
   );
 
+  // Recalculate contract amount if auto-calc is enabled
+  await recalcContractAmount(previous.contractId);
+
   return NextResponse.json(employeeContract);
 }
 
@@ -82,7 +86,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const contractId = ec.contractId;
   await prisma.employeeContract.delete({ where: { id } });
+
+  // Recalculate contract amount if auto-calc is enabled
+  await recalcContractAmount(contractId);
 
   await logAction(
     ec.employee.scenarioId,

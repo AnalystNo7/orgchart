@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/ui/money-input";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -27,6 +28,7 @@ interface ContractFormData {
   status: "CONCLUDED" | "PLANNED";
   amount: number | null;
   expectedAmount: number | null;
+  amountAutoCalc: boolean;
   periodStart: string;
   periodEnd: string;
   description: string;
@@ -38,6 +40,7 @@ interface ContractFormProps {
   onSubmit: (data: ContractFormData) => void;
   defaultValues?: Partial<ContractFormData>;
   title: string;
+  contractId?: string;
 }
 
 export function ContractForm({
@@ -46,6 +49,7 @@ export function ContractForm({
   onSubmit,
   defaultValues,
   title,
+  contractId,
 }: ContractFormProps) {
   const { register, handleSubmit, setValue, watch, reset } =
     useForm<ContractFormData>({
@@ -55,6 +59,7 @@ export function ContractForm({
         status: "CONCLUDED",
         amount: null,
         expectedAmount: null,
+        amountAutoCalc: false,
         periodStart: "",
         periodEnd: "",
         description: "",
@@ -64,6 +69,24 @@ export function ContractForm({
 
   const contractType = watch("type");
   const contractStatus = watch("status");
+  const amountAutoCalc = watch("amountAutoCalc");
+
+  const fetchCalculatedAmount = useCallback(async () => {
+    if (!contractId || !amountAutoCalc) return;
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/calculate-amount`);
+      if (res.ok) {
+        const data = await res.json();
+        if (contractStatus === "CONCLUDED") {
+          setValue("amount", data.calculatedAmount);
+        } else {
+          setValue("expectedAmount", data.calculatedAmount);
+        }
+      }
+    } catch {
+      // ignore fetch errors
+    }
+  }, [contractId, amountAutoCalc, contractStatus, setValue]);
 
   useEffect(() => {
     if (open) {
@@ -73,6 +96,7 @@ export function ContractForm({
         status: "CONCLUDED",
         amount: null,
         expectedAmount: null,
+        amountAutoCalc: false,
         periodStart: "",
         periodEnd: "",
         description: "",
@@ -80,6 +104,12 @@ export function ContractForm({
       });
     }
   }, [open, defaultValues, reset]);
+
+  useEffect(() => {
+    if (open && amountAutoCalc && contractId) {
+      fetchCalculatedAmount();
+    }
+  }, [open, amountAutoCalc, contractId, fetchCalculatedAmount]);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -129,21 +159,77 @@ export function ContractForm({
 
           {contractStatus === "CONCLUDED" && (
             <div className="space-y-2">
-              <Label>Сумма договора (руб.)</Label>
-              <MoneyInput
-                value={watch("amount")}
-                onChange={(v) => setValue("amount", v)}
-              />
+              <div className="flex items-center justify-between">
+                <Label>Сумма договора (руб.)</Label>
+                {contractId && (
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="auto-calc-switch" className="text-xs text-muted-foreground">
+                      Авторасчёт
+                    </Label>
+                    <Switch
+                      id="auto-calc-switch"
+                      checked={amountAutoCalc}
+                      onCheckedChange={(checked) => {
+                        setValue("amountAutoCalc", checked);
+                        if (checked) {
+                          fetchCalculatedAmount();
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              {amountAutoCalc && contractId ? (
+                <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">
+                  {watch("amount") != null
+                    ? Number(watch("amount")).toLocaleString("ru-RU") + " ₽"
+                    : "Нет сотрудников с тарифной ставкой"}
+                  <span className="ml-2 text-xs text-muted-foreground">(К-1 × FTE × раб. часы)</span>
+                </div>
+              ) : (
+                <MoneyInput
+                  value={watch("amount")}
+                  onChange={(v) => setValue("amount", v)}
+                />
+              )}
             </div>
           )}
 
           {contractStatus === "PLANNED" && (
             <div className="space-y-2">
-              <Label>Ожидаемая сумма (руб.)</Label>
-              <MoneyInput
-                value={watch("expectedAmount")}
-                onChange={(v) => setValue("expectedAmount", v)}
-              />
+              <div className="flex items-center justify-between">
+                <Label>Ожидаемая сумма (руб.)</Label>
+                {contractId && (
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="auto-calc-switch-planned" className="text-xs text-muted-foreground">
+                      Авторасчёт
+                    </Label>
+                    <Switch
+                      id="auto-calc-switch-planned"
+                      checked={amountAutoCalc}
+                      onCheckedChange={(checked) => {
+                        setValue("amountAutoCalc", checked);
+                        if (checked) {
+                          fetchCalculatedAmount();
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              {amountAutoCalc && contractId ? (
+                <div className="rounded-md border bg-muted/50 px-3 py-2 text-sm">
+                  {watch("expectedAmount") != null
+                    ? Number(watch("expectedAmount")).toLocaleString("ru-RU") + " ₽"
+                    : "Нет сотрудников с тарифной ставкой"}
+                  <span className="ml-2 text-xs text-muted-foreground">(К-1 × FTE × раб. часы)</span>
+                </div>
+              ) : (
+                <MoneyInput
+                  value={watch("expectedAmount")}
+                  onChange={(v) => setValue("expectedAmount", v)}
+                />
+              )}
             </div>
           )}
 

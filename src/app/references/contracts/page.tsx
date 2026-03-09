@@ -41,6 +41,7 @@ interface Contract {
   status: ContractStatus;
   amount: number | string | null;
   expectedAmount: number | string | null;
+  amountAutoCalc: boolean;
   periodStart: string;
   periodEnd: string;
   description: string | null;
@@ -136,6 +137,7 @@ export default function ContractsPage() {
     status: "CONCLUDED" | "PLANNED";
     amount: number | null;
     expectedAmount: number | null;
+    amountAutoCalc: boolean;
     periodStart: string;
     periodEnd: string;
     description: string;
@@ -158,6 +160,7 @@ export default function ContractsPage() {
     status: "CONCLUDED" | "PLANNED";
     amount: number | null;
     expectedAmount: number | null;
+    amountAutoCalc: boolean;
     periodStart: string;
     periodEnd: string;
     description: string;
@@ -424,12 +427,14 @@ export default function ContractsPage() {
           open={!!editingContract}
           onClose={() => setEditingContract(null)}
           onSubmit={handleEdit}
+          contractId={editingContract.id}
           defaultValues={{
             name: editingContract.name,
             type: editingContract.type,
             status: editingContract.status,
             amount: editingContract.amount != null ? Number(editingContract.amount) : null,
             expectedAmount: editingContract.expectedAmount != null ? Number(editingContract.expectedAmount) : null,
+            amountAutoCalc: editingContract.amountAutoCalc,
             periodStart: editingContract.periodStart,
             periodEnd: editingContract.periodEnd,
             description: editingContract.description ?? "",

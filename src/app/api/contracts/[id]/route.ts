@@ -64,6 +64,7 @@ export async function PUT(
         status: previous.status,
         amount: previous.amount?.toString(),
         expectedAmount: previous.expectedAmount?.toString(),
+        amountAutoCalc: previous.amountAutoCalc,
         periodStart: previous.periodStart.toISOString(),
         periodEnd: previous.periodEnd.toISOString(),
         description: previous.description,
