@@ -70,6 +70,7 @@ export async function runChat(
 
     callbacks.onDone(result.text, allToolCalls);
   } catch (error) {
+    console.error("[AI_CHAT_ERROR]", error);
     callbacks.onError(
       error instanceof Error ? error : new Error(String(error))
     );
