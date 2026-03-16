@@ -62,6 +62,9 @@ function toolLabel(name: string): string {
     create_gap_passport: "Создание паспорта разрыва",
     calculate_pnl: "Расчёт P&L",
     list_scenarios: "Список сценариев",
+    run_whatif_scenario: "What-if моделирование",
+    add_employee: "Добавление сотрудника",
+    remove_employees: "Удаление сотрудников",
   };
   return labels[name] || name;
 }

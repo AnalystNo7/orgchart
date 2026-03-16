@@ -67,6 +67,12 @@ export async function executeTool(
         );
       case "list_scenarios":
         return await listScenarios();
+      case "run_whatif_scenario":
+        return await runWhatIfScenario(input, currentScenarioId);
+      case "add_employee":
+        return await addEmployee(input);
+      case "remove_employees":
+        return await removeEmployees(input.employeeIds as string[]);
       default:
         return JSON.stringify({ error: `Неизвестный инструмент: ${name}` });
     }
@@ -549,4 +555,273 @@ async function listScenarios(): Promise<string> {
     orderBy: { createdAt: "desc" },
   });
   return JSON.stringify(scenarios, null, 2);
+}
+
+interface WhatIfOperation {
+  action: string;
+  params: Record<string, unknown>;
+}
+
+async function runWhatIfScenario(
+  input: ToolInput,
+  currentScenarioId: string
+): Promise<string> {
+  const sourceScenarioId = (input.scenarioId as string) || currentScenarioId;
+  const name = input.name as string;
+  const operations = input.operations as WhatIfOperation[];
+  const comparePnl = input.comparePnl !== false;
+
+  // 1. Get before-metrics
+  const beforeMetrics = JSON.parse(await getOrgMetrics(sourceScenarioId));
+
+  // 2. Clone scenario
+  const cloneResult = JSON.parse(
+    await cloneScenario(sourceScenarioId, name)
+  );
+  if (cloneResult.error) {
+    return JSON.stringify({ error: `Не удалось клонировать: ${cloneResult.error}` });
+  }
+  const newScenarioId = cloneResult.id;
+
+  // Build department name->id map for the new scenario (operations use original IDs, we need mapped IDs)
+  const origDepts = await prisma.department.findMany({
+    where: { scenarioId: sourceScenarioId },
+    select: { id: true, name: true, originId: true },
+  });
+  const newDepts = await prisma.department.findMany({
+    where: { scenarioId: newScenarioId },
+    select: { id: true, name: true, originId: true },
+  });
+
+  // Map: original dept ID -> new dept ID (via originId or name match)
+  const deptIdMap = new Map<string, string>();
+  for (const nd of newDepts) {
+    // originId points to the original department
+    if (nd.originId) {
+      deptIdMap.set(nd.originId, nd.id);
+    }
+  }
+  // Also map by name as fallback
+  const newDeptByName = new Map<string, string>();
+  for (const nd of newDepts) {
+    newDeptByName.set(nd.name, nd.id);
+  }
+
+  // Map original employee IDs to new employee IDs
+  const origEmps = await prisma.employee.findMany({
+    where: { scenarioId: sourceScenarioId },
+    select: { id: true, originId: true },
+  });
+  const newEmps = await prisma.employee.findMany({
+    where: { scenarioId: newScenarioId },
+    select: { id: true, originId: true },
+  });
+  const empIdMap = new Map<string, string>();
+  for (const ne of newEmps) {
+    if (ne.originId) {
+      empIdMap.set(ne.originId, ne.id);
+    }
+  }
+
+  function mapDeptId(id: string): string {
+    return deptIdMap.get(id) || newDeptByName.get(id) || id;
+  }
+  function mapEmpId(id: string): string {
+    return empIdMap.get(id) || id;
+  }
+
+  // 3. Apply operations
+  const opResults: Array<{ action: string; result: string }> = [];
+  for (const op of operations) {
+    let result: string;
+    try {
+      switch (op.action) {
+        case "create_department":
+          result = await createDepartment(
+            newScenarioId,
+            op.params.name as string,
+            op.params.parentId ? mapDeptId(op.params.parentId as string) : undefined,
+            op.params.shetilType as ShetilType
+          );
+          // Update maps with newly created department
+          const created = JSON.parse(result);
+          if (created.id) {
+            newDeptByName.set(created.name, created.id);
+          }
+          break;
+        case "delete_department":
+          result = await deleteDepartment(mapDeptId(op.params.departmentId as string));
+          break;
+        case "move_department":
+          result = await moveDepartment(
+            mapDeptId(op.params.departmentId as string),
+            op.params.newParentId ? mapDeptId(op.params.newParentId as string) : null
+          );
+          break;
+        case "rename_department":
+          result = await renameDepartment(
+            mapDeptId(op.params.departmentId as string),
+            op.params.newName as string
+          );
+          break;
+        case "move_employees": {
+          const mappedEmpIds = (op.params.employeeIds as string[]).map(mapEmpId);
+          result = await moveEmployees(
+            mappedEmpIds,
+            mapDeptId(op.params.targetDepartmentId as string)
+          );
+          break;
+        }
+        case "merge_departments": {
+          const sourceId = mapDeptId(op.params.sourceDepartmentId as string);
+          const targetId = mapDeptId(op.params.targetDepartmentId as string);
+          result = await mergeDepartments(sourceId, targetId);
+          break;
+        }
+        default:
+          result = JSON.stringify({ error: `Неизвестная операция: ${op.action}` });
+      }
+    } catch (err) {
+      result = JSON.stringify({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    opResults.push({ action: op.action, result });
+  }
+
+  // 4. Get after-metrics
+  const afterMetrics = JSON.parse(await getOrgMetrics(newScenarioId));
+
+  // 5. Compare scenarios
+  const comparison = JSON.parse(await compareScenarios(sourceScenarioId, newScenarioId));
+
+  // 6. Optionally compare P&L
+  let pnlComparison = null;
+  if (comparePnl) {
+    try {
+      const [beforePnl, afterPnl] = await Promise.all([
+        calculatePnlTool(sourceScenarioId),
+        calculatePnlTool(newScenarioId),
+      ]);
+      pnlComparison = {
+        before: JSON.parse(beforePnl).totals,
+        after: JSON.parse(afterPnl).totals,
+      };
+      if (pnlComparison.before && pnlComparison.after) {
+        pnlComparison = {
+          ...pnlComparison,
+          delta: {
+            revenue: pnlComparison.after.revenue - pnlComparison.before.revenue,
+            cost: pnlComparison.after.cost - pnlComparison.before.cost,
+            pnl: pnlComparison.after.pnl - pnlComparison.before.pnl,
+          },
+        };
+      }
+    } catch {
+      // P&L comparison optional — may fail if no contracts
+    }
+  }
+
+  return JSON.stringify(
+    {
+      whatIfScenario: {
+        id: newScenarioId,
+        name,
+      },
+      operationsApplied: opResults.length,
+      operations: opResults,
+      metricsBefore: {
+        totalDepartments: beforeMetrics.totalDepartments,
+        totalEmployees: beforeMetrics.totalEmployees,
+        totalFte: beforeMetrics.totalFte,
+        overheadRatio: beforeMetrics.overheadRatio,
+        avgSpanOfControl: beforeMetrics.avgSpanOfControl,
+        maxHierarchyDepth: beforeMetrics.maxHierarchyDepth,
+      },
+      metricsAfter: {
+        totalDepartments: afterMetrics.totalDepartments,
+        totalEmployees: afterMetrics.totalEmployees,
+        totalFte: afterMetrics.totalFte,
+        overheadRatio: afterMetrics.overheadRatio,
+        avgSpanOfControl: afterMetrics.avgSpanOfControl,
+        maxHierarchyDepth: afterMetrics.maxHierarchyDepth,
+      },
+      structuralChanges: comparison.summary,
+      changedDepartments: comparison.changes,
+      pnlComparison,
+    },
+    null,
+    2
+  );
+}
+
+async function mergeDepartments(
+  sourceDeptId: string,
+  targetDeptId: string
+): Promise<string> {
+  const source = await prisma.department.findUnique({
+    where: { id: sourceDeptId },
+    select: { name: true },
+  });
+  const target = await prisma.department.findUnique({
+    where: { id: targetDeptId },
+    select: { name: true },
+  });
+  if (!source || !target) {
+    return JSON.stringify({ error: "Подразделение не найдено" });
+  }
+
+  // Move all employees from source to target
+  await prisma.employee.updateMany({
+    where: { departmentId: sourceDeptId },
+    data: { departmentId: targetDeptId },
+  });
+
+  // Move all child departments from source to target
+  await prisma.department.updateMany({
+    where: { parentId: sourceDeptId },
+    data: { parentId: targetDeptId },
+  });
+
+  // Delete source department
+  await prisma.department.delete({ where: { id: sourceDeptId } });
+
+  return JSON.stringify({
+    message: `Подразделение «${source.name}» объединено с «${target.name}»: сотрудники и дочерние подразделения перемещены`,
+  });
+}
+
+async function addEmployee(input: ToolInput): Promise<string> {
+  const dept = await prisma.department.findUnique({
+    where: { id: input.departmentId as string },
+    select: { scenarioId: true, name: true },
+  });
+  if (!dept) return JSON.stringify({ error: "Подразделение не найдено" });
+
+  const emp = await prisma.employee.create({
+    data: {
+      scenarioId: dept.scenarioId,
+      departmentId: input.departmentId as string,
+      fullName: input.fullName as string,
+      position: input.position as string,
+      category: input.category as "PP" | "OPP" | "AUP",
+      fte: input.fte ? Number(input.fte) : 1.0,
+    },
+  });
+
+  return JSON.stringify({
+    id: emp.id,
+    fullName: emp.fullName,
+    message: `Сотрудник «${emp.fullName}» добавлен в подразделение «${dept.name}»`,
+  });
+}
+
+async function removeEmployees(employeeIds: string[]): Promise<string> {
+  const deleted = await prisma.employee.deleteMany({
+    where: { id: { in: employeeIds } },
+  });
+  return JSON.stringify({
+    message: `Удалено ${deleted.count} сотрудник(ов)`,
+    count: deleted.count,
+  });
 }

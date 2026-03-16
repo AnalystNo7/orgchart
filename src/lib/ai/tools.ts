@@ -197,4 +197,93 @@ export const aiTools: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "run_whatif_scenario",
+    description:
+      "Запустить what-if моделирование: клонировать текущий сценарий, применить серию изменений и сравнить результат с исходным. Возвращает метрики до/после, diff структуры и P&L. Используй для ответов на вопросы вида «Что будет, если...?».",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        scenarioId: {
+          type: "string",
+          description: "ID исходного сценария. Если не указан — текущий.",
+        },
+        name: {
+          type: "string",
+          description: "Название what-if сценария (например: «What-if: объединение отделов»)",
+        },
+        operations: {
+          type: "array",
+          description: "Список операций для применения к клонированному сценарию, выполняются последовательно.",
+          items: {
+            type: "object",
+            properties: {
+              action: {
+                type: "string",
+                enum: [
+                  "create_department",
+                  "delete_department",
+                  "move_department",
+                  "rename_department",
+                  "move_employees",
+                  "merge_departments",
+                ],
+                description: "Тип операции",
+              },
+              params: {
+                type: "object",
+                description:
+                  "Параметры операции. create_department: {name, parentId?, shetilType}. delete_department: {departmentId}. move_department: {departmentId, newParentId}. rename_department: {departmentId, newName}. move_employees: {employeeIds[], targetDepartmentId}. merge_departments: {sourceDepartmentId, targetDepartmentId} — перемещает всех сотрудников и дочерние подразделения из source в target, затем удаляет source.",
+              },
+            },
+            required: ["action", "params"],
+          },
+        },
+        comparePnl: {
+          type: "boolean",
+          description: "Сравнить P&L до/после (по умолчанию true)",
+        },
+      },
+      required: ["name", "operations"],
+    },
+  },
+  {
+    name: "add_employee",
+    description:
+      "Добавить нового сотрудника в подразделение. Используй в what-if моделировании для расширения штата.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        departmentId: { type: "string", description: "ID подразделения" },
+        fullName: { type: "string", description: "ФИО сотрудника" },
+        position: { type: "string", description: "Должность" },
+        category: {
+          type: "string",
+          enum: ["PP", "OPP", "AUP"],
+          description: "Категория: PP (производственный), OPP (обще-производственный), AUP (административный)",
+        },
+        fte: {
+          type: "number",
+          description: "FTE (ставка), по умолчанию 1.0",
+        },
+      },
+      required: ["departmentId", "fullName", "position", "category"],
+    },
+  },
+  {
+    name: "remove_employees",
+    description:
+      "Удалить сотрудников из организации. Используй в what-if моделировании для сокращения штата.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        employeeIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Массив ID сотрудников для удаления",
+        },
+      },
+      required: ["employeeIds"],
+    },
+  },
 ];
