@@ -23,8 +23,6 @@ export function getModel(): LanguageModel {
 
   switch (provider) {
     case "anthropic": {
-      const key = process.env.ANTHROPIC_API_KEY || "";
-      console.log("[DEBUG] ANTHROPIC_API_KEY loaded:", key ? key.slice(0, 12) + "..." + key.slice(-4) : "EMPTY");
       const anthropic = createAnthropic();
       return anthropic(modelId);
     }
