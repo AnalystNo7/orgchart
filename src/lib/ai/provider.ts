@@ -21,6 +21,24 @@ export function getModel(): LanguageModel {
   const provider = getProvider();
   const modelId = process.env.AI_MODEL || PROVIDER_DEFAULTS[provider];
 
+  // Diagnostic: check API key for non-ASCII characters
+  const keyEnvMap: Record<AIProvider, string> = {
+    anthropic: "ANTHROPIC_API_KEY",
+    openai: "OPENAI_API_KEY",
+    google: "GOOGLE_GENERATIVE_AI_API_KEY",
+  };
+  const keyVal = process.env[keyEnvMap[provider]] ?? "";
+  for (let i = 0; i < keyVal.length; i++) {
+    if (keyVal.charCodeAt(i) > 127) {
+      console.error(
+        `[AI_KEY_ERROR] ${keyEnvMap[provider]} contains non-ASCII char at index ${i}: ` +
+        `U+${keyVal.charCodeAt(i).toString(16).toUpperCase()} "${keyVal[i]}". ` +
+        `Key starts with: "${keyVal.slice(0, 10).replace(/[^\x20-\x7E]/g, "?")}..."`
+      );
+      break;
+    }
+  }
+
   switch (provider) {
     case "anthropic": {
       const anthropic = createAnthropic();
