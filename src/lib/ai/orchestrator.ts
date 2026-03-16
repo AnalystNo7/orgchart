@@ -4,6 +4,7 @@ import { executeTool } from "./tool-executor";
 import { buildSystemPrompt } from "./system-prompt";
 
 const anthropic = new Anthropic();
+const AI_MODEL = process.env.AI_MODEL || "claude-sonnet-4-20250514";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -48,7 +49,7 @@ export async function runChat(
 
     while (continueLoop) {
       const stream = anthropic.messages.stream({
-        model: "claude-sonnet-4-20250514",
+        model: AI_MODEL,
         max_tokens: 4096,
         system: systemPrompt,
         tools: aiTools,
