@@ -2,10 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useOrgChartStore } from "@/lib/store";
-import { useAiChatStore } from "@/lib/ai-store";
 import { GapPassportCard, type GapPassportData } from "@/components/gap-analysis/GapPassportCard";
 import { GapPassportForm } from "@/components/gap-analysis/GapPassportForm";
-import { Plus, Bot, GitCompare } from "lucide-react";
+import { Plus, Loader2, Sparkles } from "lucide-react";
 import type { GapStatus } from "@prisma/client";
 
 interface ScenarioOption {
@@ -15,8 +14,6 @@ interface ScenarioOption {
 
 export default function GapAnalysisPage() {
   const currentScenarioId = useOrgChartStore((s) => s.currentScenarioId);
-  const openAi = useAiChatStore((s) => s.open);
-  const sendToAi = useAiChatStore((s) => s.addMessage);
 
   const [scenarios, setScenarios] = useState<ScenarioOption[]>([]);
   const [asIsId, setAsIsId] = useState("");
@@ -29,6 +26,8 @@ export default function GapAnalysisPage() {
     modified: number;
     moved: number;
   } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Load scenarios
   useEffect(() => {
@@ -57,19 +56,45 @@ export default function GapAnalysisPage() {
     loadGaps();
   }, [loadGaps]);
 
-  // Compare scenarios
+  // Compare scenarios and auto-generate gaps
   async function runComparison() {
-    if (!asIsId || !toBeId) return;
+    if (!asIsId || !toBeId || !currentScenarioId) return;
+    setGenerateError(null);
+    setGenerating(true);
+
     try {
-      const res = await fetch(
-        `/api/departments/compare?leftId=${asIsId}&rightId=${toBeId}`
-      );
-      if (res.ok) {
-        const data = await res.json();
+      // Call auto-generate endpoint which compares and creates gap passports
+      const res = await fetch("/api/gaps/auto-generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenarioId: currentScenarioId,
+          asIsScenarioId: asIsId,
+          toBeScenarioId: toBeId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setGenerateError(data.error || "Ошибка генерации");
+        return;
+      }
+
+      if (data.summary) {
         setDiffSummary(data.summary);
       }
+
+      if (data.message && data.gaps?.length === 0) {
+        setGenerateError(data.message);
+      }
+
+      // Reload gaps from DB to get all (including previously existing)
+      loadGaps();
     } catch {
-      // ignore
+      setGenerateError("Ошибка сети при генерации паспортов");
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -95,19 +120,6 @@ export default function GapAnalysisPage() {
     }
   }
 
-  function askAiForGaps() {
-    if (!asIsId || !toBeId) return;
-    const asIsName = scenarios.find((s) => s.id === asIsId)?.name || asIsId;
-    const toBeName = scenarios.find((s) => s.id === toBeId)?.name || toBeId;
-
-    openAi();
-    sendToAi({
-      role: "user",
-      content: `Проведи gap-анализ между сценариями «${asIsName}» (as-is, ID: ${asIsId}) и «${toBeName}» (to-be, ID: ${toBeId}). Сравни оргструктуры, выяви разрывы и создай паспорта разрывов для каждого значимого отличия.`,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
   if (!currentScenarioId) {
     return (
       <div className="flex h-full items-center justify-center text-neutral-400">
@@ -120,23 +132,13 @@ export default function GapAnalysisPage() {
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Gap-анализ</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-neutral-50"
-          >
-            <Plus className="h-4 w-4" />
-            Добавить разрыв
-          </button>
-          <button
-            onClick={askAiForGaps}
-            disabled={!asIsId || !toBeId}
-            className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:bg-neutral-300"
-          >
-            <Bot className="h-4 w-4" />
-            AI: найти разрывы
-          </button>
-        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-neutral-50"
+        >
+          <Plus className="h-4 w-4" />
+          Добавить вручную
+        </button>
       </div>
 
       {/* Scenario selection */}
@@ -151,6 +153,7 @@ export default function GapAnalysisPage() {
               value={asIsId}
               onChange={(e) => setAsIsId(e.target.value)}
               className="w-full rounded border px-2 py-1.5 text-sm"
+              disabled={generating}
             >
               <option value="">Выберите сценарий...</option>
               {scenarios.map((s) => (
@@ -168,6 +171,7 @@ export default function GapAnalysisPage() {
               value={toBeId}
               onChange={(e) => setToBeId(e.target.value)}
               className="w-full rounded border px-2 py-1.5 text-sm"
+              disabled={generating}
             >
               <option value="">Выберите сценарий...</option>
               {scenarios.map((s) => (
@@ -179,11 +183,20 @@ export default function GapAnalysisPage() {
           </div>
           <button
             onClick={runComparison}
-            disabled={!asIsId || !toBeId}
-            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-neutral-300"
+            disabled={!asIsId || !toBeId || generating}
+            className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:bg-neutral-300"
           >
-            <GitCompare className="h-4 w-4" />
-            Сравнить
+            {generating ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                AI анализирует...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                Сравнить и найти разрывы
+              </>
+            )}
           </button>
         </div>
 
@@ -193,6 +206,12 @@ export default function GapAnalysisPage() {
             <span className="text-red-600">-{diffSummary.removed} удалено</span>
             <span className="text-amber-600">~{diffSummary.modified} изменено</span>
             <span className="text-blue-600">{diffSummary.moved} перемещено</span>
+          </div>
+        )}
+
+        {generateError && (
+          <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            {generateError}
           </div>
         )}
       </div>
@@ -224,7 +243,9 @@ export default function GapAnalysisPage() {
         </h2>
         {gaps.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center text-sm text-neutral-400">
-            Нет паспортов разрывов. Используйте AI для автоматического выявления или добавьте вручную.
+            {generating
+              ? "AI анализирует различия между сценариями..."
+              : "Нет паспортов разрывов. Выберите два сценария и нажмите «Сравнить и найти разрывы» для автоматического выявления."}
           </div>
         ) : (
           <div className="space-y-3">
