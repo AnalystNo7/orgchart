@@ -17,6 +17,7 @@ export interface ToolCallInfo {
 export interface StreamCallbacks {
   onText: (text: string) => void;
   onToolCall: (info: ToolCallInfo) => void;
+  onStatus: (phase: string, detail?: string) => void;
   onDone: (fullResponse: string, toolCalls: ToolCallInfo[]) => void;
   onError: (error: Error) => void;
 }
@@ -36,6 +37,8 @@ export async function runChat(
   const tools = buildTools(scenarioId);
 
   try {
+    callbacks.onStatus("llm_thinking");
+
     const result = await generateText({
       model: getModel(),
       system: systemPrompt,
@@ -49,7 +52,7 @@ export async function runChat(
         if (text) {
           callbacks.onText(text);
         }
-        if (toolCalls) {
+        if (toolCalls && toolCalls.length > 0) {
           for (let i = 0; i < toolCalls.length; i++) {
             const tc = toolCalls[i];
             const tr = toolResults?.[i] as Record<string, unknown> | undefined;
@@ -62,8 +65,10 @@ export async function runChat(
               result: typeof trResult === "string" ? trResult : JSON.stringify(trResult ?? ""),
             };
             allToolCalls.push(info);
+            callbacks.onStatus("tool_executing", tc.toolName);
             callbacks.onToolCall(info);
           }
+          callbacks.onStatus("llm_analyzing");
         }
       },
     });

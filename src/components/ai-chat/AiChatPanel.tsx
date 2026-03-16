@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Bot, X, Plus, History, Send, Loader2 } from "lucide-react";
-import { useAiChatStore, type AiMessage } from "@/lib/ai-store";
+import { Bot, X, Plus, History, Send } from "lucide-react";
+import { useAiChatStore, type AiMessage, type StreamingPhase } from "@/lib/ai-store";
 import { useOrgChartStore } from "@/lib/store";
 import { ChatMessage } from "./ChatMessage";
 import { QuickActions } from "./QuickActions";
 import { ConversationList } from "./ConversationList";
+import { StreamingStatus } from "./StreamingStatus";
 
 export function AiChatPanel() {
   const scenarioId = useOrgChartStore((s) => s.currentScenarioId);
@@ -18,6 +19,12 @@ export function AiChatPanel() {
     clearMessages,
     isStreaming,
     setStreaming,
+    streamingPhase,
+    setStreamingPhase,
+    currentToolName,
+    setCurrentToolName,
+    streamingStartedAt,
+    setStreamingStartedAt,
     activeConversationId,
     setActiveConversationId,
     showConversationList,
@@ -27,11 +34,30 @@ export function AiChatPanel() {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, streamingPhase]);
+
+  const resetStreamingState = useCallback(() => {
+    setStreaming(false);
+    setStreamingPhase(null);
+    setCurrentToolName(null);
+    setStreamingStartedAt(null);
+    abortControllerRef.current = null;
+  }, [setStreaming, setStreamingPhase, setCurrentToolName, setStreamingStartedAt]);
+
+  const handleCancel = useCallback(() => {
+    abortControllerRef.current?.abort();
+    resetStreamingState();
+    addMessage({
+      role: "assistant",
+      content: "Запрос отменён пользователем.",
+      timestamp: new Date().toISOString(),
+    });
+  }, [resetStreamingState, addMessage]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -45,6 +71,12 @@ export function AiChatPanel() {
       addMessage(userMsg);
       setInput("");
       setStreaming(true);
+      setStreamingPhase("connecting");
+      setCurrentToolName(null);
+      setStreamingStartedAt(Date.now());
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
       try {
         const allMessages = [...messages, userMsg].map((m) => ({
@@ -60,6 +92,7 @@ export function AiChatPanel() {
             conversationId: activeConversationId,
             messages: allMessages,
           }),
+          signal: controller.signal,
         });
 
         if (!res.ok) {
@@ -69,13 +102,13 @@ export function AiChatPanel() {
             content: `Ошибка: ${err.error || res.statusText}`,
             timestamp: new Date().toISOString(),
           });
-          setStreaming(false);
+          resetStreamingState();
           return;
         }
 
         const reader = res.body?.getReader();
         if (!reader) {
-          setStreaming(false);
+          resetStreamingState();
           return;
         }
 
@@ -104,6 +137,11 @@ export function AiChatPanel() {
                     toolCalls.push({ name: data.name, input: data.input });
                   } else if (event === "conversation_id") {
                     setActiveConversationId(data.id);
+                  } else if (event === "status") {
+                    setStreamingPhase(data.phase as StreamingPhase);
+                    if (data.detail) {
+                      setCurrentToolName(data.detail);
+                    }
                   }
                 } catch {
                   // skip
@@ -127,13 +165,17 @@ export function AiChatPanel() {
           }
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          // Already handled by handleCancel
+          return;
+        }
         addMessage({
           role: "assistant",
           content: `Ошибка соединения: ${err instanceof Error ? err.message : "Неизвестная ошибка"}`,
           timestamp: new Date().toISOString(),
         });
       } finally {
-        setStreaming(false);
+        resetStreamingState();
       }
     },
     [
@@ -144,7 +186,11 @@ export function AiChatPanel() {
       addMessage,
       appendToLastAssistant,
       setStreaming,
+      setStreamingPhase,
+      setCurrentToolName,
+      setStreamingStartedAt,
       setActiveConversationId,
+      resetStreamingState,
     ]
   );
 
@@ -215,10 +261,12 @@ export function AiChatPanel() {
               <ChatMessage key={i} message={msg} />
             ))}
             {isStreaming && (
-              <div className="flex items-center gap-2 text-sm text-purple-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Анализирую...</span>
-              </div>
+              <StreamingStatus
+                phase={streamingPhase}
+                currentToolName={currentToolName}
+                startedAt={streamingStartedAt}
+                onCancel={handleCancel}
+              />
             )}
             <div ref={messagesEndRef} />
           </div>

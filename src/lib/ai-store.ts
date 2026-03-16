@@ -1,5 +1,13 @@
 import { create } from "zustand";
 
+export type StreamingPhase =
+  | "connecting"
+  | "llm_thinking"
+  | "tool_executing"
+  | "llm_analyzing"
+  | "streaming"
+  | null;
+
 export interface AiMessage {
   role: "user" | "assistant";
   content: string;
@@ -28,6 +36,13 @@ interface AiChatState {
 
   isStreaming: boolean;
   setStreaming: (v: boolean) => void;
+
+  streamingPhase: StreamingPhase;
+  setStreamingPhase: (phase: StreamingPhase) => void;
+  currentToolName: string | null;
+  setCurrentToolName: (name: string | null) => void;
+  streamingStartedAt: number | null;
+  setStreamingStartedAt: (ts: number | null) => void;
 
   activeConversationId: string | null;
   setActiveConversationId: (id: string | null) => void;
@@ -67,6 +82,13 @@ export const useAiChatStore = create<AiChatState>((set) => ({
 
   isStreaming: false,
   setStreaming: (isStreaming) => set({ isStreaming }),
+
+  streamingPhase: null,
+  setStreamingPhase: (streamingPhase) => set({ streamingPhase }),
+  currentToolName: null,
+  setCurrentToolName: (currentToolName) => set({ currentToolName }),
+  streamingStartedAt: null,
+  setStreamingStartedAt: (streamingStartedAt) => set({ streamingStartedAt }),
 
   activeConversationId: null,
   setActiveConversationId: (activeConversationId) =>

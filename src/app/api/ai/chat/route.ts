@@ -42,9 +42,15 @@ export async function POST(req: NextRequest) {
 
       const toolCalls: ToolCallInfo[] = [];
 
+      send("status", { phase: "connecting" });
+
       await runChat(messages, scenarioId, scenario.name, {
         onText: (text) => {
+          send("status", { phase: "streaming" });
           send("text", { text });
+        },
+        onStatus: (phase, detail) => {
+          send("status", { phase, detail });
         },
         onToolCall: (info) => {
           toolCalls.push(info);
