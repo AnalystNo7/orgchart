@@ -15,6 +15,9 @@
     "seed": "npx tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/openai": "^3.0.41",
     "@anthropic-ai/sdk": "^0.78.0",
     "@hookform/resolvers": "^5.2.2",
     "@prisma/client": "^6.19.2",
@@ -36,6 +39,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@types/dagre": "^0.7.53",
     "@xyflow/react": "^12.10.1",
+    "ai": "^6.0.116",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
