@@ -62,9 +62,11 @@ model Scenario {
   children      Scenario[]     @relation("ScenarioParent")
   departments   Department[]
   employees     Employee[]
-  actionLogs    ActionLog[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  actionLogs      ActionLog[]
+  gaps            GapPassport[]
+  aiConversations AiConversation[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
 model Department {
@@ -168,6 +170,66 @@ model EmployeeContract {
   @@unique([employeeId, contractId])
   @@index([employeeId])
   @@index([contractId])
+}
+
+// --- AI & Gap Analysis ---
+
+enum GapCategory {
+  STRUCTURE
+  PROCESS
+  RESOURCE
+  COMPETENCY
+  TECHNOLOGY
+}
+
+enum GapPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum GapStatus {
+  IDENTIFIED
+  IN_PROGRESS
+  RESOLVED
+  DEFERRED
+}
+
+model GapPassport {
+  id                    String      @id @default(uuid())
+  scenarioId            String
+  scenario              Scenario    @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  asIsScenarioId        String
+  toBeScenarioId        String
+  category              GapCategory
+  title                 String
+  description           String
+  priority              GapPriority
+  impact                String?
+  affectedDepartmentIds String[]
+  responsibleDeptId     String?
+  estimatedEffort       String?
+  status                GapStatus   @default(IDENTIFIED)
+  aiGenerated           Boolean     @default(false)
+  aiRationale           String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@index([scenarioId])
+}
+
+model AiConversation {
+  id         String   @id @default(uuid())
+  scenarioId String
+  scenario   Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  title      String
+  messages   Json     // [{role, content, toolCalls?, timestamp}]
+  context    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([scenarioId])
 }
 
 model PnlCache {

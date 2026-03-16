@@ -4,10 +4,13 @@ import { usePathname } from "next/navigation";
 import { SessionProvider } from "next-auth/react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ScenarioSelector } from "@/components/scenarios/ScenarioSelector";
+import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
+import { useAiChatStore } from "@/lib/ai-store";
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLoginPage = pathname === "/login";
+  const isAiOpen = useAiChatStore((s) => s.isOpen);
 
   if (isLoginPage) {
     return <SessionProvider>{children}</SessionProvider>;
@@ -22,7 +25,10 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             <ScenarioSelector />
             <div className="text-sm text-neutral-500">OrgChart Modeler</div>
           </header>
-          <main className="flex-1 overflow-auto">{children}</main>
+          <div className="flex flex-1 overflow-hidden">
+            <main className="flex-1 overflow-auto">{children}</main>
+            {isAiOpen && <AiChatPanel />}
+          </div>
         </div>
       </div>
     </SessionProvider>
