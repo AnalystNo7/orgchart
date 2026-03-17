@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Bot, X, Plus, History, Send, FolderOpen } from "lucide-react";
+import { Bot, X, Plus, History, Send, FolderOpen, ChevronDown, Check } from "lucide-react";
 import { useAiChatStore, type AiMessage, type StreamingPhase } from "@/lib/ai-store";
 import { useOrgChartStore } from "@/lib/store";
 import { ChatMessage } from "./ChatMessage";
@@ -22,7 +22,7 @@ const statusDotColor: Record<string, string> = {
   ARCHIVED: "bg-neutral-400",
 };
 
-function ScenarioPicker({ onSelect }: { onSelect: (id: string) => void }) {
+function useScenarios() {
   const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,49 +34,61 @@ function ScenarioPicker({ onSelect }: { onSelect: (id: string) => void }) {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="px-3 py-4 text-center text-xs text-neutral-400">
-        Загрузка сценариев...
-      </div>
-    );
-  }
+  return { scenarios, loading };
+}
 
-  if (scenarios.length === 0) {
-    return (
-      <div className="px-3 py-4 text-center text-xs text-neutral-400">
-        Нет доступных сценариев
-      </div>
-    );
-  }
+function ScenarioBadge({
+  scenarioId,
+  scenarios,
+  onSelect,
+}: {
+  scenarioId: string | null;
+  scenarios: ScenarioItem[];
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = scenarios.find((s) => s.id === scenarioId);
 
   return (
-    <div className="flex flex-col items-center gap-3 px-3 py-4">
-      <FolderOpen className="h-8 w-8 text-purple-200" />
-      <p className="text-sm font-medium text-neutral-600">
-        Выберите сценарий
-      </p>
-      <p className="text-xs text-neutral-400">
-        Для работы с AI-ассистентом
-      </p>
-      <div className="mt-1 w-full space-y-1.5">
-        {scenarios.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => onSelect(s.id)}
-            className="flex w-full items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2.5 text-left text-sm transition-colors hover:border-purple-300 hover:bg-purple-50"
-          >
-            <span
-              className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotColor[s.status] ?? "bg-neutral-300"}`}
-            />
-            <span className="flex-1 truncate">
-              {s.isBaseline ? "\u2605 " : ""}
-              {s.name}
-            </span>
-            <span className="text-xs text-neutral-400">{s.status}</span>
-          </button>
-        ))}
-      </div>
+    <div className="relative w-full">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-left text-sm transition-colors hover:bg-purple-100"
+      >
+        <FolderOpen className="h-4 w-4 shrink-0 text-purple-500" />
+        <div className="flex-1 truncate">
+          <span className="text-xs text-purple-400">Сценарий:</span>
+          <span className="ml-1 font-medium text-purple-700">
+            {current ? current.name : "Не выбран"}
+          </span>
+        </div>
+        <ChevronDown className={`h-4 w-4 text-purple-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
+          {scenarios.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => {
+                onSelect(s.id);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-purple-50"
+            >
+              <span
+                className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotColor[s.status] ?? "bg-neutral-300"}`}
+              />
+              <span className="flex-1 truncate">
+                {s.isBaseline ? "\u2605 " : ""}
+                {s.name}
+              </span>
+              {s.id === scenarioId && (
+                <Check className="h-3.5 w-3.5 text-purple-600" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -111,6 +123,7 @@ export function AiChatPanel() {
     setShowConversationList,
   } = useAiChatStore();
 
+  const { scenarios } = useScenarios();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -355,19 +368,24 @@ export function AiChatPanel() {
       {/* Messages */}
       <div className="flex-1 overflow-auto px-3 py-3">
         {messages.length === 0 ? (
-          !scenarioId ? (
-            <ScenarioPicker onSelect={setCurrentScenarioId} />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center text-center">
-              <Bot className="mb-3 h-10 w-10 text-purple-200" />
-              <p className="text-sm font-medium text-neutral-500">
-                AI-ассистент
-              </p>
-              <p className="mt-1 text-xs text-neutral-400">
-                Задайте вопрос или выберите действие
-              </p>
-            </div>
-          )
+          <div className="flex h-full flex-col items-center justify-center text-center">
+            <Bot className="mb-3 h-10 w-10 text-purple-200" />
+            <p className="text-sm font-medium text-neutral-500">
+              AI-ассистент
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">
+              Задайте вопрос или выберите действие
+            </p>
+            {scenarios.length > 0 && (
+              <div className="mt-4 w-full px-2">
+                <ScenarioBadge
+                  scenarioId={scenarioId}
+                  scenarios={scenarios}
+                  onSelect={setCurrentScenarioId}
+                />
+              </div>
+            )}
+          </div>
         ) : (
           <div className="space-y-4">
             {messages.map((msg, i) => (
