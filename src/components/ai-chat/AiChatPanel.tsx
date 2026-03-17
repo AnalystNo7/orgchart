@@ -25,6 +25,13 @@ export function AiChatPanel() {
     setCurrentToolName,
     streamingStartedAt,
     setStreamingStartedAt,
+    completedSteps,
+    addCompletedStep,
+    clearCompletedSteps,
+    lastHeartbeat,
+    setLastHeartbeat,
+    timeoutWarning,
+    setTimeoutWarning,
     activeConversationId,
     setActiveConversationId,
     showConversationList,
@@ -39,15 +46,17 @@ export function AiChatPanel() {
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingPhase]);
+  }, [messages, streamingPhase, completedSteps]);
 
   const resetStreamingState = useCallback(() => {
     setStreaming(false);
     setStreamingPhase(null);
     setCurrentToolName(null);
     setStreamingStartedAt(null);
+    setLastHeartbeat(null);
+    setTimeoutWarning(null);
     abortControllerRef.current = null;
-  }, [setStreaming, setStreamingPhase, setCurrentToolName, setStreamingStartedAt]);
+  }, [setStreaming, setStreamingPhase, setCurrentToolName, setStreamingStartedAt, setLastHeartbeat, setTimeoutWarning]);
 
   const handleCancel = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -74,6 +83,8 @@ export function AiChatPanel() {
       setStreamingPhase("connecting");
       setCurrentToolName(null);
       setStreamingStartedAt(Date.now());
+      clearCompletedSteps();
+      setTimeoutWarning(null);
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -142,6 +153,27 @@ export function AiChatPanel() {
                     if (data.detail) {
                       setCurrentToolName(data.detail);
                     }
+                    // Track completed tools in the step log
+                    if (data.phase === "tool_completed" && data.detail) {
+                      addCompletedStep({
+                        type: "tool_completed",
+                        tool: data.detail,
+                        ts: Date.now(),
+                      });
+                    }
+                  } else if (event === "progress") {
+                    // Tool internal progress (e.g. what-if sub-steps)
+                    setCurrentToolName(data.tool);
+                    addCompletedStep({
+                      type: "progress",
+                      tool: data.tool,
+                      detail: data.step,
+                      ts: Date.now(),
+                    });
+                  } else if (event === "heartbeat") {
+                    setLastHeartbeat(data.ts);
+                  } else if (event === "warning") {
+                    setTimeoutWarning(data.message);
                   }
                 } catch {
                   // skip
@@ -191,6 +223,10 @@ export function AiChatPanel() {
       setStreamingStartedAt,
       setActiveConversationId,
       resetStreamingState,
+      clearCompletedSteps,
+      addCompletedStep,
+      setLastHeartbeat,
+      setTimeoutWarning,
     ]
   );
 
@@ -265,6 +301,9 @@ export function AiChatPanel() {
                 phase={streamingPhase}
                 currentToolName={currentToolName}
                 startedAt={streamingStartedAt}
+                completedSteps={completedSteps}
+                lastHeartbeat={lastHeartbeat}
+                timeoutWarning={timeoutWarning}
                 onCancel={handleCancel}
               />
             )}

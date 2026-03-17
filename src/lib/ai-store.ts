@@ -4,9 +4,17 @@ export type StreamingPhase =
   | "connecting"
   | "llm_thinking"
   | "tool_executing"
+  | "tool_completed"
   | "llm_analyzing"
   | "streaming"
   | null;
+
+export interface CompletedStep {
+  type: "tool_started" | "tool_completed" | "progress";
+  tool: string;
+  detail?: string;
+  ts: number;
+}
 
 export interface AiMessage {
   role: "user" | "assistant";
@@ -43,6 +51,16 @@ interface AiChatState {
   setCurrentToolName: (name: string | null) => void;
   streamingStartedAt: number | null;
   setStreamingStartedAt: (ts: number | null) => void;
+
+  completedSteps: CompletedStep[];
+  addCompletedStep: (step: CompletedStep) => void;
+  clearCompletedSteps: () => void;
+
+  lastHeartbeat: number | null;
+  setLastHeartbeat: (ts: number | null) => void;
+
+  timeoutWarning: string | null;
+  setTimeoutWarning: (msg: string | null) => void;
 
   activeConversationId: string | null;
   setActiveConversationId: (id: string | null) => void;
@@ -89,6 +107,17 @@ export const useAiChatStore = create<AiChatState>((set) => ({
   setCurrentToolName: (currentToolName) => set({ currentToolName }),
   streamingStartedAt: null,
   setStreamingStartedAt: (streamingStartedAt) => set({ streamingStartedAt }),
+
+  completedSteps: [],
+  addCompletedStep: (step) =>
+    set((s) => ({ completedSteps: [...s.completedSteps, step] })),
+  clearCompletedSteps: () => set({ completedSteps: [] }),
+
+  lastHeartbeat: null,
+  setLastHeartbeat: (lastHeartbeat) => set({ lastHeartbeat }),
+
+  timeoutWarning: null,
+  setTimeoutWarning: (timeoutWarning) => set({ timeoutWarning }),
 
   activeConversationId: null,
   setActiveConversationId: (activeConversationId) =>

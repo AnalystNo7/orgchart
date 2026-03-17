@@ -18,6 +18,7 @@ export interface StreamCallbacks {
   onText: (text: string) => void;
   onToolCall: (info: ToolCallInfo) => void;
   onStatus: (phase: string, detail?: string) => void;
+  onProgress: (toolName: string, step: string) => void;
   onDone: (fullResponse: string, toolCalls: ToolCallInfo[]) => void;
   onError: (error: Error) => void;
 }
@@ -34,7 +35,12 @@ export async function runChat(
 ): Promise<void> {
   const systemPrompt = buildSystemPrompt(scenarioName);
   const allToolCalls: ToolCallInfo[] = [];
-  const tools = buildTools(scenarioId);
+
+  const onToolProgress = (toolName: string, step: string) => {
+    callbacks.onProgress(toolName, step);
+  };
+
+  const tools = buildTools(scenarioId, onToolProgress);
 
   try {
     callbacks.onStatus("llm_thinking");
@@ -65,7 +71,7 @@ export async function runChat(
               result: typeof trResult === "string" ? trResult : JSON.stringify(trResult ?? ""),
             };
             allToolCalls.push(info);
-            callbacks.onStatus("tool_executing", tc.toolName);
+            callbacks.onStatus("tool_completed", tc.toolName);
             callbacks.onToolCall(info);
           }
           callbacks.onStatus("llm_analyzing");

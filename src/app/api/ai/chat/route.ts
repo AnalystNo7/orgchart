@@ -40,6 +40,21 @@ export async function POST(req: NextRequest) {
         );
       };
 
+      // Heartbeat: send ping every 5s to keep connection alive
+      const heartbeatInterval = setInterval(() => {
+        send("heartbeat", { ts: Date.now() });
+      }, 5000);
+
+      // Timeout warning at 50s (maxDuration is 60s)
+      const timeoutWarningTimer = setTimeout(() => {
+        send("warning", { type: "timeout", message: "Запрос выполняется дольше обычного. Возможен таймаут." });
+      }, 50000);
+
+      const cleanup = () => {
+        clearInterval(heartbeatInterval);
+        clearTimeout(timeoutWarningTimer);
+      };
+
       const toolCalls: ToolCallInfo[] = [];
 
       send("status", { phase: "connecting" });
@@ -51,6 +66,9 @@ export async function POST(req: NextRequest) {
         },
         onStatus: (phase, detail) => {
           send("status", { phase, detail });
+        },
+        onProgress: (toolName, step) => {
+          send("progress", { tool: toolName, step });
         },
         onToolCall: (info) => {
           toolCalls.push(info);
@@ -64,6 +82,7 @@ export async function POST(req: NextRequest) {
           });
         },
         onDone: async (fullResponse, allToolCalls) => {
+          cleanup();
           // Save conversation
           try {
             const allMessages = [
@@ -100,6 +119,7 @@ export async function POST(req: NextRequest) {
           controller.close();
         },
         onError: (error) => {
+          cleanup();
           send("error", { message: error.message });
           controller.close();
         },

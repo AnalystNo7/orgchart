@@ -3,12 +3,15 @@ import { computeDiff } from "@/lib/diff";
 import { calculatePnl, type PnlMode } from "@/lib/pnl-calculator";
 import type { ShetilType, GapCategory, GapPriority } from "@prisma/client";
 
+import type { ToolProgressCallback } from "./tools";
+
 type ToolInput = Record<string, unknown>;
 
 export async function executeTool(
   name: string,
   input: ToolInput,
-  currentScenarioId: string
+  currentScenarioId: string,
+  onProgress?: ToolProgressCallback
 ): Promise<string> {
   try {
     switch (name) {
@@ -68,7 +71,7 @@ export async function executeTool(
       case "list_scenarios":
         return await listScenarios();
       case "run_whatif_scenario":
-        return await runWhatIfScenario(input, currentScenarioId);
+        return await runWhatIfScenario(input, currentScenarioId, onProgress);
       case "add_employee":
         return await addEmployee(input);
       case "remove_employees":
@@ -564,7 +567,8 @@ interface WhatIfOperation {
 
 async function runWhatIfScenario(
   input: ToolInput,
-  currentScenarioId: string
+  currentScenarioId: string,
+  onProgress?: ToolProgressCallback
 ): Promise<string> {
   const sourceScenarioId = (input.scenarioId as string) || currentScenarioId;
   const name = input.name as string;
@@ -572,9 +576,11 @@ async function runWhatIfScenario(
   const comparePnl = input.comparePnl !== false;
 
   // 1. Get before-metrics
+  onProgress?.("run_whatif_scenario", "Получение метрик исходного сценария...");
   const beforeMetrics = JSON.parse(await getOrgMetrics(sourceScenarioId));
 
   // 2. Clone scenario
+  onProgress?.("run_whatif_scenario", "Клонирование сценария...");
   const cloneResult = JSON.parse(
     await cloneScenario(sourceScenarioId, name)
   );
@@ -631,6 +637,7 @@ async function runWhatIfScenario(
   }
 
   // 3. Apply operations
+  onProgress?.("run_whatif_scenario", `Применение операций (${operations.length})...`);
   const opResults: Array<{ action: string; result: string }> = [];
   for (const op of operations) {
     let result: string;
@@ -690,14 +697,17 @@ async function runWhatIfScenario(
   }
 
   // 4. Get after-metrics
+  onProgress?.("run_whatif_scenario", "Расчёт метрик после изменений...");
   const afterMetrics = JSON.parse(await getOrgMetrics(newScenarioId));
 
   // 5. Compare scenarios
+  onProgress?.("run_whatif_scenario", "Сравнение структур...");
   const comparison = JSON.parse(await compareScenarios(sourceScenarioId, newScenarioId));
 
   // 6. Optionally compare P&L
   let pnlComparison = null;
   if (comparePnl) {
+    onProgress?.("run_whatif_scenario", "Расчёт P&L до/после...");
     try {
       const [beforePnl, afterPnl] = await Promise.all([
         calculatePnlTool(sourceScenarioId),

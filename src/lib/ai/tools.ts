@@ -2,7 +2,22 @@ import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import { executeTool } from "./tool-executor";
 
-export function buildTools(currentScenarioId: string) {
+export type ToolProgressCallback = (toolName: string, step: string) => void;
+
+function wrapExecute(
+  name: string,
+  currentScenarioId: string,
+  onProgress?: ToolProgressCallback
+) {
+  return async (params: Record<string, unknown>) => {
+    onProgress?.(name, "started");
+    const result = await executeTool(name, params, currentScenarioId, onProgress);
+    onProgress?.(name, "completed");
+    return result;
+  };
+}
+
+export function buildTools(currentScenarioId: string, onProgress?: ToolProgressCallback) {
   return {
     get_org_structure: tool({
       description:
@@ -12,8 +27,7 @@ export function buildTools(currentScenarioId: string) {
           scenarioId: z.string().optional().describe("ID сценария. Если не указан — используется текущий."),
         })
       ),
-      execute: async (params) =>
-        executeTool("get_org_structure", params, currentScenarioId),
+      execute: wrapExecute("get_org_structure", currentScenarioId, onProgress),
     }),
 
     get_department_details: tool({
@@ -24,8 +38,7 @@ export function buildTools(currentScenarioId: string) {
           departmentId: z.string().describe("ID подразделения"),
         })
       ),
-      execute: async (params) =>
-        executeTool("get_department_details", params, currentScenarioId),
+      execute: wrapExecute("get_department_details", currentScenarioId, onProgress),
     }),
 
     get_org_metrics: tool({
@@ -36,8 +49,7 @@ export function buildTools(currentScenarioId: string) {
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: async (params) =>
-        executeTool("get_org_metrics", params, currentScenarioId),
+      execute: wrapExecute("get_org_metrics", currentScenarioId, onProgress),
     }),
 
     compare_scenarios: tool({
@@ -49,8 +61,7 @@ export function buildTools(currentScenarioId: string) {
           rightScenarioId: z.string().describe("ID второго (to-be) сценария"),
         })
       ),
-      execute: async (params) =>
-        executeTool("compare_scenarios", params, currentScenarioId),
+      execute: wrapExecute("compare_scenarios", currentScenarioId, onProgress),
     }),
 
     clone_scenario: tool({
@@ -62,8 +73,7 @@ export function buildTools(currentScenarioId: string) {
           newName: z.string().describe("Название нового сценария"),
         })
       ),
-      execute: async (params) =>
-        executeTool("clone_scenario", params, currentScenarioId),
+      execute: wrapExecute("clone_scenario", currentScenarioId, onProgress),
     }),
 
     create_department: tool({
@@ -78,8 +88,7 @@ export function buildTools(currentScenarioId: string) {
             .describe("Тип ШЕТИЛ"),
         })
       ),
-      execute: async (params) =>
-        executeTool("create_department", params, currentScenarioId),
+      execute: wrapExecute("create_department", currentScenarioId, onProgress),
     }),
 
     move_department: tool({
@@ -90,8 +99,7 @@ export function buildTools(currentScenarioId: string) {
           newParentId: z.string().optional().describe("ID нового родителя (null для корня)"),
         })
       ),
-      execute: async (params) =>
-        executeTool("move_department", params, currentScenarioId),
+      execute: wrapExecute("move_department", currentScenarioId, onProgress),
     }),
 
     rename_department: tool({
@@ -102,8 +110,7 @@ export function buildTools(currentScenarioId: string) {
           newName: z.string().describe("Новое название"),
         })
       ),
-      execute: async (params) =>
-        executeTool("rename_department", params, currentScenarioId),
+      execute: wrapExecute("rename_department", currentScenarioId, onProgress),
     }),
 
     delete_department: tool({
@@ -114,8 +121,7 @@ export function buildTools(currentScenarioId: string) {
           departmentId: z.string().describe("ID подразделения"),
         })
       ),
-      execute: async (params) =>
-        executeTool("delete_department", params, currentScenarioId),
+      execute: wrapExecute("delete_department", currentScenarioId, onProgress),
     }),
 
     move_employees: tool({
@@ -126,8 +132,7 @@ export function buildTools(currentScenarioId: string) {
           targetDepartmentId: z.string().describe("ID целевого подразделения"),
         })
       ),
-      execute: async (params) =>
-        executeTool("move_employees", params, currentScenarioId),
+      execute: wrapExecute("move_employees", currentScenarioId, onProgress),
     }),
 
     create_gap_passport: tool({
@@ -152,8 +157,7 @@ export function buildTools(currentScenarioId: string) {
           aiRationale: z.string().optional().describe("Обоснование AI"),
         })
       ),
-      execute: async (params) =>
-        executeTool("create_gap_passport", params, currentScenarioId),
+      execute: wrapExecute("create_gap_passport", currentScenarioId, onProgress),
     }),
 
     calculate_pnl: tool({
@@ -170,16 +174,14 @@ export function buildTools(currentScenarioId: string) {
           periodEnd: z.string().optional().describe("Конец периода (ISO date)"),
         })
       ),
-      execute: async (params) =>
-        executeTool("calculate_pnl", params, currentScenarioId),
+      execute: wrapExecute("calculate_pnl", currentScenarioId, onProgress),
     }),
 
     list_scenarios: tool({
       description:
         "Получить список всех сценариев для выбора при сравнении или what-if.",
       inputSchema: zodSchema(z.object({})),
-      execute: async (params) =>
-        executeTool("list_scenarios", params, currentScenarioId),
+      execute: wrapExecute("list_scenarios", currentScenarioId, onProgress),
     }),
 
     run_whatif_scenario: tool({
@@ -209,8 +211,7 @@ export function buildTools(currentScenarioId: string) {
           comparePnl: z.boolean().optional().describe("Сравнить P&L до/после (по умолчанию true)"),
         })
       ),
-      execute: async (params) =>
-        executeTool("run_whatif_scenario", params, currentScenarioId),
+      execute: wrapExecute("run_whatif_scenario", currentScenarioId, onProgress),
     }),
 
     add_employee: tool({
@@ -225,8 +226,7 @@ export function buildTools(currentScenarioId: string) {
           fte: z.number().optional().describe("FTE (ставка), по умолчанию 1.0"),
         })
       ),
-      execute: async (params) =>
-        executeTool("add_employee", params, currentScenarioId),
+      execute: wrapExecute("add_employee", currentScenarioId, onProgress),
     }),
 
     remove_employees: tool({
@@ -237,8 +237,7 @@ export function buildTools(currentScenarioId: string) {
           employeeIds: z.array(z.string()).describe("Массив ID сотрудников для удаления"),
         })
       ),
-      execute: async (params) =>
-        executeTool("remove_employees", params, currentScenarioId),
+      execute: wrapExecute("remove_employees", currentScenarioId, onProgress),
     }),
   };
 }
