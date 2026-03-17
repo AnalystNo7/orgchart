@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Bot, X, Plus, History, Send } from "lucide-react";
+import { Bot, X, Plus, History, Send, FolderOpen } from "lucide-react";
 import { useAiChatStore, type AiMessage, type StreamingPhase } from "@/lib/ai-store";
 import { useOrgChartStore } from "@/lib/store";
 import { ChatMessage } from "./ChatMessage";
@@ -9,8 +9,81 @@ import { QuickActions } from "./QuickActions";
 import { ConversationList } from "./ConversationList";
 import { StreamingStatus } from "./StreamingStatus";
 
+interface ScenarioItem {
+  id: string;
+  name: string;
+  isBaseline: boolean;
+  status: string;
+}
+
+const statusDotColor: Record<string, string> = {
+  DRAFT: "bg-yellow-400",
+  ACTIVE: "bg-green-400",
+  ARCHIVED: "bg-neutral-400",
+};
+
+function ScenarioPicker({ onSelect }: { onSelect: (id: string) => void }) {
+  const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/scenarios")
+      .then((r) => r.json())
+      .then((data: ScenarioItem[]) => setScenarios(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="px-3 py-4 text-center text-xs text-neutral-400">
+        Загрузка сценариев...
+      </div>
+    );
+  }
+
+  if (scenarios.length === 0) {
+    return (
+      <div className="px-3 py-4 text-center text-xs text-neutral-400">
+        Нет доступных сценариев
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3 px-3 py-4">
+      <FolderOpen className="h-8 w-8 text-purple-200" />
+      <p className="text-sm font-medium text-neutral-600">
+        Выберите сценарий
+      </p>
+      <p className="text-xs text-neutral-400">
+        Для работы с AI-ассистентом
+      </p>
+      <div className="mt-1 w-full space-y-1.5">
+        {scenarios.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => onSelect(s.id)}
+            className="flex w-full items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2.5 text-left text-sm transition-colors hover:border-purple-300 hover:bg-purple-50"
+          >
+            <span
+              className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotColor[s.status] ?? "bg-neutral-300"}`}
+            />
+            <span className="flex-1 truncate">
+              {s.isBaseline ? "\u2605 " : ""}
+              {s.name}
+            </span>
+            <span className="text-xs text-neutral-400">{s.status}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AiChatPanel() {
   const scenarioId = useOrgChartStore((s) => s.currentScenarioId);
+  const setCurrentScenarioId = useOrgChartStore((s) => s.setCurrentScenarioId);
   const {
     close,
     messages,
@@ -282,15 +355,19 @@ export function AiChatPanel() {
       {/* Messages */}
       <div className="flex-1 overflow-auto px-3 py-3">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center">
-            <Bot className="mb-3 h-10 w-10 text-purple-200" />
-            <p className="text-sm font-medium text-neutral-500">
-              AI-ассистент
-            </p>
-            <p className="mt-1 text-xs text-neutral-400">
-              Задайте вопрос или выберите действие
-            </p>
-          </div>
+          !scenarioId ? (
+            <ScenarioPicker onSelect={setCurrentScenarioId} />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center text-center">
+              <Bot className="mb-3 h-10 w-10 text-purple-200" />
+              <p className="text-sm font-medium text-neutral-500">
+                AI-ассистент
+              </p>
+              <p className="mt-1 text-xs text-neutral-400">
+                Задайте вопрос или выберите действие
+              </p>
+            </div>
+          )
         ) : (
           <div className="space-y-4">
             {messages.map((msg, i) => (
@@ -312,16 +389,16 @@ export function AiChatPanel() {
         )}
       </div>
 
-      {/* Quick actions (only when empty) */}
-      {messages.length === 0 && (
-        <QuickActions onAction={sendMessage} disabled={isStreaming || !scenarioId} />
+      {/* Quick actions (only when empty and scenario selected) */}
+      {messages.length === 0 && scenarioId && (
+        <QuickActions onAction={sendMessage} disabled={isStreaming} />
       )}
 
       {/* Input */}
       <div className="border-t px-3 py-2">
         {!scenarioId ? (
           <div className="text-center text-xs text-neutral-400">
-            Выберите сценарий для работы с AI
+            Выберите сценарий выше для начала работы
           </div>
         ) : (
           <div className="flex items-end gap-2">
