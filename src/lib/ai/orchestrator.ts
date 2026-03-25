@@ -82,8 +82,52 @@ export async function runChat(
     callbacks.onDone(result.text, allToolCalls);
   } catch (error) {
     console.error("[AI_CHAT_ERROR]", error);
-    callbacks.onError(
-      error instanceof Error ? error : new Error(String(error))
-    );
+    callbacks.onError(new Error(formatAIError(error)));
   }
+}
+
+function formatAIError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const body =
+    (error as Record<string, unknown>)?.responseBody as string | undefined;
+
+  // API rate/usage limit
+  if (raw.includes("usage limit") || body?.includes("usage limit")) {
+    const dateMatch = (body ?? raw).match(
+      /access on (\d{4}-\d{2}-\d{2})/
+    );
+    const until = dateMatch ? ` до ${dateMatch[1]}` : "";
+    return `Достигнут лимит API${until}. Попробуйте позже или смените AI-провайдер (AI_PROVIDER в .env).`;
+  }
+
+  // Authentication
+  if (
+    raw.includes("401") ||
+    raw.includes("authentication") ||
+    raw.includes("api_key")
+  ) {
+    return "Ошибка аутентификации API. Проверьте API-ключ в .env файле.";
+  }
+
+  // Rate limiting (429)
+  if (raw.includes("429") || raw.includes("rate_limit")) {
+    return "Превышен лимит запросов к API. Подождите минуту и попробуйте снова.";
+  }
+
+  // Model overloaded
+  if (raw.includes("overloaded") || raw.includes("529")) {
+    return "AI-сервис временно перегружен. Попробуйте через несколько минут.";
+  }
+
+  // Network/connection errors
+  if (
+    raw.includes("ECONNREFUSED") ||
+    raw.includes("ETIMEDOUT") ||
+    raw.includes("fetch failed")
+  ) {
+    return "Не удалось подключиться к AI-сервису. Проверьте сетевое соединение.";
+  }
+
+  // Generic fallback — truncate long messages
+  return raw.length > 200 ? raw.slice(0, 200) + "…" : raw;
 }

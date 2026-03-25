@@ -256,6 +256,14 @@ export function AiChatPanel() {
                       detail: data.step,
                       ts: Date.now(),
                     });
+                  } else if (event === "error") {
+                    // Server-side error (API limit, network, etc.)
+                    resetStreamingState();
+                    addMessage({
+                      role: "assistant",
+                      content: `Ошибка: ${data.message || "Неизвестная ошибка"}`,
+                      timestamp: new Date().toISOString(),
+                    });
                   } else if (event === "heartbeat") {
                     setLastHeartbeat(data.ts);
                   } else if (event === "warning") {
