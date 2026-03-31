@@ -109,9 +109,14 @@ function formatAIError(error: unknown): string {
     return "Ошибка аутентификации API. Проверьте API-ключ в .env файле.";
   }
 
-  // Rate limiting (429)
-  if (raw.includes("429") || raw.includes("rate_limit")) {
-    return "Превышен лимит запросов к API. Подождите минуту и попробуйте снова.";
+  // Rate limiting (429) — including per-minute token limits
+  if (
+    raw.includes("429") ||
+    raw.includes("rate_limit") ||
+    raw.includes("rate limit") ||
+    raw.includes("tokens per minute")
+  ) {
+    return "Слишком много запросов. Подождите минуту и попробуйте снова.";
   }
 
   // Model overloaded

@@ -194,9 +194,12 @@ export function AiChatPanel() {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: "Unknown error" }));
+          const errorText = res.status === 429
+            ? "Слишком много запросов. Подождите минуту и попробуйте снова."
+            : err.error || res.statusText;
           addMessage({
             role: "assistant",
-            content: `Ошибка: ${err.error || res.statusText}`,
+            content: `⚠️ ${errorText}`,
             timestamp: new Date().toISOString(),
           });
           resetStreamingState();
@@ -261,7 +264,7 @@ export function AiChatPanel() {
                     resetStreamingState();
                     addMessage({
                       role: "assistant",
-                      content: `Ошибка: ${data.message || "Неизвестная ошибка"}`,
+                      content: `⚠️ ${data.message || "Неизвестная ошибка"}`,
                       timestamp: new Date().toISOString(),
                     });
                   } else if (event === "heartbeat") {
@@ -433,9 +436,10 @@ export function AiChatPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Задайте вопрос..."
+              disabled={isStreaming}
+              placeholder={isStreaming ? "Подождите ответа..." : "Задайте вопрос..."}
               rows={1}
-              className="max-h-24 min-h-[36px] flex-1 resize-none rounded-md border border-neutral-200 px-3 py-2 text-sm focus:border-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-300"
+              className="max-h-24 min-h-[36px] flex-1 resize-none rounded-md border border-neutral-200 px-3 py-2 text-sm focus:border-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-300 disabled:bg-neutral-50 disabled:text-neutral-400 disabled:cursor-not-allowed"
             />
             <button
               onClick={() => sendMessage(input)}
