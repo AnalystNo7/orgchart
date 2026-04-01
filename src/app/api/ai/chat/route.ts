@@ -34,16 +34,48 @@ export async function POST(req: NextRequest) {
   // Try local query processing first (no external LLM)
   const lastMessage = messages[messages.length - 1];
   if (lastMessage?.role === "user") {
-    const localResult = await processLocalQuery(lastMessage.content, scenarioId);
-    if (localResult.handled) {
+    // Check if user explicitly approved LLM usage with prefix "!ai "
+    const useLlm = lastMessage.content.startsWith("!ai ");
+
+    if (!useLlm) {
+      const localResult = await processLocalQuery(lastMessage.content, scenarioId);
+      if (localResult.handled) {
+        return buildLocalResponseStream(
+          localResult.response,
+          localResult.sources,
+          messages,
+          scenarioId,
+          conversationId
+        );
+      }
+
+      // Local search didn't handle it — ask permission before using external LLM
+      const askPermissionResponse = `Для ответа на этот запрос необходимо обращение к внешней AI-модели (Anthropic Claude).
+
+**Данные из локальных источников не найдены.**
+
+Чтобы отправить запрос во внешнюю LLM, добавьте префикс \`!ai\` к вашему сообщению, например:
+> !ai ${lastMessage.content.slice(0, 80)}${lastMessage.content.length > 80 ? "..." : ""}
+
+Или используйте локальные команды:
+- **Бенчмарки**: «бенчмарки для IT-интеграторов», «какой overhead нормальный»
+- **Диагностика**: «что у нас не в норме», «отклонения от бенчмарков»
+- **База знаний**: «найди в базе знаний про RACI», «документы про Минцберга»`;
+
       return buildLocalResponseStream(
-        localResult.response,
-        localResult.sources,
+        askPermissionResponse,
+        [],
         messages,
         scenarioId,
         conversationId
       );
     }
+
+    // Strip "!ai " prefix before sending to LLM
+    messages[messages.length - 1] = {
+      ...lastMessage,
+      content: lastMessage.content.slice(4),
+    };
   }
 
   // Create SSE stream
