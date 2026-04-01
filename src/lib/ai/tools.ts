@@ -36,6 +36,22 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       execute: wrapExecute("get_benchmarks", currentScenarioId, onProgress),
     }),
 
+    query_knowledge_base: tool({
+      description:
+        "Поиск по базе знаний (RAG). Ищет релевантные фрагменты документов по семантической близости к запросу. Используй для: поиска управленческих фреймворков, бенчмарков из загруженных документов, регламентов и НМД клиента. Возвращает top-K релевантных фрагментов с указанием источника.",
+      inputSchema: zodSchema(
+        z.object({
+          query: z.string().describe("Поисковый запрос на естественном языке"),
+          topK: z.number().optional().describe("Количество результатов (по умолчанию 5)"),
+          category: z
+            .enum(["FRAMEWORK", "BENCHMARK", "CLIENT_DOC"])
+            .optional()
+            .describe("Фильтр по категории документов"),
+        })
+      ),
+      execute: wrapExecute("query_knowledge_base", currentScenarioId, onProgress),
+    }),
+
     get_org_structure: tool({
       description:
         "Получить оргструктуру сценария: список подразделений с метриками (количество сотрудников по категориям ПП/ОПП/АУП, FTE, руководитель, тип ШЕТИЛ). Используй для анализа текущего состояния.",

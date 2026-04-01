@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { computeDiff } from "@/lib/diff";
 import { calculatePnl, type PnlMode } from "@/lib/pnl-calculator";
 import { getBenchmarks, listAvailableMetrics, listAvailableIndustries, type BenchmarkCategory } from "./benchmarks";
+import { retrieveChunks, formatRetrievalContext } from "@/lib/rag";
 import type { ShetilType, GapCategory, GapPriority } from "@prisma/client";
 
 import type { ToolProgressCallback } from "./tools";
@@ -18,6 +19,8 @@ export async function executeTool(
     switch (name) {
       case "get_benchmarks":
         return getBenchmarksTool(input);
+      case "query_knowledge_base":
+        return await queryKnowledgeBaseTool(input);
       case "get_org_structure":
         return await getOrgStructure(
           (input.scenarioId as string) || currentScenarioId
@@ -860,4 +863,42 @@ function getBenchmarksTool(input: ToolInput): string {
     benchmarks,
     note: "Источник: OSINT-бенчмарки (Уровень 1). Для более точных данных загрузите отраслевые отчёты в Knowledge Base.",
   }, null, 2);
+}
+
+async function queryKnowledgeBaseTool(input: ToolInput): Promise<string> {
+  const query = input.query as string;
+  const topK = (input.topK as number) || 5;
+  const category = input.category as string | undefined;
+
+  try {
+    const results = await retrieveChunks(query, topK, category);
+
+    if (results.length === 0) {
+      return JSON.stringify({
+        message: "В базе знаний не найдено релевантных документов по запросу.",
+        query,
+      });
+    }
+
+    const context = formatRetrievalContext(results);
+
+    return JSON.stringify({
+      count: results.length,
+      context,
+      sources: results.map((r) => ({
+        document: r.documentTitle,
+        category: r.category,
+        similarity: `${(r.similarity * 100).toFixed(1)}%`,
+      })),
+    }, null, 2);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    // If pgvector not available or no documents, return graceful message
+    if (msg.includes("does not exist") || msg.includes("vector")) {
+      return JSON.stringify({
+        message: "База знаний пока пуста или pgvector не настроен. Загрузите документы через раздел «База знаний».",
+      });
+    }
+    return JSON.stringify({ error: msg });
+  }
 }
