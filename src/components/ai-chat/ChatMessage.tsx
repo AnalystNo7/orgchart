@@ -2,12 +2,95 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, User, Wrench } from "lucide-react";
+import { Bot, User, Wrench, BookOpenCheck, BarChart3, Brain } from "lucide-react";
 import type { AiMessage } from "@/lib/ai-store";
 import { toolLabel } from "./tool-labels";
+import React from "react";
+
+interface SourceRef {
+  type: "OSINT" | "KB" | "LLM";
+  label: string;
+}
+
+const SOURCE_STYLES: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
+  OSINT: {
+    bg: "bg-blue-100",
+    text: "text-blue-700",
+    icon: <BarChart3 className="h-3 w-3" />,
+  },
+  KB: {
+    bg: "bg-green-100",
+    text: "text-green-700",
+    icon: <BookOpenCheck className="h-3 w-3" />,
+  },
+  LLM: {
+    bg: "bg-neutral-100",
+    text: "text-neutral-500",
+    icon: <Brain className="h-3 w-3" />,
+  },
+};
+
+/**
+ * Parse source markers like 【OSINT: Bain Spans & Layers】 from text
+ */
+function parseSourceMarkers(text: string): SourceRef[] {
+  const regex = /【(OSINT|KB|LLM)(?::?\s*([^】]*))?】/g;
+  const sources: SourceRef[] = [];
+  const seen = new Set<string>();
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    const type = match[1] as "OSINT" | "KB" | "LLM";
+    const detail = match[2]?.trim() || "";
+    const label = detail || type;
+    const key = `${type}:${label}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      sources.push({ type, label });
+    }
+  }
+
+  return sources;
+}
+
+/**
+ * Replace source markers in markdown with styled inline badges
+ */
+function replaceMarkersWithBadges(text: string): string {
+  return text.replace(
+    /【(OSINT|KB|LLM)(?::?\s*([^】]*))?】/g,
+    (_match, type: string, detail?: string) => {
+      const label = detail?.trim() || type;
+      // Use HTML spans that ReactMarkdown will pass through
+      if (type === "OSINT") {
+        return `<source-badge data-type="OSINT" data-label="${label}"></source-badge>`;
+      } else if (type === "KB") {
+        return `<source-badge data-type="KB" data-label="${label}"></source-badge>`;
+      } else {
+        return `<source-badge data-type="LLM" data-label="${label}"></source-badge>`;
+      }
+    }
+  );
+}
+
+function SourceBadge({ type, label }: { type: string; label: string }) {
+  const style = SOURCE_STYLES[type] || SOURCE_STYLES.LLM;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${style.bg} ${style.text} align-middle mx-0.5`}
+    >
+      {style.icon}
+      {label}
+    </span>
+  );
+}
 
 export function ChatMessage({ message }: { message: AiMessage }) {
   const isUser = message.role === "user";
+  const sources = !isUser ? parseSourceMarkers(message.content) : [];
+  const processedContent = !isUser
+    ? replaceMarkersWithBadges(message.content)
+    : message.content;
 
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -39,12 +122,43 @@ export function ChatMessage({ message }: { message: AiMessage }) {
           </div>
         )}
         <div className="prose prose-sm max-w-none prose-headings:text-sm prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {message.content}
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              // Render source-badge custom elements
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              "source-badge": ({ node, ...props }: any) => {
+                const type = props["data-type"] || node?.properties?.dataType || "LLM";
+                const label = props["data-label"] || node?.properties?.dataLabel || type;
+                return <SourceBadge type={type} label={label} />;
+              },
+            }}
+          >
+            {processedContent}
           </ReactMarkdown>
         </div>
+
+        {/* Sources footer */}
+        {!isUser && sources.length > 0 && (
+          <div className="mt-2 border-t border-neutral-200 pt-2">
+            <div className="text-[10px] font-medium text-neutral-400 mb-1">Источники:</div>
+            <div className="flex flex-wrap gap-1">
+              {sources.map((s, i) => (
+                <SourceBadge key={i} type={s.type} label={s.label} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* LLM-only badge when no tools were called and no markers found */}
+        {!isUser && sources.length === 0 && !message.content.includes("【") && message.content.length > 0 && (
+          <div className="mt-2 border-t border-neutral-200 pt-2">
+            <div className="flex items-center gap-1">
+              <SourceBadge type="LLM" label="LLM-знания" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-

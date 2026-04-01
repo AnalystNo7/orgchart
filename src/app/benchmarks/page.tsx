@@ -257,6 +257,7 @@ export default function BenchmarksPage() {
                 <th className="px-4 py-3 text-center">У вас</th>
                 <th className="px-4 py-3">Отклонение</th>
                 <th className="px-4 py-3">Источник</th>
+                <th className="px-4 py-3 text-center">Уровень</th>
               </tr>
             </thead>
             <tbody>
@@ -297,12 +298,17 @@ export default function BenchmarksPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-neutral-400">{b.source}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                        1-OSINT
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-neutral-400">
+                  <td colSpan={11} className="px-4 py-8 text-center text-neutral-400">
                     Нет бенчмарков по заданным фильтрам
                   </td>
                 </tr>
