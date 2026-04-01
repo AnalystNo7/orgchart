@@ -50,6 +50,11 @@ const PHASE_CONFIG: Record<
     icon: Type,
     color: "text-green-600",
   },
+  local_search: {
+    label: "Локальный поиск (без LLM)...",
+    icon: BarChart3,
+    color: "text-blue-600",
+  },
 };
 
 interface StreamingStatusProps {

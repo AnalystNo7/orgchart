@@ -7,6 +7,7 @@ export type StreamingPhase =
   | "tool_completed"
   | "llm_analyzing"
   | "streaming"
+  | "local_search"
   | null;
 
 export interface CompletedStep {
