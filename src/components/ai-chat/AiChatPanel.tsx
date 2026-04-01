@@ -8,6 +8,7 @@ import { ChatMessage } from "./ChatMessage";
 import { QuickActions } from "./QuickActions";
 import { ConversationList } from "./ConversationList";
 import { StreamingStatus } from "./StreamingStatus";
+import { ResizablePanel } from "@/components/ui/resizable-panel";
 
 interface ScenarioItem {
   id: string;
@@ -336,14 +337,14 @@ export function AiChatPanel() {
 
   if (showConversationList) {
     return (
-      <aside className="flex h-full w-96 flex-col border-l bg-white">
+      <ResizablePanel defaultWidth={384} minWidth={300} className="h-full border-l bg-white">
         <ConversationList />
-      </aside>
+      </ResizablePanel>
     );
   }
 
   return (
-    <aside className="flex h-full w-96 flex-col border-l bg-white">
+    <ResizablePanel defaultWidth={384} minWidth={300} className="h-full border-l bg-white">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-2">
@@ -451,6 +452,6 @@ export function AiChatPanel() {
           </div>
         )}
       </div>
-    </aside>
+    </ResizablePanel>
   );
 }

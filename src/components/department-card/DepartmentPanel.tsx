@@ -32,6 +32,7 @@ import { AddParentDialog } from "./AddParentDialog";
 import { SHETIL_CONFIG } from "@/types";
 import type { MetricsMode } from "@/types";
 import { useOrgChartStore } from "@/lib/store";
+import { ResizablePanel } from "@/components/ui/resizable-panel";
 import type { ShetilType, EmployeeCategory } from "@prisma/client";
 
 interface Department {
@@ -210,16 +211,18 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
 
   if (!dept) {
     return (
-      <div className="flex w-80 items-center justify-center border-l bg-white">
-        <p className="text-sm text-neutral-400">Загрузка...</p>
-      </div>
+      <ResizablePanel defaultWidth={384} minWidth={300} className="h-full border-l bg-white">
+        <div className="flex h-full items-center justify-center">
+          <p className="text-sm text-neutral-400">Загрузка...</p>
+        </div>
+      </ResizablePanel>
     );
   }
 
   const shetilConfig = SHETIL_CONFIG[shetilType];
 
   return (
-    <div className="flex w-96 flex-col border-l bg-white">
+    <ResizablePanel defaultWidth={384} minWidth={300} className="h-full border-l bg-white">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="truncate text-sm font-semibold">{dept.name}</h2>
@@ -491,6 +494,6 @@ export function DepartmentPanel({ departmentId }: DepartmentPanelProps) {
         childCount={dept._count.children}
         departmentName={dept.name}
       />
-    </div>
+    </ResizablePanel>
   );
 }
