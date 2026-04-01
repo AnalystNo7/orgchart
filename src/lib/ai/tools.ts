@@ -19,6 +19,23 @@ function wrapExecute(
 
 export function buildTools(currentScenarioId: string, onProgress?: ToolProgressCallback) {
   return {
+    get_benchmarks: tool({
+      description:
+        "Получить отраслевые бенчмарки (OSINT). Категории: org_design (span of control, overhead ratio, глубина иерархии), financial (revenue/FTE, маржинальность, утилизация), hr (текучесть, стоимость найма, обучение). Фильтрация по отрасли и размеру компании.",
+      inputSchema: zodSchema(
+        z.object({
+          category: z
+            .enum(["org_design", "financial", "hr"])
+            .optional()
+            .describe("Категория бенчмарков (если не указана — все)"),
+          metric: z.string().optional().describe("Конкретная метрика (span_of_control, overhead_ratio, revenue_per_fte, turnover_rate и др.)"),
+          industry: z.string().optional().describe("Отрасль (IT-интеграторы, IT-продуктовые, Нефтегаз и др.)"),
+          companySize: z.string().optional().describe("Размер компании (100-500, 500-2000 и др.)"),
+        })
+      ),
+      execute: wrapExecute("get_benchmarks", currentScenarioId, onProgress),
+    }),
+
     get_org_structure: tool({
       description:
         "Получить оргструктуру сценария: список подразделений с метриками (количество сотрудников по категориям ПП/ОПП/АУП, FTE, руководитель, тип ШЕТИЛ). Используй для анализа текущего состояния.",

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { computeDiff } from "@/lib/diff";
 import { calculatePnl, type PnlMode } from "@/lib/pnl-calculator";
+import { getBenchmarks, listAvailableMetrics, listAvailableIndustries, type BenchmarkCategory } from "./benchmarks";
 import type { ShetilType, GapCategory, GapPriority } from "@prisma/client";
 
 import type { ToolProgressCallback } from "./tools";
@@ -15,6 +16,8 @@ export async function executeTool(
 ): Promise<string> {
   try {
     switch (name) {
+      case "get_benchmarks":
+        return getBenchmarksTool(input);
       case "get_org_structure":
         return await getOrgStructure(
           (input.scenarioId as string) || currentScenarioId
@@ -834,4 +837,27 @@ async function removeEmployees(employeeIds: string[]): Promise<string> {
     message: `Удалено ${deleted.count} сотрудник(ов)`,
     count: deleted.count,
   });
+}
+
+function getBenchmarksTool(input: ToolInput): string {
+  const category = input.category as BenchmarkCategory | undefined;
+  const metric = input.metric as string | undefined;
+  const industry = input.industry as string | undefined;
+  const companySize = input.companySize as string | undefined;
+
+  const benchmarks = getBenchmarks({ category, metric, industry, companySize });
+
+  if (benchmarks.length === 0) {
+    return JSON.stringify({
+      message: "Бенчмарки не найдены по заданным фильтрам",
+      availableMetrics: listAvailableMetrics(),
+      availableIndustries: listAvailableIndustries(),
+    }, null, 2);
+  }
+
+  return JSON.stringify({
+    count: benchmarks.length,
+    benchmarks,
+    note: "Источник: OSINT-бенчмарки (Уровень 1). Для более точных данных загрузите отраслевые отчёты в Knowledge Base.",
+  }, null, 2);
 }
