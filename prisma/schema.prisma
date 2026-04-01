@@ -265,7 +265,7 @@ model KnowledgeChunk {
   documentId String
   document   KnowledgeDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
   content    String
-  embedding  Unsupported("vector(1024)")?
+  embedding  Json?              // number[] — vector 1024 dimensions, stored as JSON
   chunkIndex Int
   metadata   Json?
   createdAt  DateTime           @default(now())

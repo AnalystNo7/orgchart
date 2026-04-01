@@ -1,5 +1,7 @@
 /**
- * RAG Retrieval — поиск релевантных чанков по vector similarity
+ * RAG Retrieval — поиск релевантных чанков по cosine similarity (in-memory)
+ * Для MVP — загружаем все embeddings из БД и считаем similarity в коде.
+ * При переходе на pgvector — заменить на SQL-запрос с оператором <=>.
  */
 
 import { prisma } from "@/lib/db";
@@ -15,6 +17,19 @@ export interface RetrievalResult {
   metadata: Record<string, unknown> | null;
 }
 
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dotProduct / denom;
+}
+
 /**
  * Поиск top-K чанков по семантической близости к запросу
  */
@@ -24,51 +39,57 @@ export async function retrieveChunks(
   categoryFilter?: string
 ): Promise<RetrievalResult[]> {
   const queryEmbedding = await getQueryEmbedding(query);
-  const embeddingStr = `[${queryEmbedding.join(",")}]`;
 
-  let categoryClause = "";
+  // Load all chunks with embeddings
+  const whereClause: Record<string, unknown> = {
+    embedding: { not: null },
+  };
   if (categoryFilter) {
-    categoryClause = `AND d.category = '${categoryFilter}'`;
+    whereClause.document = { category: categoryFilter };
   }
 
-  const results = await prisma.$queryRawUnsafe<
-    Array<{
-      chunk_id: string;
-      document_id: string;
-      document_title: string;
-      category: string;
-      content: string;
-      similarity: number;
-      metadata: string | null;
-    }>
-  >(
-    `SELECT
-       c.id as chunk_id,
-       d.id as document_id,
-       d.title as document_title,
-       d.category,
-       c.content,
-       1 - (c.embedding <=> $1::vector) as similarity,
-       c.metadata::text
-     FROM "KnowledgeChunk" c
-     JOIN "KnowledgeDocument" d ON d.id = c."documentId"
-     WHERE c.embedding IS NOT NULL
-     ${categoryClause}
-     ORDER BY c.embedding <=> $1::vector
-     LIMIT $2`,
-    embeddingStr,
-    topK
-  );
+  const chunks = await prisma.knowledgeChunk.findMany({
+    where: whereClause,
+    select: {
+      id: true,
+      documentId: true,
+      content: true,
+      embedding: true,
+      metadata: true,
+      document: {
+        select: {
+          title: true,
+          category: true,
+        },
+      },
+    },
+  });
 
-  return results.map((r) => ({
-    chunkId: r.chunk_id,
-    documentId: r.document_id,
-    documentTitle: r.document_title,
-    category: r.category,
-    content: r.content,
-    similarity: Number(r.similarity),
-    metadata: r.metadata ? JSON.parse(r.metadata) : null,
-  }));
+  if (chunks.length === 0) {
+    return [];
+  }
+
+  // Calculate cosine similarity for each chunk
+  const scored = chunks
+    .map((chunk) => {
+      const embedding = chunk.embedding as number[] | null;
+      if (!embedding || embedding.length === 0) return null;
+      const similarity = cosineSimilarity(queryEmbedding, embedding);
+      return {
+        chunkId: chunk.id,
+        documentId: chunk.documentId,
+        documentTitle: chunk.document.title,
+        category: chunk.document.category,
+        content: chunk.content,
+        similarity,
+        metadata: chunk.metadata as Record<string, unknown> | null,
+      };
+    })
+    .filter((r): r is RetrievalResult => r !== null);
+
+  // Sort by similarity descending, take top-K
+  scored.sort((a, b) => b.similarity - a.similarity);
+  return scored.slice(0, topK);
 }
 
 /**

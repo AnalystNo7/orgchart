@@ -45,21 +45,17 @@ export async function ingestDocument(options: IngestOptions): Promise<{
   const chunkTexts = chunks.map((c) => c.content);
   const embeddings = await getEmbeddings(chunkTexts);
 
-  // 4. Save chunks with embeddings using raw SQL (pgvector)
+  // 4. Save chunks with embeddings as JSON arrays
   for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    const embedding = embeddings[i];
-    const embeddingStr = `[${embedding.join(",")}]`;
-
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO "KnowledgeChunk" (id, "documentId", content, embedding, "chunkIndex", metadata, "createdAt")
-       VALUES (gen_random_uuid(), $1, $2, $3::vector, $4, $5, NOW())`,
-      document.id,
-      chunk.content,
-      embeddingStr,
-      chunk.index,
-      JSON.stringify(chunk.metadata || null)
-    );
+    await prisma.knowledgeChunk.create({
+      data: {
+        documentId: document.id,
+        content: chunks[i].content,
+        embedding: embeddings[i] as unknown as undefined,
+        chunkIndex: chunks[i].index,
+        metadata: chunks[i].metadata || null,
+      },
+    });
   }
 
   return { documentId: document.id, chunksCount: chunks.length };
