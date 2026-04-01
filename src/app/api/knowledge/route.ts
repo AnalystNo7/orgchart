@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { ingestDocument } from "@/lib/rag";
 import { parsePdf } from "@/lib/rag/pdf-parser";
+import { parseDocx } from "@/lib/rag/docx-parser";
 import type { KnowledgeCategory } from "@prisma/client";
 
 // GET — list all documents
@@ -41,11 +42,14 @@ export async function POST(request: Request) {
       if (ext === "pdf") {
         const buffer = Buffer.from(await file.arrayBuffer());
         content = await parsePdf(buffer);
+      } else if (ext === "docx" || ext === "doc") {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        content = await parseDocx(buffer);
       } else if (ext === "md" || ext === "txt" || ext === "markdown") {
         content = await file.text();
       } else {
         return NextResponse.json(
-          { error: `Формат .${ext} не поддерживается. Допустимые: .md, .txt, .pdf` },
+          { error: `Формат .${ext} не поддерживается. Допустимые: .md, .txt, .pdf, .docx, .doc` },
           { status: 400 }
         );
       }

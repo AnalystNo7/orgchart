@@ -182,12 +182,12 @@ export default function KnowledgePage() {
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-neutral-500">
-                Файл (MD, TXT, PDF)
+                Файл (MD, TXT, PDF, DOCX)
               </label>
               <input
                 id="file-input"
                 type="file"
-                accept=".md,.txt,.pdf,.markdown"
+                accept=".md,.txt,.pdf,.markdown,.docx,.doc"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 className="text-sm"
               />
