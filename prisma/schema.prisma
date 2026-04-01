@@ -232,6 +232,47 @@ model AiConversation {
   @@index([scenarioId])
 }
 
+// --- Knowledge Base / RAG ---
+
+enum KnowledgeCategory {
+  FRAMEWORK
+  BENCHMARK
+  CLIENT_DOC
+}
+
+enum KnowledgeOrigin {
+  BUILTIN
+  MANUAL
+  IMPORTED
+  AI_EXTRACTED
+}
+
+model KnowledgeDocument {
+  id          String            @id @default(uuid())
+  category    KnowledgeCategory
+  origin      KnowledgeOrigin   @default(MANUAL)
+  title       String
+  sourceFile  String?
+  content     String
+  metadata    Json?
+  chunks      KnowledgeChunk[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model KnowledgeChunk {
+  id         String             @id @default(uuid())
+  documentId String
+  document   KnowledgeDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String
+  embedding  Unsupported("vector(1024)")?
+  chunkIndex Int
+  metadata   Json?
+  createdAt  DateTime           @default(now())
+
+  @@index([documentId])
+}
+
 model PnlCache {
   id            String   @id @default(uuid())
   scenarioId    String
