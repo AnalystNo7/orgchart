@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gauge, BookOpen, FolderKanban, GitCompare, Target, Bot, BarChart3, BookOpenCheck } from "lucide-react";
+import { Gauge, BookOpen, FolderKanban, GitCompare, Target, Bot, BarChart3, BookOpenCheck, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAiChatStore } from "@/lib/ai-store";
 
@@ -11,6 +11,7 @@ const navItems = [
   { href: "/", label: "Дашборд", icon: Gauge },
   { href: "/references", label: "Справочники", icon: BookOpen },
   { href: "/compare", label: "Сравнение", icon: GitCompare },
+  { href: "/processes", label: "Процессы", icon: Network },
   { href: "/gap-analysis", label: "Gap-анализ", icon: Target },
   { href: "/benchmarks", label: "Бенчмарки", icon: BarChart3 },
   { href: "/knowledge", label: "База знаний", icon: BookOpenCheck },
