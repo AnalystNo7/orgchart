@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { FlowchartEditor } from "@/components/process-diagram/FlowchartEditor";
 import { VadDiagram } from "@/components/process-diagram/VadDiagram";
+import { RaciMatrix } from "@/components/process-diagram/RaciMatrix";
 
 interface ProcessDetail {
   id: string;
@@ -63,209 +64,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "vad", label: "VAD" },
 ];
 
-type RaciRole = "RESPONSIBLE" | "ACCOUNTABLE" | "CONSULTED" | "INFORMED";
-const RACI_OPTIONS: Array<{ value: RaciRole | ""; short: string; color: string }> = [
-  { value: "", short: "—", color: "bg-white text-neutral-300 border" },
-  { value: "RESPONSIBLE", short: "R", color: "bg-blue-500 text-white" },
-  { value: "ACCOUNTABLE", short: "A", color: "bg-red-500 text-white" },
-  { value: "CONSULTED", short: "C", color: "bg-amber-400 text-white" },
-  { value: "INFORMED", short: "I", color: "bg-green-500 text-white" },
-];
 
-function RaciMatrixTab({
-  process,
-  departments,
-  allProcesses,
-  onSaved,
-}: {
-  process: ProcessDetail;
-  departments: DeptOption[];
-  allProcesses: ProcessDetail[];
-  onSaved: () => void;
-}) {
-  // Matrix processes: current + children
-  const matrixProcesses = [process, ...allProcesses.filter((p) => p.parentId === process.id)];
-
-  // Collect all departments already participating
-  const initialDeptIds = new Set<string>();
-  for (const p of matrixProcesses) {
-    for (const part of p.participants) {
-      initialDeptIds.add(part.departmentId);
-    }
-  }
-
-  const [selectedDepts, setSelectedDepts] = useState<string[]>(Array.from(initialDeptIds));
-  const [matrix, setMatrix] = useState<Record<string, Record<string, RaciRole | "">>>({});
-  const [saving, setSaving] = useState(false);
-  const [addDeptId, setAddDeptId] = useState("");
-
-  // Initialize matrix from participants
-  useEffect(() => {
-    const m: Record<string, Record<string, RaciRole | "">> = {};
-    for (const p of matrixProcesses) {
-      m[p.id] = {};
-      for (const part of p.participants) {
-        m[p.id][part.departmentId] = part.role as RaciRole;
-      }
-    }
-    setMatrix(m);
-
-    const deptIds = new Set<string>();
-    for (const p of matrixProcesses) {
-      for (const part of p.participants) {
-        deptIds.add(part.departmentId);
-      }
-    }
-    setSelectedDepts(Array.from(deptIds));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [process.id]);
-
-  function cycleRole(processId: string, deptId: string) {
-    const order: Array<RaciRole | ""> = ["", "RESPONSIBLE", "ACCOUNTABLE", "CONSULTED", "INFORMED"];
-    const current = matrix[processId]?.[deptId] || "";
-    const idx = order.indexOf(current);
-    setMatrix((prev) => ({
-      ...prev,
-      [processId]: { ...prev[processId], [deptId]: order[(idx + 1) % order.length] },
-    }));
-  }
-
-  function addDept() {
-    if (!addDeptId || selectedDepts.includes(addDeptId)) return;
-    setSelectedDepts([...selectedDepts, addDeptId]);
-    setAddDeptId("");
-  }
-
-  function removeDept(deptId: string) {
-    setSelectedDepts(selectedDepts.filter((d) => d !== deptId));
-    // Clean matrix
-    const newMatrix = { ...matrix };
-    for (const pid of Object.keys(newMatrix)) {
-      const row = { ...newMatrix[pid] };
-      delete row[deptId];
-      newMatrix[pid] = row;
-    }
-    setMatrix(newMatrix);
-  }
-
-  function getDeptName(id: string): string {
-    return departments.find((d) => d.id === id)?.name || id;
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      for (const p of matrixProcesses) {
-        const participants: Array<{ departmentId: string; role: RaciRole }> = [];
-        for (const deptId of selectedDepts) {
-          const role = matrix[p.id]?.[deptId];
-          if (role) participants.push({ departmentId: deptId, role });
-        }
-        await fetch(`/api/processes/${p.id}/raci`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ participants }),
-        });
-      }
-      onSaved();
-    } catch {
-      // ignore
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const availableDepts = departments.filter((d) => !selectedDepts.includes(d.id));
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-white p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold">
-            RACI-матрица: {process.name}
-            {matrixProcesses.length > 1 && ` + ${matrixProcesses.length - 1} дочерних`}
-          </h2>
-          <button onClick={handleSave} disabled={saving} className="inline-flex items-center gap-1 rounded bg-neutral-800 px-3 py-1.5 text-xs text-white hover:bg-neutral-700 disabled:bg-neutral-300">
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Сохранить
-          </button>
-        </div>
-
-        {/* Legend */}
-        <div className="mb-3 flex items-center gap-2 text-xs text-neutral-500">
-          {RACI_OPTIONS.filter((o) => o.value).map((o) => (
-            <span key={o.value} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-bold ${o.color}`}>
-              {o.short}
-            </span>
-          ))}
-          <span className="ml-1">— кликните на ячейку для переключения</span>
-        </div>
-
-        {/* Add department */}
-        <div className="mb-3 flex items-center gap-2">
-          <select value={addDeptId} onChange={(e) => setAddDeptId(e.target.value)} className="rounded border px-2 py-1.5 text-sm flex-1">
-            <option value="">Добавить подразделение...</option>
-            {availableDepts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-          <button onClick={addDept} disabled={!addDeptId} className="rounded border px-2 py-1.5 text-sm hover:bg-neutral-50 disabled:text-neutral-300">
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
-
-        {selectedDepts.length === 0 ? (
-          <div className="rounded border border-dashed p-8 text-center text-xs text-neutral-400">
-            Добавьте подразделения для построения RACI-матрицы.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-neutral-50">
-                  <th className="sticky left-0 z-10 bg-neutral-50 px-3 py-2 text-left text-xs font-medium text-neutral-500 min-w-[180px]">
-                    Процесс
-                  </th>
-                  {selectedDepts.map((deptId) => (
-                    <th key={deptId} className="px-1 py-2 text-center text-xs font-medium text-neutral-500 min-w-[60px]">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="truncate max-w-[80px]" title={getDeptName(deptId)}>{getDeptName(deptId)}</span>
-                        <button onClick={() => removeDept(deptId)} className="text-neutral-300 hover:text-red-500">
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {matrixProcesses.map((p) => (
-                  <tr key={p.id} className={`border-b hover:bg-neutral-50/50 ${p.id === process.id ? "bg-blue-50/30" : ""}`}>
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2 text-xs font-medium">
-                      {p.id === process.id ? p.name : `↳ ${p.name}`}
-                    </td>
-                    {selectedDepts.map((deptId) => {
-                      const role = matrix[p.id]?.[deptId] || "";
-                      const opt = RACI_OPTIONS.find((o) => o.value === role) || RACI_OPTIONS[0];
-                      return (
-                        <td key={deptId} className="px-1 py-1 text-center">
-                          <button
-                            onClick={() => cycleRole(p.id, deptId)}
-                            className={`inline-flex h-7 w-7 items-center justify-center rounded text-xs font-bold ${opt.color}`}
-                            title={`${p.name} × ${getDeptName(deptId)}`}
-                          >
-                            {opt.short}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function FlowchartTab({ processId }: { processId: string }) {
   const [diagramId, setDiagramId] = useState<string | null>(null);
@@ -479,10 +278,10 @@ export default function ProcessDetailPage() {
       )}
 
       {activeTab === "raci" && process && (
-        <RaciMatrixTab
+        <RaciMatrix
           process={process}
+          childProcesses={processes.filter((p) => p.parentId === process.id)}
           departments={departments}
-          allProcesses={processes}
           onSaved={loadProcess}
         />
       )}
