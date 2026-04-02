@@ -2,6 +2,8 @@ export function toolLabel(name: string): string {
   const labels: Record<string, string> = {
     get_benchmarks: "Поиск бенчмарков",
     query_knowledge_base: "Поиск в базе знаний",
+    analyze_processes: "Анализ процессов",
+    get_processes: "Получение процессов",
     get_org_structure: "Получение оргструктуры",
     get_department_details: "Детали подразделения",
     get_org_metrics: "Расчёт метрик",

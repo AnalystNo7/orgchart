@@ -21,6 +21,10 @@ export async function executeTool(
         return getBenchmarksTool(input);
       case "query_knowledge_base":
         return await queryKnowledgeBaseTool(input);
+      case "analyze_processes":
+        return await analyzeProcesses((input.scenarioId as string) || currentScenarioId);
+      case "get_processes":
+        return await getProcesses((input.scenarioId as string) || currentScenarioId);
       case "get_org_structure":
         return await getOrgStructure(
           (input.scenarioId as string) || currentScenarioId
@@ -863,6 +867,101 @@ function getBenchmarksTool(input: ToolInput): string {
     benchmarks,
     note: "Источник: OSINT-бенчмарки (Уровень 1). Для более точных данных загрузите отраслевые отчёты в Knowledge Base.",
   }, null, 2);
+}
+
+async function getProcesses(scenarioId: string): Promise<string> {
+  const processes = await prisma.process.findMany({
+    where: { scenarioId },
+    include: {
+      kpis: true,
+      participants: true,
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+
+  return JSON.stringify(
+    processes.map((p) => ({
+      id: p.id,
+      name: p.name,
+      level: p.level,
+      status: p.status,
+      parentId: p.parentId,
+      ownerDeptId: p.ownerDeptId,
+      description: p.description,
+      kpis: p.kpis.map((k) => ({ name: k.name, target: k.targetValue, current: k.currentValue, unit: k.unit })),
+      raci: p.participants.map((pp) => ({ deptId: pp.departmentId, role: pp.role })),
+    })),
+    null,
+    2
+  );
+}
+
+async function analyzeProcesses(scenarioId: string): Promise<string> {
+  const processes = await prisma.process.findMany({
+    where: { scenarioId },
+    include: { participants: true, kpis: true },
+  });
+
+  const departments = await prisma.department.findMany({
+    where: { scenarioId },
+    select: { id: true, name: true },
+  });
+
+  if (processes.length === 0) {
+    return JSON.stringify({ message: "В сценарии нет бизнес-процессов. Создайте процессы на странице «Процессы»." });
+  }
+
+  const deptMap = new Map(departments.map((d) => [d.id, d.name]));
+
+  // Analysis
+  const noOwner = processes.filter((p) => !p.ownerDeptId);
+  const noRaci = processes.filter((p) => p.participants.length === 0);
+  const noKpi = processes.filter((p) => p.kpis.length === 0);
+  const noAccountable = processes.filter(
+    (p) => p.participants.length > 0 && !p.participants.some((pp) => pp.role === "ACCOUNTABLE")
+  );
+
+  // Departments not participating in any process
+  const participatingDepts = new Set(processes.flatMap((p) => p.participants.map((pp) => pp.departmentId)));
+  const uncoveredDepts = departments.filter((d) => !participatingDepts.has(d.id));
+
+  // Departments with too many R roles
+  const rCountByDept = new Map<string, number>();
+  for (const p of processes) {
+    for (const pp of p.participants) {
+      if (pp.role === "RESPONSIBLE") {
+        rCountByDept.set(pp.departmentId, (rCountByDept.get(pp.departmentId) || 0) + 1);
+      }
+    }
+  }
+  const overloadedDepts = Array.from(rCountByDept.entries())
+    .filter(([, count]) => count > 5)
+    .map(([deptId, count]) => ({ dept: deptMap.get(deptId) || deptId, count }));
+
+  const result = {
+    summary: {
+      totalProcesses: processes.length,
+      byLevel: {
+        MACRO: processes.filter((p) => p.level === "MACRO").length,
+        PROCESS: processes.filter((p) => p.level === "PROCESS").length,
+        SUBPROCESS: processes.filter((p) => p.level === "SUBPROCESS").length,
+      },
+      totalDepartments: departments.length,
+      departmentsInProcesses: participatingDepts.size,
+    },
+    issues: {
+      processesWithoutOwner: noOwner.map((p) => ({ id: p.id, name: p.name, level: p.level })),
+      processesWithoutRaci: noRaci.map((p) => ({ id: p.id, name: p.name })),
+      processesWithoutKpi: noKpi.map((p) => ({ id: p.id, name: p.name })),
+      processesWithoutAccountable: noAccountable.map((p) => ({ id: p.id, name: p.name })),
+      uncoveredDepartments: uncoveredDepts.map((d) => ({ id: d.id, name: d.name })),
+      overloadedDepartments: overloadedDepts,
+    },
+    issueCount:
+      noOwner.length + noRaci.length + noKpi.length + noAccountable.length + uncoveredDepts.length + overloadedDepts.length,
+  };
+
+  return JSON.stringify(result, null, 2);
 }
 
 async function queryKnowledgeBaseTool(input: ToolInput): Promise<string> {

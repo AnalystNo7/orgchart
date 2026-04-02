@@ -368,6 +368,47 @@ async function main() {
   const totalEmps = await prisma.employee.count({ where: { scenarioId: sId } });
   const totalTariffs = await prisma.tariff.count();
   console.log(`Seed completed: ${totalDepts} departments, ${totalEmps} employees, ${totalTariffs} tariffs`);
+
+  // Seed processes for the baseline scenario
+  const existingProcesses = await prisma.process.count({ where: { scenarioId: baseline.id } });
+  if (existingProcesses === 0) {
+    const processData = [
+      // Macro processes
+      { name: "Управление проектами", level: "MACRO" as const, description: "Полный цикл управления ИТ-проектами", sortOrder: 1 },
+      { name: "Разработка и внедрение", level: "MACRO" as const, description: "Разработка, тестирование и внедрение ИТ-решений", sortOrder: 2 },
+      { name: "Управление персоналом", level: "MACRO" as const, description: "HR-процессы: найм, адаптация, обучение, развитие", sortOrder: 3 },
+      { name: "Финансы и бюджетирование", level: "MACRO" as const, description: "Финансовое планирование, учёт, отчётность", sortOrder: 4 },
+      { name: "Продажи и работа с клиентами", level: "MACRO" as const, description: "Привлечение клиентов, ведение тендеров, account management", sortOrder: 5 },
+    ];
+
+    const macroIds: Record<string, string> = {};
+    for (const p of processData) {
+      const created = await prisma.process.create({
+        data: { scenarioId: baseline.id, ...p },
+      });
+      macroIds[p.name] = created.id;
+    }
+
+    // Child processes
+    const childProcesses = [
+      { name: "Инициация проекта", level: "PROCESS" as const, parentId: macroIds["Управление проектами"], sortOrder: 1 },
+      { name: "Планирование и оценка", level: "PROCESS" as const, parentId: macroIds["Управление проектами"], sortOrder: 2 },
+      { name: "Мониторинг и контроль", level: "PROCESS" as const, parentId: macroIds["Управление проектами"], sortOrder: 3 },
+      { name: "Анализ требований", level: "PROCESS" as const, parentId: macroIds["Разработка и внедрение"], sortOrder: 1 },
+      { name: "Разработка", level: "PROCESS" as const, parentId: macroIds["Разработка и внедрение"], sortOrder: 2 },
+      { name: "Тестирование", level: "PROCESS" as const, parentId: macroIds["Разработка и внедрение"], sortOrder: 3 },
+      { name: "Подбор персонала", level: "PROCESS" as const, parentId: macroIds["Управление персоналом"], sortOrder: 1 },
+      { name: "Адаптация и обучение", level: "PROCESS" as const, parentId: macroIds["Управление персоналом"], sortOrder: 2 },
+    ];
+
+    for (const cp of childProcesses) {
+      await prisma.process.create({
+        data: { scenarioId: baseline.id, ...cp },
+      });
+    }
+
+    console.log(`Seed: ${processData.length} macro + ${childProcesses.length} child processes created`);
+  }
 }
 
 main()

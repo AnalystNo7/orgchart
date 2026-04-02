@@ -52,6 +52,28 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       execute: wrapExecute("query_knowledge_base", currentScenarioId, onProgress),
     }),
 
+    analyze_processes: tool({
+      description:
+        "Анализ бизнес-процессов сценария: найти процессы без владельца, без участников RACI, дублирование, пробелы в покрытии подразделений. Возвращает структурированный отчёт.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("analyze_processes", currentScenarioId, onProgress),
+    }),
+
+    get_processes: tool({
+      description:
+        "Получить список бизнес-процессов сценария с KPI и RACI-участниками.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("get_processes", currentScenarioId, onProgress),
+    }),
+
     get_org_structure: tool({
       description:
         "Получить оргструктуру сценария: список подразделений с метриками (количество сотрудников по категориям ПП/ОПП/АУП, FTE, руководитель, тип ШЕТИЛ). Используй для анализа текущего состояния.",
