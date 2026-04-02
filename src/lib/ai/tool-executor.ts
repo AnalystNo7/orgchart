@@ -21,6 +21,13 @@ export async function executeTool(
         return getBenchmarksTool(input);
       case "query_knowledge_base":
         return await queryKnowledgeBaseTool(input);
+      case "analyze_skill_gaps":
+        return await analyzeSkillGaps(
+          (input.scenarioId as string) || currentScenarioId,
+          input.departmentId as string | undefined
+        );
+      case "get_competencies":
+        return await getCompetencies();
       case "analyze_processes":
         return await analyzeProcesses((input.scenarioId as string) || currentScenarioId);
       case "get_processes":
@@ -962,6 +969,132 @@ async function analyzeProcesses(scenarioId: string): Promise<string> {
   };
 
   return JSON.stringify(result, null, 2);
+}
+
+async function getCompetencies(): Promise<string> {
+  const competencies = await prisma.competency.findMany({
+    include: {
+      _count: { select: { roleCompetencies: true, employeeCompetencies: true } },
+    },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+  });
+
+  return JSON.stringify(
+    competencies.map((c) => ({
+      id: c.id,
+      name: c.name,
+      category: c.category,
+      description: c.description,
+      roleRequirements: c._count.roleCompetencies,
+      employeeAssessments: c._count.employeeCompetencies,
+    })),
+    null,
+    2
+  );
+}
+
+async function analyzeSkillGaps(scenarioId: string, departmentId?: string): Promise<string> {
+  const empWhere: Record<string, unknown> = { scenarioId };
+  if (departmentId) empWhere.departmentId = departmentId;
+
+  const employees = await prisma.employee.findMany({
+    where: empWhere,
+    select: { id: true, fullName: true, position: true, departmentId: true },
+  });
+
+  const competencies = await prisma.competency.findMany();
+  const roleComps = await prisma.roleCompetency.findMany();
+  const empComps = await prisma.employeeCompetency.findMany({
+    where: { employee: empWhere },
+  });
+
+  const departments = await prisma.department.findMany({
+    where: { scenarioId },
+    select: { id: true, name: true },
+  });
+  const deptMap = new Map(departments.map((d) => [d.id, d.name]));
+  const compMap = new Map(competencies.map((c) => [c.id, c]));
+
+  // Build role requirements: position → competencyId → requiredLevel
+  const roleReqMap = new Map<string, Map<string, number>>();
+  for (const rc of roleComps) {
+    if (!roleReqMap.has(rc.position)) roleReqMap.set(rc.position, new Map());
+    roleReqMap.get(rc.position)!.set(rc.competencyId, rc.requiredLevel);
+  }
+
+  // Build employee levels: employeeId → competencyId → currentLevel
+  const empLevelMap = new Map<string, Map<string, number>>();
+  for (const ec of empComps) {
+    if (!empLevelMap.has(ec.employeeId)) empLevelMap.set(ec.employeeId, new Map());
+    empLevelMap.get(ec.employeeId)!.set(ec.competencyId, ec.currentLevel);
+  }
+
+  if (roleComps.length === 0) {
+    return JSON.stringify({
+      message: "Требования к позициям (RoleCompetency) не заполнены. Заполните их для проведения gap-анализа.",
+      totalEmployees: employees.length,
+      competencies: competencies.length,
+    });
+  }
+
+  // Calculate gaps
+  const gaps: Array<{
+    employee: string;
+    position: string;
+    department: string;
+    competency: string;
+    category: string;
+    required: number;
+    current: number;
+    gap: number;
+  }> = [];
+
+  for (const emp of employees) {
+    const reqs = roleReqMap.get(emp.position);
+    if (!reqs) continue;
+    const levels = empLevelMap.get(emp.id) || new Map();
+
+    for (const [compId, required] of reqs) {
+      const current = levels.get(compId) || 0;
+      if (current < required) {
+        const comp = compMap.get(compId);
+        gaps.push({
+          employee: emp.fullName,
+          position: emp.position,
+          department: deptMap.get(emp.departmentId) || "",
+          competency: comp?.name || compId,
+          category: comp?.category || "HARD",
+          required,
+          current,
+          gap: required - current,
+        });
+      }
+    }
+  }
+
+  // Aggregate
+  const byDept: Record<string, number> = {};
+  const byComp: Record<string, number> = {};
+  for (const g of gaps) {
+    byDept[g.department] = (byDept[g.department] || 0) + g.gap;
+    byComp[g.competency] = (byComp[g.competency] || 0) + g.gap;
+  }
+
+  return JSON.stringify({
+    summary: {
+      totalEmployees: employees.length,
+      employeesWithGaps: new Set(gaps.map((g) => g.employee)).size,
+      totalGapPoints: gaps.reduce((s, g) => s + g.gap, 0),
+      criticalGaps: gaps.filter((g) => g.gap >= 3).length,
+    },
+    topGapsByDepartment: Object.entries(byDept).sort(([, a], [, b]) => b - a).slice(0, 10),
+    topGapsByCompetency: Object.entries(byComp).sort(([, a], [, b]) => b - a).slice(0, 10),
+    details: gaps.sort((a, b) => b.gap - a.gap).slice(0, 30),
+    recommendations: {
+      hiring: `Рассмотрите найм специалистов с компетенциями: ${Object.entries(byComp).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name]) => name).join(", ")}`,
+      training: `Приоритетное обучение для подразделений: ${Object.entries(byDept).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name]) => name).join(", ")}`,
+    },
+  }, null, 2);
 }
 
 async function queryKnowledgeBaseTool(input: ToolInput): Promise<string> {

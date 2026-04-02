@@ -52,6 +52,25 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       execute: wrapExecute("query_knowledge_base", currentScenarioId, onProgress),
     }),
 
+    analyze_skill_gaps: tool({
+      description:
+        "Анализ компетентностных разрывов: сравнить текущие уровни компетенций сотрудников с требованиями к позициям. Показать gap по подразделениям и компетенциям.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+          departmentId: z.string().optional().describe("ID подразделения (если не указан — все)"),
+        })
+      ),
+      execute: wrapExecute("analyze_skill_gaps", currentScenarioId, onProgress),
+    }),
+
+    get_competencies: tool({
+      description:
+        "Получить список компетенций с категориями и количеством привязок к ролям/сотрудникам.",
+      inputSchema: zodSchema(z.object({})),
+      execute: wrapExecute("get_competencies", currentScenarioId, onProgress),
+    }),
+
     analyze_processes: tool({
       description:
         "Анализ бизнес-процессов сценария: найти процессы без владельца, без участников RACI, дублирование, пробелы в покрытии подразделений. Возвращает структурированный отчёт.",
