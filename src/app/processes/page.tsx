@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useOrgChartStore } from "@/lib/store";
 import {
   Network,
@@ -69,6 +70,7 @@ function getChildren(processes: ProcessData[], parentId: string): ProcessData[] 
 }
 
 export default function ProcessesPage() {
+  const router = useRouter();
   const currentScenarioId = useOrgChartStore((s) => s.currentScenarioId);
   const [processes, setProcesses] = useState<ProcessData[]>([]);
   const [departments, setDepartments] = useState<DeptOption[]>([]);
@@ -222,7 +224,12 @@ export default function ProcessesPage() {
           </button>
 
           {/* Name */}
-          <span className="flex-1 text-sm font-medium">{p.name}</span>
+          <span
+            className="flex-1 text-sm font-medium cursor-pointer hover:text-blue-600 hover:underline"
+            onClick={() => router.push(`/processes/${p.id}`)}
+          >
+            {p.name}
+          </span>
 
           {/* Level badge */}
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${LEVEL_COLORS[p.level]}`}>
