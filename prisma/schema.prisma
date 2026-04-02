@@ -121,6 +121,7 @@ model Employee {
   tariff       Tariff?          @relation(fields: [tariffId], references: [id])
   headOf       Department[]     @relation("DepartmentHead")
   contracts    EmployeeContract[]
+  competencies EmployeeCompetency[]
   originId     String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
@@ -246,6 +247,53 @@ enum KnowledgeOrigin {
   MANUAL
   IMPORTED
   AI_EXTRACTED
+}
+
+// --- Competencies ---
+
+enum CompetencyCategory {
+  HARD
+  SOFT
+  LEADERSHIP
+}
+
+model Competency {
+  id          String              @id @default(uuid())
+  name        String              @unique
+  category    CompetencyCategory
+  description String?
+  roleCompetencies     RoleCompetency[]
+  employeeCompetencies EmployeeCompetency[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model RoleCompetency {
+  id            String     @id @default(uuid())
+  competencyId  String
+  competency    Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+  position      String
+  requiredLevel Int        @default(3)  // 1-5
+  createdAt     DateTime   @default(now())
+
+  @@unique([competencyId, position])
+  @@index([position])
+}
+
+model EmployeeCompetency {
+  id            String     @id @default(uuid())
+  employeeId    String
+  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  competencyId  String
+  competency    Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+  currentLevel  Int        @default(1)  // 1-5
+  assessedAt    DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([employeeId, competencyId])
+  @@index([employeeId])
+  @@index([competencyId])
 }
 
 // --- Business Processes ---
