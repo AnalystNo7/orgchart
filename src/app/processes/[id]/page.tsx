@@ -14,6 +14,7 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
+import { FlowchartEditor } from "@/components/process-diagram/FlowchartEditor";
 
 interface ProcessDetail {
   id: string;
@@ -68,6 +69,32 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "flowchart", label: "Flowchart" },
   { id: "vad", label: "VAD" },
 ];
+
+function FlowchartTab({ processId }: { processId: string }) {
+  const [diagramId, setDiagramId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/diagrams?processId=${processId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const flowchart = (data.diagrams || []).find((d: { type: string }) => d.type === "FLOWCHART");
+        if (flowchart) setDiagramId(flowchart.id);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [processId]);
+
+  if (loading) return <div className="flex h-96 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-neutral-400" /></div>;
+
+  return (
+    <FlowchartEditor
+      processId={processId}
+      diagramId={diagramId}
+      onDiagramCreated={(id) => setDiagramId(id)}
+    />
+  );
+}
 
 export default function ProcessDetailPage() {
   const params = useParams();
@@ -345,9 +372,7 @@ export default function ProcessDetailPage() {
       )}
 
       {activeTab === "flowchart" && (
-        <div className="rounded-lg border border-dashed p-12 text-center text-sm text-neutral-400">
-          Flowchart-редактор будет реализован в итерации 2.7
-        </div>
+        <FlowchartTab processId={processId} />
       )}
 
       {activeTab === "vad" && (
