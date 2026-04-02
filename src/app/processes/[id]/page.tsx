@@ -56,15 +56,56 @@ const STATUS_LABELS: Record<string, string> = { ACTIVE: "Активный", PLAN
 const LEVEL_COLORS: Record<string, string> = { MACRO: "bg-purple-100 text-purple-700", PROCESS: "bg-blue-100 text-blue-700", SUBPROCESS: "bg-neutral-100 text-neutral-600" };
 const STATUS_COLORS: Record<string, string> = { ACTIVE: "bg-green-100 text-green-700", PLANNED: "bg-amber-100 text-amber-700", DEPRECATED: "bg-red-100 text-red-700" };
 
-type TabId = "info" | "raci" | "flowchart" | "vad";
+type TabId = "info" | "raci" | "diagram";
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: "info", label: "Информация" },
   { id: "raci", label: "RACI" },
-  { id: "flowchart", label: "Flowchart" },
-  { id: "vad", label: "VAD" },
+  { id: "diagram", label: "Схема" },
 ];
 
 
+
+type DiagramSubTab = "flowchart" | "vad";
+
+function DiagramTab({ processId, scenarioId }: { processId: string; scenarioId: string | null }) {
+  const [subTab, setSubTab] = useState<DiagramSubTab>("flowchart");
+
+  return (
+    <div className="space-y-3">
+      {/* Sub-tabs */}
+      <div className="flex gap-1 border-b">
+        <button
+          onClick={() => setSubTab("flowchart")}
+          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+            subTab === "flowchart"
+              ? "border-neutral-700 text-neutral-900"
+              : "border-transparent text-neutral-400 hover:text-neutral-600"
+          }`}
+        >
+          Flowchart
+        </button>
+        <button
+          onClick={() => setSubTab("vad")}
+          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+            subTab === "vad"
+              ? "border-neutral-700 text-neutral-900"
+              : "border-transparent text-neutral-400 hover:text-neutral-600"
+          }`}
+        >
+          VAD
+        </button>
+      </div>
+
+      {subTab === "flowchart" && (
+        <FlowchartTab processId={processId} />
+      )}
+
+      {subTab === "vad" && scenarioId && (
+        <VadDiagram processId={processId} scenarioId={scenarioId} />
+      )}
+    </div>
+  );
+}
 
 function FlowchartTab({ processId }: { processId: string }) {
   const [diagramId, setDiagramId] = useState<string | null>(null);
@@ -286,12 +327,8 @@ export default function ProcessDetailPage() {
         />
       )}
 
-      {activeTab === "flowchart" && (
-        <FlowchartTab processId={processId} />
-      )}
-
-      {activeTab === "vad" && currentScenarioId && (
-        <VadDiagram processId={processId} scenarioId={currentScenarioId} />
+      {activeTab === "diagram" && (
+        <DiagramTab processId={processId} scenarioId={currentScenarioId} />
       )}
     </div>
   );
