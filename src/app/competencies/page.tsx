@@ -30,6 +30,7 @@ interface EmployeeItem {
 interface DeptItem {
   id: string;
   name: string;
+  parentId: string | null;
 }
 
 interface EmpCompRecord {
@@ -72,6 +73,7 @@ export default function CompetenciesPage() {
   // Filters
   const [filterDept, setFilterDept] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [includeChildren, setIncludeChildren] = useState(true);
 
   // Add competency form
   const [showForm, setShowForm] = useState(false);
@@ -98,7 +100,7 @@ export default function CompetenciesPage() {
       departmentId: e.departmentId,
     }));
     setEmployees(emps);
-    setDepartments((deptRes.departments || deptRes || []).map((d: DeptItem) => ({ id: d.id, name: d.name })));
+    setDepartments((deptRes.departments || deptRes || []).map((d: DeptItem) => ({ id: d.id, name: d.name, parentId: d.parentId || null })));
 
     // Build matrix: employeeId → competencyId → level
     const m: Record<string, Record<string, number>> = {};
@@ -167,9 +169,24 @@ export default function CompetenciesPage() {
     return departments.find((d) => d.id === id)?.name || "";
   }
 
+  // Get all child department IDs recursively
+  function getChildDeptIds(parentId: string): string[] {
+    const children = departments.filter((d) => d.parentId === parentId);
+    const ids: string[] = [parentId];
+    for (const child of children) {
+      ids.push(...getChildDeptIds(child.id));
+    }
+    return ids;
+  }
+
   // Filtered data
   const filteredComps = competencies.filter((c) => !filterCategory || c.category === filterCategory);
-  const filteredEmps = employees.filter((e) => !filterDept || e.departmentId === filterDept);
+  const allowedDeptIds = filterDept
+    ? (includeChildren ? new Set(getChildDeptIds(filterDept)) : new Set([filterDept]))
+    : null;
+  const filteredEmps = allowedDeptIds
+    ? employees.filter((e) => allowedDeptIds.has(e.departmentId))
+    : employees;
 
   if (!currentScenarioId) {
     return <div className="flex h-full items-center justify-center text-neutral-400">Выберите сценарий</div>;
@@ -241,6 +258,19 @@ export default function CompetenciesPage() {
             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
+        {filterDept && (
+          <div className="flex items-end pb-0.5">
+            <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+              <input
+                type="checkbox"
+                checked={includeChildren}
+                onChange={(e) => setIncludeChildren(e.target.checked)}
+                className="rounded border-neutral-300"
+              />
+              <span className="text-neutral-600">Включая дочерние</span>
+            </label>
+          </div>
+        )}
         <div>
           <label className="block text-xs font-medium text-neutral-500 mb-1">Категория</label>
           <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="rounded border px-2 py-1.5 text-sm">
