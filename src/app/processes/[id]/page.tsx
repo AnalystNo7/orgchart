@@ -15,6 +15,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { FlowchartEditor } from "@/components/process-diagram/FlowchartEditor";
+import { VadDiagram } from "@/components/process-diagram/VadDiagram";
 
 interface ProcessDetail {
   id: string;
@@ -375,10 +376,8 @@ export default function ProcessDetailPage() {
         <FlowchartTab processId={processId} />
       )}
 
-      {activeTab === "vad" && (
-        <div className="rounded-lg border border-dashed p-12 text-center text-sm text-neutral-400">
-          VAD-визуализация будет реализована в итерации 2.8
-        </div>
+      {activeTab === "vad" && currentScenarioId && (
+        <VadDiagram processId={processId} scenarioId={currentScenarioId} />
       )}
     </div>
   );
