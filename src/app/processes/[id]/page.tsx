@@ -64,9 +64,10 @@ const RACI_OPTIONS: Array<{ value: RaciRole | ""; short: string; color: string }
   { value: "INFORMED", short: "I", color: "bg-green-500 text-white" },
 ];
 
-type TabId = "info" | "flowchart" | "vad";
+type TabId = "info" | "raci" | "flowchart" | "vad";
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: "info", label: "Информация" },
+  { id: "raci", label: "RACI" },
   { id: "flowchart", label: "Flowchart" },
   { id: "vad", label: "VAD" },
 ];
@@ -309,50 +310,6 @@ export default function ProcessDetailPage() {
             )}
           </div>
 
-          {/* RACI */}
-          <div className="rounded-lg border bg-white p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">RACI-участники</h2>
-              <button onClick={saveRaci} disabled={savingRaci} className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-xs text-white hover:bg-neutral-700 disabled:bg-neutral-300">
-                {savingRaci ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Сохранить
-              </button>
-            </div>
-            {/* Add dept */}
-            <div className="mb-3 flex items-center gap-2">
-              <select value={addDeptId} onChange={(e) => setAddDeptId(e.target.value)} className="rounded border px-2 py-1 text-sm flex-1">
-                <option value="">Добавить подразделение...</option>
-                {availableDepts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-              <button onClick={addRaciDept} disabled={!addDeptId} className="rounded border px-2 py-1 text-sm hover:bg-neutral-50 disabled:text-neutral-300">
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-            {raciDepts.length === 0 ? (
-              <div className="text-xs text-neutral-400">Нет участников. Добавьте подразделения выше.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead><tr className="border-b text-xs text-neutral-500"><th className="py-1 text-left">Подразделение</th><th className="py-1 text-center">Роль</th><th className="py-1 w-8" /></tr></thead>
-                <tbody>
-                  {raciDepts.map((deptId) => {
-                    const role = raciMap[deptId] || "";
-                    const opt = RACI_OPTIONS.find((o) => o.value === role) || RACI_OPTIONS[0];
-                    return (
-                      <tr key={deptId} className="border-b last:border-0">
-                        <td className="py-1.5">{getDeptName(deptId)}</td>
-                        <td className="py-1.5 text-center">
-                          <button onClick={() => cycleRole(deptId)} className={`inline-flex h-7 w-7 items-center justify-center rounded text-xs font-bold ${opt.color}`}>
-                            {opt.short}
-                          </button>
-                        </td>
-                        <td className="py-1.5"><button onClick={() => removeRaciDept(deptId)} className="rounded p-0.5 text-neutral-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-
           {/* Children */}
           {process.children.length > 0 && (
             <div className="rounded-lg border bg-white p-4">
@@ -369,6 +326,77 @@ export default function ProcessDetailPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === "raci" && (
+        <div className="space-y-4">
+          <div className="rounded-lg border bg-white p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">RACI-участники</h2>
+              <button onClick={saveRaci} disabled={savingRaci} className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-xs text-white hover:bg-neutral-700 disabled:bg-neutral-300">
+                {savingRaci ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Сохранить
+              </button>
+            </div>
+
+            {/* Legend */}
+            <div className="mb-3 flex items-center gap-2 text-xs text-neutral-500">
+              {RACI_OPTIONS.filter((o) => o.value).map((o) => (
+                <span key={o.value} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-bold ${o.color}`}>
+                  {o.short}
+                </span>
+              ))}
+              <span className="ml-1">— кликните для переключения</span>
+            </div>
+
+            {/* Add dept */}
+            <div className="mb-3 flex items-center gap-2">
+              <select value={addDeptId} onChange={(e) => setAddDeptId(e.target.value)} className="rounded border px-2 py-1 text-sm flex-1">
+                <option value="">Добавить подразделение...</option>
+                {availableDepts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <button onClick={addRaciDept} disabled={!addDeptId} className="rounded border px-2 py-1 text-sm hover:bg-neutral-50 disabled:text-neutral-300">
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+
+            {raciDepts.length === 0 ? (
+              <div className="rounded border border-dashed p-8 text-center text-xs text-neutral-400">
+                Нет участников. Выберите подразделение выше и нажмите «+».
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-neutral-500">
+                    <th className="py-2 text-left font-medium">Подразделение</th>
+                    <th className="py-2 text-center font-medium w-20">Роль</th>
+                    <th className="py-2 w-10" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {raciDepts.map((deptId) => {
+                    const role = raciMap[deptId] || "";
+                    const opt = RACI_OPTIONS.find((o) => o.value === role) || RACI_OPTIONS[0];
+                    return (
+                      <tr key={deptId} className="border-b last:border-0 hover:bg-neutral-50">
+                        <td className="py-2">{getDeptName(deptId)}</td>
+                        <td className="py-2 text-center">
+                          <button onClick={() => cycleRole(deptId)} className={`inline-flex h-8 w-8 items-center justify-center rounded text-sm font-bold ${opt.color}`}>
+                            {opt.short}
+                          </button>
+                        </td>
+                        <td className="py-2">
+                          <button onClick={() => removeRaciDept(deptId)} className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
