@@ -91,7 +91,7 @@ export default function CompetenciesPage() {
     ]);
 
     setCompetencies(compRes.competencies || []);
-    const emps = (empRes.employees || empRes.data || []).map((e: EmployeeItem) => ({
+    const emps = (empRes.data || empRes.employees || []).map((e: EmployeeItem) => ({
       id: e.id,
       fullName: e.fullName,
       position: e.position,
