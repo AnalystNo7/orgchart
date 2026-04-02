@@ -55,15 +55,6 @@ const STATUS_LABELS: Record<string, string> = { ACTIVE: "Активный", PLAN
 const LEVEL_COLORS: Record<string, string> = { MACRO: "bg-purple-100 text-purple-700", PROCESS: "bg-blue-100 text-blue-700", SUBPROCESS: "bg-neutral-100 text-neutral-600" };
 const STATUS_COLORS: Record<string, string> = { ACTIVE: "bg-green-100 text-green-700", PLANNED: "bg-amber-100 text-amber-700", DEPRECATED: "bg-red-100 text-red-700" };
 
-type RaciRole = "RESPONSIBLE" | "ACCOUNTABLE" | "CONSULTED" | "INFORMED";
-const RACI_OPTIONS: Array<{ value: RaciRole | ""; short: string; color: string }> = [
-  { value: "", short: "—", color: "bg-white text-neutral-300" },
-  { value: "RESPONSIBLE", short: "R", color: "bg-blue-500 text-white" },
-  { value: "ACCOUNTABLE", short: "A", color: "bg-red-500 text-white" },
-  { value: "CONSULTED", short: "C", color: "bg-amber-400 text-white" },
-  { value: "INFORMED", short: "I", color: "bg-green-500 text-white" },
-];
-
 type TabId = "info" | "raci" | "flowchart" | "vad";
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: "info", label: "Информация" },
