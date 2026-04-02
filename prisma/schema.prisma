@@ -65,6 +65,7 @@ model Scenario {
   actionLogs      ActionLog[]
   gaps            GapPassport[]
   aiConversations AiConversation[]
+  processes       Process[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
@@ -245,6 +246,77 @@ enum KnowledgeOrigin {
   MANUAL
   IMPORTED
   AI_EXTRACTED
+}
+
+// --- Business Processes ---
+
+enum ProcessLevel {
+  MACRO
+  PROCESS
+  SUBPROCESS
+}
+
+enum ProcessStatus {
+  ACTIVE
+  PLANNED
+  DEPRECATED
+}
+
+enum RaciRole {
+  RESPONSIBLE
+  ACCOUNTABLE
+  CONSULTED
+  INFORMED
+}
+
+model Process {
+  id            String           @id @default(uuid())
+  scenarioId    String
+  scenario      Scenario         @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  parentId      String?
+  parent        Process?         @relation("ProcessTree", fields: [parentId], references: [id])
+  children      Process[]        @relation("ProcessTree")
+  name          String
+  description   String?
+  level         ProcessLevel
+  status        ProcessStatus    @default(ACTIVE)
+  ownerDeptId   String?
+  sortOrder     Int              @default(0)
+  kpis          ProcessKpi[]
+  participants  ProcessParticipant[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([scenarioId])
+  @@index([parentId])
+}
+
+model ProcessKpi {
+  id          String   @id @default(uuid())
+  processId   String
+  process     Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  name        String
+  targetValue String?
+  currentValue String?
+  unit        String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([processId])
+}
+
+model ProcessParticipant {
+  id           String   @id @default(uuid())
+  processId    String
+  process      Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  departmentId String
+  role         RaciRole
+  createdAt    DateTime @default(now())
+
+  @@unique([processId, departmentId, role])
+  @@index([processId])
+  @@index([departmentId])
 }
 
 model KnowledgeDocument {
