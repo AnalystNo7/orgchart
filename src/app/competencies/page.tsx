@@ -226,6 +226,12 @@ export default function CompetenciesPage() {
         </div>
       )}
 
+      {/* Debug info */}
+      <div className="text-xs text-neutral-400">
+        Загружено: {employees.length} сотрудников, {competencies.length} компетенций, {departments.length} подразделений
+        {employees.length === 0 && currentScenarioId && <span className="text-red-500 ml-2">Сотрудники не загружены! scenarioId: {currentScenarioId}</span>}
+      </div>
+
       {/* Filters */}
       <div className="flex items-center gap-3">
         <div>
@@ -255,9 +261,11 @@ export default function CompetenciesPage() {
       {/* Matrix */}
       {loading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-neutral-400" /></div>
-      ) : filteredComps.length === 0 ? (
+      ) : filteredEmps.length === 0 && filteredComps.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center text-sm text-neutral-400">
-          Нет компетенций. Нажмите «+ Компетенция» для создания.
+          {competencies.length === 0
+            ? "Нет компетенций. Нажмите «+ Компетенция» для создания."
+            : "Нет сотрудников в выбранном подразделении."}
         </div>
       ) : (
         <div className="overflow-auto rounded-lg border bg-white">
