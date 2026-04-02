@@ -284,6 +284,7 @@ model Process {
   sortOrder     Int              @default(0)
   kpis          ProcessKpi[]
   participants  ProcessParticipant[]
+  diagrams      ProcessDiagram[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
@@ -317,6 +318,79 @@ model ProcessParticipant {
   @@unique([processId, departmentId, role])
   @@index([processId])
   @@index([departmentId])
+}
+
+// --- Process Diagrams & Steps ---
+
+enum DiagramType {
+  FLOWCHART
+  VAD
+  BPMN
+  EPC
+}
+
+enum StepType {
+  START
+  END
+  TASK
+  DECISION
+  EVENT
+  SUBPROCESS
+  GATEWAY
+}
+
+model ProcessDiagram {
+  id         String      @id @default(uuid())
+  processId  String
+  process    Process     @relation(fields: [processId], references: [id], onDelete: Cascade)
+  type       DiagramType
+  name       String?
+  layout     Json?       // viewport, zoom, etc.
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  steps      ProcessStep[]
+  links      ProcessStepLink[]
+
+  @@index([processId])
+}
+
+model ProcessStep {
+  id         String          @id @default(uuid())
+  diagramId  String
+  diagram    ProcessDiagram  @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  type       StepType
+  label      String
+  description String?
+  positionX  Float           @default(0)
+  positionY  Float           @default(0)
+  width      Float           @default(150)
+  height     Float           @default(50)
+  metadata   Json?
+  sortOrder  Int             @default(0)
+  linksFrom  ProcessStepLink[] @relation("LinkSource")
+  linksTo    ProcessStepLink[] @relation("LinkTarget")
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([diagramId])
+}
+
+model ProcessStepLink {
+  id         String          @id @default(uuid())
+  diagramId  String
+  diagram    ProcessDiagram  @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  sourceId   String
+  source     ProcessStep     @relation("LinkSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetId   String
+  target     ProcessStep     @relation("LinkTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  label      String?
+  condition  String?
+  metadata   Json?
+  createdAt  DateTime        @default(now())
+
+  @@index([diagramId])
+  @@index([sourceId])
+  @@index([targetId])
 }
 
 model KnowledgeDocument {
