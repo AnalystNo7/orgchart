@@ -13,9 +13,7 @@ import {
   Loader2,
   Save,
   X,
-  Grid3X3,
 } from "lucide-react";
-import Link from "next/link";
 
 interface ProcessData {
   id: string;
@@ -301,22 +299,13 @@ export default function ProcessesPage() {
           <h1 className="text-xl font-bold">Процессы</h1>
           <span className="text-sm text-neutral-400">{processes.length} процессов</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/processes/raci"
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-neutral-50"
-          >
-            <Grid3X3 className="h-4 w-4" />
-            RACI-матрица
-          </Link>
-          <button
-            onClick={() => openCreateForm()}
-            className="inline-flex items-center gap-1.5 rounded-md bg-neutral-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
-          >
-            <Plus className="h-4 w-4" />
-            Добавить
-          </button>
-        </div>
+        <button
+          onClick={() => openCreateForm()}
+          className="inline-flex items-center gap-1.5 rounded-md bg-neutral-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
+        >
+          <Plus className="h-4 w-4" />
+          Добавить
+        </button>
       </div>
 
       {/* Create/Edit form */}
