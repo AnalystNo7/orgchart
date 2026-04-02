@@ -9,7 +9,9 @@ import {
   Save,
   Loader2,
   X,
+  AlertTriangle,
 } from "lucide-react";
+import Link from "next/link";
 
 interface CompetencyItem {
   id: string;
@@ -184,6 +186,9 @@ export default function CompetenciesPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/competencies/gaps" className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-50">
+            <AlertTriangle className="h-4 w-4" /> Gap-анализ
+          </Link>
           <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-neutral-50">
             <Plus className="h-4 w-4" /> Компетенция
           </button>
