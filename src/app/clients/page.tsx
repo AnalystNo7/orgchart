@@ -170,7 +170,7 @@ export default function ClientsPage() {
   }
 
   async function handleDeleteClient(id: string) {
-    if (!confirm("Удалить клиента?")) return;
+    if (!confirm("Удалить заказчика?")) return;
     await fetch(`/api/clients/${id}`, { method: "DELETE" });
     loadClients();
   }
@@ -228,12 +228,12 @@ export default function ClientsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Briefcase className="h-6 w-6 text-neutral-700" />
-          <h1 className="text-xl font-bold">Клиенты</h1>
+          <h1 className="text-xl font-bold">Заказчики</h1>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
             <button onClick={() => setActiveTab("clients")} className={`rounded-md px-3 py-1 text-sm font-medium transition ${activeTab === "clients" ? "bg-white shadow-sm" : "text-neutral-500"}`}>
-              <Users className="inline h-3.5 w-3.5 mr-1" />Клиенты ({clients.length})
+              <Users className="inline h-3.5 w-3.5 mr-1" />Заказчики ({clients.length})
             </button>
             <button onClick={() => setActiveTab("pipeline")} className={`rounded-md px-3 py-1 text-sm font-medium transition ${activeTab === "pipeline" ? "bg-white shadow-sm" : "text-neutral-500"}`}>
               <TrendingUp className="inline h-3.5 w-3.5 mr-1" />Pipeline ({deals.length})
@@ -245,7 +245,7 @@ export default function ClientsPage() {
       {/* Summary */}
       <div className="grid grid-cols-4 gap-3">
         <div className="rounded-lg border bg-white p-3">
-          <div className="text-xs text-neutral-500">Клиентов</div>
+          <div className="text-xs text-neutral-500">Заказчиков</div>
           <div className="text-lg font-bold">{clients.length}</div>
           <div className="text-[10px] text-neutral-400">активных: {clients.filter((c) => c.status === "ACTIVE").length}</div>
         </div>
@@ -278,7 +278,7 @@ export default function ClientsPage() {
 
           {showClientForm && (
             <div className="rounded-lg border bg-white p-4 space-y-3">
-              <h2 className="text-sm font-semibold">{editClientId ? "Редактировать клиента" : "Новый клиент"}</h2>
+              <h2 className="text-sm font-semibold">{editClientId ? "Редактировать заказчика" : "Новый заказчик"}</h2>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-neutral-500">Название *</label>
@@ -319,11 +319,11 @@ export default function ClientsPage() {
           )}
 
           {filteredClients.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-neutral-400">Нет клиентов. Нажмите «Добавить».</div>
+            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-neutral-400">Нет заказчиков. Нажмите «Добавить».</div>
           ) : (
             <div className="rounded-lg border bg-white overflow-hidden">
               <div className="flex items-center gap-2 border-b bg-neutral-50 px-4 py-2 text-xs font-medium uppercase text-neutral-500">
-                <span className="flex-1">Клиент</span>
+                <span className="flex-1">Заказчик</span>
                 <span className="w-28">Отрасль</span>
                 <span className="w-20 text-center">Статус</span>
                 <span className="w-16 text-center">Контракты</span>
@@ -381,9 +381,9 @@ export default function ClientsPage() {
                   <input value={dfName} onChange={(e) => setDfName(e.target.value)} className="w-full rounded border px-2 py-1.5 text-sm" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-neutral-500">Клиент *</label>
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Заказчик *</label>
                   <select value={dfClientId} onChange={(e) => setDfClientId(e.target.value)} className="w-full rounded border px-2 py-1.5 text-sm">
-                    <option value="">Выберите клиента</option>
+                    <option value="">Выберите заказчика</option>
                     {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
