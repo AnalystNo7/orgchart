@@ -42,6 +42,21 @@ enum RevenueProvisionStatus {
   NOT_PROVIDED
 }
 
+enum ClientStatus {
+  ACTIVE
+  PROSPECT
+  INACTIVE
+}
+
+enum PipelineStage {
+  LEAD
+  QUALIFICATION
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
 enum GoalType {
   BSC_FINANCIAL
   BSC_CLIENT
@@ -83,6 +98,7 @@ model Scenario {
   aiConversations AiConversation[]
   processes       Process[]
   goals           Goal[]
+  pipelineDeals   PipelineDeal[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
@@ -170,9 +186,13 @@ model Contract {
   periodStart     DateTime
   periodEnd       DateTime
   description     String?
+  clientId        String?
+  client          Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
   employees       EmployeeContract[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+
+  @@index([clientId])
 }
 
 model EmployeeContract {
@@ -560,4 +580,40 @@ model GoalDepartmentLink {
   @@unique([goalId, departmentId])
   @@index([goalId])
   @@index([departmentId])
+}
+
+// --- Clients & Pipeline ---
+
+model Client {
+  id            String       @id @default(uuid())
+  name          String
+  industry      String?
+  contactPerson String?
+  phone         String?
+  email         String?
+  status        ClientStatus @default(PROSPECT)
+  description   String?
+  contracts     Contract[]
+  deals         PipelineDeal[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model PipelineDeal {
+  id                String        @id @default(uuid())
+  scenarioId        String
+  scenario          Scenario      @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  clientId          String
+  client            Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name              String
+  amount            Float         @default(0)
+  probability       Float         @default(50)
+  stage             PipelineStage @default(LEAD)
+  expectedCloseDate DateTime?
+  description       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([scenarioId])
+  @@index([clientId])
 }

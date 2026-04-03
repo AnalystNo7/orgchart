@@ -46,7 +46,7 @@ function scoreInverse(value: number, maxBad: number): number {
 
 export async function calculateOhi(scenarioId: string): Promise<OhiResult> {
   // Fetch all data in parallel
-  const [departments, employees, processes, goals, competencyData] = await Promise.all([
+  const [departments, employees, processes, goals, competencyData, clients, pipelineDeals] = await Promise.all([
     prisma.department.findMany({
       where: { scenarioId },
       include: {
@@ -56,7 +56,7 @@ export async function calculateOhi(scenarioId: string): Promise<OhiResult> {
     prisma.employee.findMany({
       where: { scenarioId },
       include: {
-        contracts: true,
+        contracts: { include: { contract: true } },
         competencies: {
           include: { competency: true },
         },
@@ -73,6 +73,15 @@ export async function calculateOhi(scenarioId: string): Promise<OhiResult> {
       include: { kpis: true },
     }),
     prisma.roleCompetency.findMany(),
+    prisma.client.findMany({
+      include: {
+        contracts: { select: { id: true, type: true, amount: true } },
+        _count: { select: { contracts: true } },
+      },
+    }),
+    prisma.pipelineDeal.findMany({
+      where: { scenarioId },
+    }),
   ]);
 
   const totalEmployees = employees.length;
@@ -296,14 +305,51 @@ export async function calculateOhi(scenarioId: string): Promise<OhiResult> {
     });
   }
 
-  // 7. CUSTOMER RESILIENCE (10%) — no data on MVP
+  // 7. CUSTOMER RESILIENCE (10%)
   {
+    let score: number | null = null;
+    const metrics: Record<string, number | string | null> = {};
+
+    if (clients.length > 0) {
+      // Revenue concentration: % from top-3 clients
+      const clientRevenues = clients.map((c) => ({
+        name: c.name,
+        revenue: c.contracts
+          .filter((ct) => ct.type === "REVENUE")
+          .reduce((s, ct) => s + Number(ct.amount || 0), 0),
+      })).sort((a, b) => b.revenue - a.revenue);
+
+      const totalClientRevenue = clientRevenues.reduce((s, c) => s + c.revenue, 0);
+      const top3Revenue = clientRevenues.slice(0, 3).reduce((s, c) => s + c.revenue, 0);
+      const concentrationPct = totalClientRevenue > 0 ? (top3Revenue / totalClientRevenue) * 100 : 0;
+
+      // Concentration score: <40% top-3 = 100, >80% = 0
+      const concentrationScore = scoreInRange(100 - concentrationPct, 20, 60, 2);
+
+      // Diversification: more active clients = better
+      const activeClients = clients.filter((c) => c.status === "ACTIVE").length;
+      const diversificationScore = Math.min(100, activeClients * 15); // 7+ clients = 100
+
+      // Pipeline health
+      const activeDeals = pipelineDeals.filter((d) => d.stage !== "LOST" && d.stage !== "WON");
+      const advancedDeals = activeDeals.filter((d) => d.stage === "PROPOSAL" || d.stage === "NEGOTIATION");
+      const pipelineScore = activeDeals.length > 0
+        ? scorePercent((advancedDeals.length / activeDeals.length) * 100)
+        : 0;
+
+      score = Math.round((concentrationScore + diversificationScore + pipelineScore) / 3);
+      metrics.totalClients = clients.length;
+      metrics.activeClients = activeClients;
+      metrics.concentrationTop3 = Math.round(concentrationPct);
+      metrics.pipelineDeals = activeDeals.length;
+    }
+
     components.push({
       key: "customer",
       name: "Клиентская устойчивость",
       weight: 0.10,
-      score: null,
-      metrics: { note: "Нет данных (Спринт 6)" },
+      score,
+      metrics: clients.length > 0 ? metrics : { note: "Нет клиентов" },
     });
   }
 

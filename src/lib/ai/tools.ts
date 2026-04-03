@@ -359,5 +359,40 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       ),
       execute: wrapExecute("generate_board_report", currentScenarioId, onProgress),
     }),
+
+    get_clients: tool({
+      description:
+        "Получить список клиентов с контрактами, выручкой и количеством сделок в pipeline. Фильтрация по статусу.",
+      inputSchema: zodSchema(
+        z.object({
+          status: z.enum(["ACTIVE", "PROSPECT", "INACTIVE"]).optional().describe("Фильтр по статусу клиента"),
+        })
+      ),
+      execute: wrapExecute("get_clients", currentScenarioId, onProgress),
+    }),
+
+    analyze_portfolio: tool({
+      description:
+        "Анализ клиентского портфеля: концентрация выручки (зависимость от top-клиентов), диверсификация, pipeline health, риски.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("analyze_portfolio", currentScenarioId, onProgress),
+    }),
+
+    get_pipeline: tool({
+      description:
+        "Получить сделки из воронки продаж (pipeline) сценария. Фильтрация по стадии и клиенту.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+          stage: z.enum(["LEAD", "QUALIFICATION", "PROPOSAL", "NEGOTIATION", "WON", "LOST"]).optional().describe("Фильтр по стадии"),
+          clientId: z.string().optional().describe("Фильтр по клиенту"),
+        })
+      ),
+      execute: wrapExecute("get_pipeline", currentScenarioId, onProgress),
+    }),
   };
 }
