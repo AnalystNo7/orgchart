@@ -183,10 +183,10 @@ export default function StrategyPage() {
 
   useEffect(() => {
     if (!currentScenarioId) return;
-    fetch(`/api/employees?scenarioId=${currentScenarioId}`)
+    fetch(`/api/employees?scenarioId=${currentScenarioId}&limit=1000`)
       .then((r) => r.json())
       .then((data) => {
-        const list = (data.employees || data || []).map((e: { id: string; fullName: string; position: string }) => ({
+        const list = (data.data || data.employees || []).map((e: { id: string; fullName: string; position: string }) => ({
           id: e.id, fullName: e.fullName, position: e.position,
         }));
         setEmployees(list);
