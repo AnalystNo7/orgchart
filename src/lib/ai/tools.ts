@@ -337,5 +337,27 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       ),
       execute: wrapExecute("analyze_strategy", currentScenarioId, onProgress),
     }),
+
+    get_ohi: tool({
+      description:
+        "Получить Organization Health Index (OHI) — композитный индекс здоровья организации 0-100 с разбивкой по 7 компонентам: структурная эффективность, финансовое здоровье, процессная зрелость, компетентностная готовность, стратегическое выравнивание, операционная нагрузка, клиентская устойчивость.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("get_ohi", currentScenarioId, onProgress),
+    }),
+
+    generate_board_report: tool({
+      description:
+        "Сгенерировать текстовый отчёт о здоровье организации для совета директоров. Включает OHI score, разбивку по компонентам, ключевые метрики и рекомендации.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("generate_board_report", currentScenarioId, onProgress),
+    }),
   };
 }

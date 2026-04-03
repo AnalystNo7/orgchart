@@ -4,9 +4,10 @@ import { OrgChart } from "@/components/org-chart/OrgChart";
 import { DepartmentPanel } from "@/components/department-card/DepartmentPanel";
 import { PnlHeatmap } from "@/components/pnl/PnlHeatmap";
 import { PnlDrillDown } from "@/components/pnl/PnlDrillDown";
+import { CeoDashboard } from "@/components/dashboard/CeoDashboard";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOrgChartStore } from "@/lib/store";
-import { LayoutDashboard, Flame } from "lucide-react";
+import { LayoutDashboard, Flame, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,14 @@ export default function DashboardPage() {
             <Flame className="mr-1.5 h-4 w-4" />
             P&L Heatmap
           </Button>
+          <Button
+            variant={viewMode === "ceo-dashboard" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("ceo-dashboard")}
+          >
+            <Activity className="mr-1.5 h-4 w-4" />
+            CEO Dashboard
+          </Button>
         </div>
 
         {/* Content */}
@@ -52,13 +61,17 @@ export default function DashboardPage() {
                 <DepartmentPanel departmentId={selectedDepartmentId} />
               )}
             </>
-          ) : (
+          ) : viewMode === "pnl-heatmap" ? (
             <>
               <div className="flex-1">
                 <PnlHeatmap />
               </div>
               {pnlDrillDownDeptId && <PnlDrillDown />}
             </>
+          ) : (
+            <div className="flex-1 overflow-auto">
+              <CeoDashboard />
+            </div>
           )}
         </div>
       </div>

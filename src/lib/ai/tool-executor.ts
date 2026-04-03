@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { computeDiff } from "@/lib/diff";
 import { calculatePnl, type PnlMode } from "@/lib/pnl-calculator";
+import { calculateOhi } from "@/lib/ohi-calculator";
 import { getBenchmarks, listAvailableMetrics, listAvailableIndustries, type BenchmarkCategory } from "./benchmarks";
 import { retrieveChunks, formatRetrievalContext } from "@/lib/rag";
 import type { ShetilType, GapCategory, GapPriority } from "@prisma/client";
@@ -101,6 +102,14 @@ export async function executeTool(
         );
       case "analyze_strategy":
         return await analyzeStrategy(
+          (input.scenarioId as string) || currentScenarioId
+        );
+      case "get_ohi":
+        return await getOhi(
+          (input.scenarioId as string) || currentScenarioId
+        );
+      case "generate_board_report":
+        return await generateBoardReport(
           (input.scenarioId as string) || currentScenarioId
         );
       default:
@@ -1286,4 +1295,64 @@ async function analyzeStrategy(scenarioId: string): Promise<string> {
     deptsWithoutGoals,
     issues: issues.length > 0 ? issues : ["Стратегическое выравнивание в порядке"],
   }, null, 2);
+}
+
+// --- OHI ---
+
+async function getOhi(scenarioId: string): Promise<string> {
+  const result = await calculateOhi(scenarioId);
+  return JSON.stringify(result, null, 2);
+}
+
+async function generateBoardReport(scenarioId: string): Promise<string> {
+  const ohi = await calculateOhi(scenarioId);
+
+  const statusLabel = ohi.overallScore >= 70 ? "ЗДОРОВАЯ" : ohi.overallScore >= 40 ? "ТРЕБУЕТ ВНИМАНИЯ" : "КРИТИЧЕСКОЕ СОСТОЯНИЕ";
+
+  const lines: string[] = [
+    `# Отчёт о здоровье организации`,
+    ``,
+    `## Общая оценка: ${ohi.overallScore}/100 — ${statusLabel}`,
+    ``,
+    `### Сводка`,
+    `- Сотрудников: ${ohi.summary.employees} (${ohi.summary.totalFte} FTE)`,
+    `- Подразделений: ${ohi.summary.departments}`,
+    `- Процессов: ${ohi.summary.processes}`,
+    `- Стратегических целей: ${ohi.summary.goals}`,
+    ``,
+    `### Компоненты OHI`,
+  ];
+
+  for (const comp of ohi.components) {
+    const scoreText = comp.score !== null ? `${comp.score}/100` : "N/A";
+    const status = comp.score === null ? "⚪" : comp.score >= 70 ? "🟢" : comp.score >= 40 ? "🟡" : "🔴";
+    lines.push(``, `#### ${status} ${comp.name} (${Math.round(comp.weight * 100)}%) — ${scoreText}`);
+
+    for (const [k, v] of Object.entries(comp.metrics)) {
+      if (v !== null && k !== "note") {
+        lines.push(`- ${k}: ${v}`);
+      }
+    }
+  }
+
+  // Recommendations
+  lines.push(``, `### Рекомендации`);
+  const weak = ohi.components.filter((c) => c.score !== null && c.score < 50);
+  if (weak.length > 0) {
+    for (const c of weak) {
+      lines.push(`- **${c.name}** (${c.score}/100): требуется улучшение`);
+    }
+  } else {
+    lines.push(`- Все доступные компоненты в удовлетворительном состоянии`);
+  }
+
+  const na = ohi.components.filter((c) => c.score === null);
+  if (na.length > 0) {
+    lines.push(``, `### Нет данных`);
+    for (const c of na) {
+      lines.push(`- ${c.name}: данные недоступны для расчёта`);
+    }
+  }
+
+  return lines.join("\n");
 }

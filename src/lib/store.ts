@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { MetricsMode } from "@/types";
 
-export type ViewMode = "orgchart" | "pnl-heatmap";
+export type ViewMode = "orgchart" | "pnl-heatmap" | "ceo-dashboard";
 export type PnlDisplayMode = "plan" | "forecast" | "combined";
 
 interface OrgChartState {
