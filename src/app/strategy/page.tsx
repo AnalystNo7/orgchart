@@ -451,12 +451,14 @@ export default function StrategyPage() {
           <button
             onClick={() => setActiveTab("bsc")}
             className={`rounded-md px-3 py-1 text-sm font-medium transition ${activeTab === "bsc" ? "bg-white shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+            title='Balanced Scorecard "Сбалансированная система показателей"'
           >
             BSC
           </button>
           <button
             onClick={() => setActiveTab("okr")}
             className={`rounded-md px-3 py-1 text-sm font-medium transition ${activeTab === "okr" ? "bg-white shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+            title='Objectives & Key Results "Цели и ключевые результаты"'
           >
             OKR
           </button>
