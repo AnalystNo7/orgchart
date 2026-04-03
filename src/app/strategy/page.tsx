@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useOrgChartStore } from "@/lib/store";
 import {
   Crosshair,
@@ -15,6 +15,8 @@ import {
   User,
   Building2,
   TrendingUp,
+  Search,
+  Check,
 } from "lucide-react";
 
 // --- Types ---
@@ -128,6 +130,99 @@ function kpiSummary(kpis: GoalKpiData[]): string {
     return sum + p * k.weight;
   }, 0) / kpis.reduce((sum, k) => sum + k.weight, 0);
   return `${kpis.length} KPI, ${Math.round(avgProgress)}%`;
+}
+
+// --- Owner Combobox ---
+
+function OwnerCombobox({
+  employees,
+  value,
+  onChange,
+}: {
+  employees: EmployeeOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selected = employees.find((e) => e.id === value);
+  const filtered = search.trim()
+    ? employees.filter((e) => {
+        const q = search.toLowerCase();
+        return e.fullName.toLowerCase().includes(q) || e.position.toLowerCase().includes(q);
+      })
+    : employees;
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className="flex items-center w-full rounded border px-2 py-1.5 text-sm cursor-pointer hover:border-neutral-400"
+        onClick={() => { setOpen(!open); setTimeout(() => inputRef.current?.focus(), 0); }}
+      >
+        <Search className="h-3.5 w-3.5 text-neutral-400 mr-1.5 shrink-0" />
+        <span className={`flex-1 truncate ${selected ? "text-neutral-900" : "text-neutral-400"}`}>
+          {selected ? `${selected.fullName} (${selected.position})` : "Не назначен"}
+        </span>
+        {value && (
+          <button
+            type="button"
+            className="ml-1 p-0.5 rounded hover:bg-neutral-100"
+            onClick={(e) => { e.stopPropagation(); onChange(""); setSearch(""); }}
+          >
+            <X className="h-3 w-3 text-neutral-400" />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg">
+          <div className="p-1.5 border-b">
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded border-0 bg-neutral-50 px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
+              placeholder="Поиск по ФИО или должности..."
+              autoFocus
+            />
+          </div>
+          <div className="max-h-48 overflow-auto p-1">
+            {filtered.length === 0 ? (
+              <div className="px-2 py-3 text-center text-xs text-neutral-400">Не найдено</div>
+            ) : (
+              filtered.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100 ${e.id === value ? "bg-neutral-50" : ""}`}
+                  onClick={() => { onChange(e.id); setOpen(false); setSearch(""); }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{e.fullName}</div>
+                    <div className="text-xs text-neutral-500 truncate">{e.position}</div>
+                  </div>
+                  {e.id === value && <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // --- Component ---
@@ -493,12 +588,11 @@ export default function StrategyPage() {
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-neutral-500">Владелец</label>
-              <select value={formOwnerId} onChange={(e) => setFormOwnerId(e.target.value)} className="w-full rounded border px-2 py-1.5 text-sm">
-                <option value="">Не назначен</option>
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>{e.fullName} ({e.position})</option>
-                ))}
-              </select>
+              <OwnerCombobox
+                employees={employees}
+                value={formOwnerId}
+                onChange={setFormOwnerId}
+              />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-neutral-500">Период</label>
