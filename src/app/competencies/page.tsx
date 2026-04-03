@@ -12,6 +12,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
+import { EmployeeCompetencyCard } from "@/components/competencies/EmployeeCompetencyCard";
 
 interface CompetencyItem {
   id: string;
@@ -74,6 +75,7 @@ export default function CompetenciesPage() {
   const [filterDept, setFilterDept] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [includeChildren, setIncludeChildren] = useState(true);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
   // Add competency form
   const [showForm, setShowForm] = useState(false);
@@ -327,7 +329,12 @@ export default function CompetenciesPage() {
               {filteredEmps.map((emp) => (
                 <tr key={emp.id} className="border-b hover:bg-neutral-50/50">
                   <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-medium">
-                    {emp.fullName}
+                    <button
+                      onClick={() => setSelectedEmployeeId(emp.id)}
+                      className="text-left hover:text-blue-600 hover:underline"
+                    >
+                      {emp.fullName}
+                    </button>
                   </td>
                   <td className="sticky bg-white px-2 py-1.5 text-neutral-400 truncate" style={{ left: "180px" }}>
                     {getDeptName(emp.departmentId)}
@@ -351,6 +358,16 @@ export default function CompetenciesPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Employee competency card modal */}
+      {selectedEmployeeId && (
+        <EmployeeCompetencyCard
+          employeeId={selectedEmployeeId}
+          open={!!selectedEmployeeId}
+          onClose={() => setSelectedEmployeeId(null)}
+          onSaved={() => loadData()}
+        />
       )}
     </div>
   );
