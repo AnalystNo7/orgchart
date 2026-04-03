@@ -350,9 +350,9 @@ export default function StrategyPage() {
           </div>
 
           {/* Owner */}
-          <span className="w-32 truncate text-xs text-neutral-500 flex items-center gap-1">
+          <span className="w-44 truncate text-xs text-neutral-500 flex items-center gap-1" title={g.owner ? `${g.owner.fullName}, ${g.owner.position}` : ""}>
             {g.owner ? (
-              <><User className="h-3 w-3 shrink-0" />{g.owner.fullName}</>
+              <><User className="h-3 w-3 shrink-0" />{g.owner.fullName}, {g.owner.position}</>
             ) : "—"}
           </span>
 
@@ -628,7 +628,7 @@ export default function StrategyPage() {
                 <span className="flex-1 pl-7">Цель</span>
                 <span className="w-20 text-center">Статус</span>
                 <span className="w-20 text-center">Прогресс</span>
-                <span className="w-32">Владелец</span>
+                <span className="w-44">Владелец</span>
                 <span className="w-16 text-center">Период</span>
                 <span className="w-8" />
                 <span className="w-20 text-center">KPI</span>
