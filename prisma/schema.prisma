@@ -42,6 +42,22 @@ enum RevenueProvisionStatus {
   NOT_PROVIDED
 }
 
+enum GoalType {
+  BSC_FINANCIAL
+  BSC_CLIENT
+  BSC_PROCESS
+  BSC_LEARNING
+  OKR
+}
+
+enum GoalStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  ACHIEVED
+  AT_RISK
+  FAILED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -66,6 +82,7 @@ model Scenario {
   gaps            GapPassport[]
   aiConversations AiConversation[]
   processes       Process[]
+  goals           Goal[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
@@ -84,6 +101,7 @@ model Department {
   head       Employee?  @relation("DepartmentHead", fields: [headId], references: [id])
   sortOrder  Int        @default(0)
   employees  Employee[] @relation("DepartmentEmployees")
+  goalLinks  GoalDepartmentLink[]
   originId   String?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
@@ -122,6 +140,7 @@ model Employee {
   headOf       Department[]     @relation("DepartmentHead")
   contracts    EmployeeContract[]
   competencies EmployeeCompetency[]
+  ownedGoals   Goal[]               @relation("GoalOwner")
   originId     String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
@@ -484,4 +503,61 @@ model PnlCache {
   @@unique([scenarioId, departmentId, mode, periodStart, periodEnd])
   @@index([scenarioId])
   @@index([scenarioId, mode])
+}
+
+// --- Strategic Goals (BSC / OKR) ---
+
+model Goal {
+  id          String     @id @default(uuid())
+  scenarioId  String
+  scenario    Scenario   @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Goal?      @relation("GoalTree", fields: [parentId], references: [id])
+  children    Goal[]     @relation("GoalTree")
+  name        String
+  description String?
+  type        GoalType
+  status      GoalStatus @default(NOT_STARTED)
+  weight      Float      @default(1.0)
+  progress    Float      @default(0)
+  ownerId     String?
+  owner       Employee?  @relation("GoalOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  deadline    DateTime?
+  period      String?
+  sortOrder   Int        @default(0)
+  kpis        GoalKpi[]
+  departments GoalDepartmentLink[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([scenarioId])
+  @@index([parentId])
+}
+
+model GoalKpi {
+  id           String   @id @default(uuid())
+  goalId       String
+  goal         Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  name         String
+  unit         String
+  targetValue  Float
+  currentValue Float    @default(0)
+  weight       Float    @default(1.0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([goalId])
+}
+
+model GoalDepartmentLink {
+  id           String     @id @default(uuid())
+  goalId       String
+  goal         Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([goalId, departmentId])
+  @@index([goalId])
+  @@index([departmentId])
 }

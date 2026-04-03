@@ -93,6 +93,16 @@ export async function executeTool(
         return await addEmployee(input);
       case "remove_employees":
         return await removeEmployees(input.employeeIds as string[]);
+      case "get_goals":
+        return await getGoals(
+          (input.scenarioId as string) || currentScenarioId,
+          input.type as string | undefined,
+          input.status as string | undefined
+        );
+      case "analyze_strategy":
+        return await analyzeStrategy(
+          (input.scenarioId as string) || currentScenarioId
+        );
       default:
         return JSON.stringify({ error: `Неизвестный инструмент: ${name}` });
     }
@@ -1133,4 +1143,147 @@ async function queryKnowledgeBaseTool(input: ToolInput): Promise<string> {
     }
     return JSON.stringify({ error: msg });
   }
+}
+
+// --- Strategic Goals ---
+
+async function getGoals(
+  scenarioId: string,
+  type?: string,
+  status?: string
+): Promise<string> {
+  const goals = await prisma.goal.findMany({
+    where: {
+      scenarioId,
+      ...(type && { type: type as never }),
+      ...(status && { status: status as never }),
+    },
+    include: {
+      kpis: true,
+      departments: { include: { department: { select: { id: true, name: true } } } },
+      owner: { select: { id: true, fullName: true, position: true } },
+      _count: { select: { children: true } },
+    },
+    orderBy: [{ type: "asc" }, { sortOrder: "asc" }],
+  });
+
+  return JSON.stringify({
+    total: goals.length,
+    goals: goals.map((g) => ({
+      id: g.id,
+      name: g.name,
+      type: g.type,
+      status: g.status,
+      progress: g.progress,
+      weight: g.weight,
+      period: g.period,
+      parentId: g.parentId,
+      owner: g.owner ? `${g.owner.fullName} (${g.owner.position})` : null,
+      departments: g.departments.map((d) => d.department.name),
+      kpis: g.kpis.map((k) => ({
+        name: k.name,
+        current: k.currentValue,
+        target: k.targetValue,
+        unit: k.unit,
+        progress: k.targetValue > 0 ? Math.round((k.currentValue / k.targetValue) * 100) : 0,
+      })),
+      childrenCount: g._count.children,
+    })),
+  }, null, 2);
+}
+
+async function analyzeStrategy(scenarioId: string): Promise<string> {
+  const goals = await prisma.goal.findMany({
+    where: { scenarioId },
+    include: {
+      kpis: true,
+      departments: { include: { department: { select: { id: true, name: true } } } },
+      owner: { select: { id: true, fullName: true } },
+    },
+  });
+
+  const departments = await prisma.department.findMany({
+    where: { scenarioId },
+    select: { id: true, name: true },
+  });
+
+  const typeLabels: Record<string, string> = {
+    BSC_FINANCIAL: "Финансы",
+    BSC_CLIENT: "Клиенты",
+    BSC_PROCESS: "Процессы",
+    BSC_LEARNING: "Обучение и рост",
+    OKR: "OKR",
+  };
+
+  // 1. Coverage by perspective
+  const perspectiveCoverage: Record<string, { count: number; avgProgress: number }> = {};
+  for (const type of ["BSC_FINANCIAL", "BSC_CLIENT", "BSC_PROCESS", "BSC_LEARNING", "OKR"]) {
+    const typed = goals.filter((g) => g.type === type);
+    perspectiveCoverage[typeLabels[type]] = {
+      count: typed.length,
+      avgProgress: typed.length > 0
+        ? Math.round(typed.reduce((s, g) => s + g.progress, 0) / typed.length)
+        : 0,
+    };
+  }
+
+  // 2. Goals without KPIs
+  const goalsWithoutKpis = goals
+    .filter((g) => g.kpis.length === 0)
+    .map((g) => ({ name: g.name, type: typeLabels[g.type] }));
+
+  // 3. Goals at risk
+  const goalsAtRisk = goals
+    .filter((g) => g.status === "AT_RISK" || g.status === "FAILED")
+    .map((g) => ({ name: g.name, type: typeLabels[g.type], status: g.status, progress: g.progress }));
+
+  // 4. Goals without owner
+  const goalsWithoutOwner = goals
+    .filter((g) => !g.ownerId)
+    .map((g) => ({ name: g.name, type: typeLabels[g.type] }));
+
+  // 5. Department involvement
+  const deptGoalCount = new Map<string, number>();
+  for (const g of goals) {
+    for (const d of g.departments) {
+      deptGoalCount.set(d.department.name, (deptGoalCount.get(d.department.name) || 0) + 1);
+    }
+  }
+  const deptsWithoutGoals = departments
+    .filter((d) => !deptGoalCount.has(d.name))
+    .map((d) => d.name);
+
+  // 6. Empty perspectives
+  const emptyPerspectives = Object.entries(perspectiveCoverage)
+    .filter(([, v]) => v.count === 0)
+    .map(([k]) => k);
+
+  // Summary
+  const issues: string[] = [];
+  if (emptyPerspectives.length > 0) {
+    issues.push(`${emptyPerspectives.length} перспектив без целей: ${emptyPerspectives.join(", ")}`);
+  }
+  if (goalsWithoutKpis.length > 0) {
+    issues.push(`${goalsWithoutKpis.length} целей без KPI`);
+  }
+  if (goalsAtRisk.length > 0) {
+    issues.push(`${goalsAtRisk.length} целей под угрозой/провалены`);
+  }
+  if (goalsWithoutOwner.length > 0) {
+    issues.push(`${goalsWithoutOwner.length} целей без владельца`);
+  }
+  if (deptsWithoutGoals.length > 0) {
+    issues.push(`${deptsWithoutGoals.length} подразделений не участвуют в целях`);
+  }
+
+  return JSON.stringify({
+    totalGoals: goals.length,
+    perspectiveCoverage,
+    goalsWithoutKpis,
+    goalsAtRisk,
+    goalsWithoutOwner,
+    departmentInvolvement: Object.fromEntries(deptGoalCount),
+    deptsWithoutGoals,
+    issues: issues.length > 0 ? issues : ["Стратегическое выравнивание в порядке"],
+  }, null, 2);
 }

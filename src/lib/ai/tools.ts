@@ -313,5 +313,29 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       ),
       execute: wrapExecute("remove_employees", currentScenarioId, onProgress),
     }),
+
+    get_goals: tool({
+      description:
+        "Получить стратегические цели сценария (BSC + OKR). Фильтрация по типу перспективы и статусу. Возвращает дерево целей с KPI, владельцами и подразделениями.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+          type: z.enum(["BSC_FINANCIAL", "BSC_CLIENT", "BSC_PROCESS", "BSC_LEARNING", "OKR"]).optional().describe("Фильтр по типу/перспективе BSC"),
+          status: z.enum(["NOT_STARTED", "IN_PROGRESS", "ACHIEVED", "AT_RISK", "FAILED"]).optional().describe("Фильтр по статусу"),
+        })
+      ),
+      execute: wrapExecute("get_goals", currentScenarioId, onProgress),
+    }),
+
+    analyze_strategy: tool({
+      description:
+        "Анализ стратегического выравнивания: покрытие целей по перспективам BSC, цели без KPI, цели под угрозой, вовлечённость подразделений, средний прогресс по перспективам.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("analyze_strategy", currentScenarioId, onProgress),
+    }),
   };
 }
