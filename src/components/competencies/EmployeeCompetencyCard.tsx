@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Save, Plus, Loader2, Trash2 } from "lucide-react";
+import { Save, Plus, Loader2, Trash2, FileText } from "lucide-react";
 
 interface EmployeeData {
   id: string;
@@ -18,6 +18,10 @@ interface EmployeeData {
   department: { id: string; name: string } | null;
   contracts: Array<{
     id: string;
+    revenueStatus: string;
+    fte: string;
+    periodStart: string;
+    periodEnd: string;
     contract: { id: string; name: string; type: string; status: string; periodStart: string; periodEnd: string };
   }>;
 }
@@ -44,6 +48,32 @@ const CATEGORY_LABELS: Record<string, string> = {
   OPP: "ОПП",
   AUP: "АУП",
 };
+
+const CONTRACT_TYPE_LABELS: Record<string, string> = {
+  REVENUE: "Доходный",
+  EXPENSE: "Расходный",
+};
+
+const CONTRACT_STATUS_LABELS: Record<string, string> = {
+  CONCLUDED: "Заключённый",
+  PLANNED: "Планируемый",
+};
+
+const REVENUE_STATUS_LABELS: Record<string, string> = {
+  PROVIDED: "Обеспечен",
+  PLANNED: "Запланирован",
+  NOT_PROVIDED: "Не обеспечен",
+};
+
+const REVENUE_STATUS_COLORS: Record<string, string> = {
+  PROVIDED: "bg-green-100 text-green-700",
+  PLANNED: "bg-yellow-100 text-yellow-700",
+  NOT_PROVIDED: "bg-red-100 text-red-700",
+};
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
 const CATEGORY_COLORS: Record<string, string> = {
   HARD: "bg-blue-100 text-blue-700",
@@ -205,21 +235,54 @@ export function EmployeeCompetencyCard({ employeeId, open, onClose, onSaved }: E
             </div>
 
             {/* Contracts */}
-            {employee.contracts && employee.contracts.length > 0 && (
-              <div className="rounded-lg border p-3">
-                <div className="text-xs font-medium text-neutral-500 mb-2">Контракты ({employee.contracts.length})</div>
-                <div className="flex flex-wrap gap-2">
-                  {employee.contracts.map((ec) => (
-                    <span key={ec.id} className="rounded bg-neutral-100 px-2 py-1 text-xs">
-                      {ec.contract.name}
-                      <span className="text-neutral-400 ml-1">
-                        ({ec.contract.type === "REVENUE" ? "доходный" : "расходный"})
-                      </span>
-                    </span>
-                  ))}
-                </div>
+            <div className="rounded-lg border">
+              <div className="flex items-center gap-2 border-b bg-neutral-50 px-4 py-2">
+                <FileText className="h-4 w-4 text-neutral-400" />
+                <span className="text-sm font-medium">Договоры ({employee.contracts?.length || 0})</span>
               </div>
-            )}
+              {!employee.contracts || employee.contracts.length === 0 ? (
+                <div className="px-4 py-4 text-center text-xs text-neutral-400">
+                  Нет привязанных договоров
+                </div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-neutral-500">
+                      <th className="px-4 py-1.5 text-left font-medium">Договор</th>
+                      <th className="px-3 py-1.5 text-center font-medium w-24">Тип</th>
+                      <th className="px-3 py-1.5 text-center font-medium w-28">Статус</th>
+                      <th className="px-3 py-1.5 text-center font-medium w-28">Обеспечение</th>
+                      <th className="px-3 py-1.5 text-center font-medium w-16">FTE</th>
+                      <th className="px-3 py-1.5 text-center font-medium w-48">Период</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employee.contracts.map((ec) => (
+                      <tr key={ec.id} className="border-b last:border-0 hover:bg-neutral-50">
+                        <td className="px-4 py-1.5 font-medium">{ec.contract.name}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ec.contract.type === "REVENUE" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                            {CONTRACT_TYPE_LABELS[ec.contract.type] || ec.contract.type}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5 text-center text-neutral-600">
+                          {CONTRACT_STATUS_LABELS[ec.contract.status] || ec.contract.status}
+                        </td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${REVENUE_STATUS_COLORS[ec.revenueStatus] || "bg-neutral-100 text-neutral-600"}`}>
+                            {REVENUE_STATUS_LABELS[ec.revenueStatus] || ec.revenueStatus}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5 text-center font-medium">{ec.fte}</td>
+                        <td className="px-3 py-1.5 text-center text-neutral-500">
+                          {formatDate(ec.periodStart)} – {formatDate(ec.periodEnd)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
 
             {/* Competencies table */}
             <div className="rounded-lg border">
