@@ -14,7 +14,7 @@ const navItems = [
   { href: "/processes", label: "Процессы", icon: Network },
   { href: "/competencies", label: "Компетенции", icon: GraduationCap },
   { href: "/strategy", label: "Стратегия", icon: Crosshair },
-  { href: "/clients", label: "Клиенты", icon: Briefcase },
+  { href: "/clients", label: "Заказчики", icon: Briefcase },
   { href: "/gap-analysis", label: "Gap-анализ", icon: Target },
   { href: "/benchmarks", label: "Бенчмарки", icon: BarChart3 },
   { href: "/knowledge", label: "База знаний", icon: BookOpenCheck },
