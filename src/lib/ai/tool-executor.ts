@@ -112,6 +112,18 @@ export async function executeTool(
         return await generateBoardReport(
           (input.scenarioId as string) || currentScenarioId
         );
+      case "get_clients":
+        return await getClients(input.status as string | undefined);
+      case "analyze_portfolio":
+        return await analyzePortfolio(
+          (input.scenarioId as string) || currentScenarioId
+        );
+      case "get_pipeline":
+        return await getPipeline(
+          (input.scenarioId as string) || currentScenarioId,
+          input.stage as string | undefined,
+          input.clientId as string | undefined
+        );
       default:
         return JSON.stringify({ error: `Неизвестный инструмент: ${name}` });
     }
@@ -1355,4 +1367,116 @@ async function generateBoardReport(scenarioId: string): Promise<string> {
   }
 
   return lines.join("\n");
+}
+
+// --- Clients & Pipeline ---
+
+async function getClients(status?: string): Promise<string> {
+  const clients = await prisma.client.findMany({
+    where: status ? { status: status as never } : undefined,
+    include: {
+      contracts: { select: { id: true, name: true, type: true, amount: true, status: true } },
+      _count: { select: { contracts: true, deals: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return JSON.stringify({
+    total: clients.length,
+    clients: clients.map((c) => ({
+      id: c.id,
+      name: c.name,
+      industry: c.industry,
+      status: c.status,
+      contracts: c._count.contracts,
+      deals: c._count.deals,
+      revenue: c.contracts
+        .filter((ct) => ct.type === "REVENUE")
+        .reduce((s, ct) => s + Number(ct.amount || 0), 0),
+    })),
+  }, null, 2);
+}
+
+async function analyzePortfolio(scenarioId: string): Promise<string> {
+  const clients = await prisma.client.findMany({
+    include: {
+      contracts: { select: { type: true, amount: true } },
+    },
+  });
+
+  const deals = await prisma.pipelineDeal.findMany({
+    where: { scenarioId },
+    include: { client: { select: { name: true } } },
+  });
+
+  // Revenue by client
+  const clientRevenues = clients.map((c) => ({
+    name: c.name,
+    status: c.status,
+    revenue: c.contracts
+      .filter((ct) => ct.type === "REVENUE")
+      .reduce((s, ct) => s + Number(ct.amount || 0), 0),
+  })).sort((a, b) => b.revenue - a.revenue);
+
+  const totalRevenue = clientRevenues.reduce((s, c) => s + c.revenue, 0);
+  const top3 = clientRevenues.slice(0, 3);
+  const top3Revenue = top3.reduce((s, c) => s + c.revenue, 0);
+  const concentrationPct = totalRevenue > 0 ? Math.round((top3Revenue / totalRevenue) * 100) : 0;
+
+  // Pipeline summary
+  const stageGroups: Record<string, { count: number; value: number }> = {};
+  for (const d of deals) {
+    if (!stageGroups[d.stage]) stageGroups[d.stage] = { count: 0, value: 0 };
+    stageGroups[d.stage].count++;
+    stageGroups[d.stage].value += d.amount;
+  }
+
+  const weightedPipeline = deals
+    .filter((d) => d.stage !== "LOST" && d.stage !== "WON")
+    .reduce((s, d) => s + d.amount * (d.probability / 100), 0);
+
+  const issues: string[] = [];
+  if (concentrationPct > 60) issues.push(`Высокая концентрация: ${concentrationPct}% выручки от top-3 клиентов`);
+  if (clients.filter((c) => c.status === "ACTIVE").length < 3) issues.push("Мало активных клиентов");
+  if (deals.filter((d) => d.stage === "PROPOSAL" || d.stage === "NEGOTIATION").length === 0) issues.push("Нет сделок на стадии предложения/переговоров");
+
+  return JSON.stringify({
+    totalClients: clients.length,
+    activeClients: clients.filter((c) => c.status === "ACTIVE").length,
+    totalRevenue: Math.round(totalRevenue),
+    concentrationTop3: concentrationPct,
+    top3Clients: top3.map((c) => ({ name: c.name, revenue: Math.round(c.revenue) })),
+    pipeline: {
+      totalDeals: deals.length,
+      byStage: stageGroups,
+      weightedValue: Math.round(weightedPipeline),
+    },
+    issues: issues.length > 0 ? issues : ["Портфель в хорошем состоянии"],
+  }, null, 2);
+}
+
+async function getPipeline(scenarioId: string, stage?: string, clientId?: string): Promise<string> {
+  const deals = await prisma.pipelineDeal.findMany({
+    where: {
+      scenarioId,
+      ...(stage && { stage: stage as never }),
+      ...(clientId && { clientId }),
+    },
+    include: { client: { select: { id: true, name: true } } },
+    orderBy: [{ stage: "asc" }, { amount: "desc" }],
+  });
+
+  return JSON.stringify({
+    total: deals.length,
+    deals: deals.map((d) => ({
+      id: d.id,
+      name: d.name,
+      client: d.client.name,
+      amount: d.amount,
+      probability: d.probability,
+      stage: d.stage,
+      expectedCloseDate: d.expectedCloseDate,
+      weightedValue: Math.round(d.amount * (d.probability / 100)),
+    })),
+  }, null, 2);
 }
