@@ -416,5 +416,27 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       ),
       execute: wrapExecute("get_unit_economics", currentScenarioId, onProgress),
     }),
+
+    run_health_check: tool({
+      description:
+        "Запустить проактивный анализ здоровья организации. Выявляет аномалии, отклонения от бенчмарков, риски по всем слоям (структура, финансы, процессы, компетенции, стратегия, операции, заказчики). Генерирует инсайты и рекомендации.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("run_health_check", currentScenarioId, onProgress),
+    }),
+
+    get_insights: tool({
+      description:
+        "Получить текущие AI-инсайты (проблемы, предупреждения, рекомендации) для сценария.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("get_insights", currentScenarioId, onProgress),
+    }),
   };
 }

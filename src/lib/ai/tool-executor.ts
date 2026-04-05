@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { computeDiff } from "@/lib/diff";
 import { calculatePnl, type PnlMode } from "@/lib/pnl-calculator";
 import { calculateOhi } from "@/lib/ohi-calculator";
+import { runHealthCheck } from "@/lib/org-analyzer";
 import { getBenchmarks, listAvailableMetrics, listAvailableIndustries, type BenchmarkCategory } from "./benchmarks";
 import { retrieveChunks, formatRetrievalContext } from "@/lib/rag";
 import type { ShetilType, GapCategory, GapPriority } from "@prisma/client";
@@ -130,6 +131,14 @@ export async function executeTool(
         );
       case "get_unit_economics":
         return await getUnitEconomics(
+          (input.scenarioId as string) || currentScenarioId
+        );
+      case "run_health_check":
+        return await runHealthCheckTool(
+          (input.scenarioId as string) || currentScenarioId
+        );
+      case "get_insights":
+        return await getInsightsTool(
           (input.scenarioId as string) || currentScenarioId
         );
       default:
@@ -1591,6 +1600,45 @@ async function getUnitEconomics(scenarioId: string): Promise<string> {
       fte: Math.round(d.fte * 10) / 10,
       costPerFte: d.fte > 0 ? Math.round(d.cost / d.fte) : 0,
       ppUtilization: d.ppCount > 0 ? Math.round((d.ppUtilized / d.ppCount) * 100) : null,
+    })),
+  }, null, 2);
+}
+
+// --- Proactive AI ---
+
+async function runHealthCheckTool(scenarioId: string): Promise<string> {
+  const result = await runHealthCheck(scenarioId);
+  const summary = result.insights.map((i) => ({
+    severity: i.severity,
+    title: i.title,
+    recommendations: i.recommendations.length,
+  }));
+
+  return JSON.stringify({
+    totalInsights: result.created,
+    critical: summary.filter((i) => i.severity === "CRITICAL").length,
+    warnings: summary.filter((i) => i.severity === "WARNING").length,
+    positive: summary.filter((i) => i.severity === "POSITIVE").length,
+    insights: summary,
+  }, null, 2);
+}
+
+async function getInsightsTool(scenarioId: string): Promise<string> {
+  const insights = await prisma.aIInsight.findMany({
+    where: { scenarioId, resolved: false },
+    include: { recommendations: { orderBy: { priority: "asc" } } },
+    orderBy: [{ severity: "asc" }, { createdAt: "desc" }],
+  });
+
+  return JSON.stringify({
+    total: insights.length,
+    insights: insights.map((i) => ({
+      severity: i.severity,
+      category: i.category,
+      title: i.title,
+      description: i.description,
+      metric: i.metricKey ? { key: i.metricKey, current: i.currentValue, benchmark: i.benchmarkValue } : null,
+      recommendations: i.recommendations.map((r) => r.title),
     })),
   }, null, 2);
 }
