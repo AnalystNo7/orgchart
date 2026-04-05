@@ -57,6 +57,17 @@ enum PipelineStage {
   LOST
 }
 
+enum BudgetType {
+  CAPEX
+  OPEX
+}
+
+enum BudgetStatus {
+  DRAFT
+  APPROVED
+  CLOSED
+}
+
 enum GoalType {
   BSC_FINANCIAL
   BSC_CLIENT
@@ -99,6 +110,7 @@ model Scenario {
   processes       Process[]
   goals           Goal[]
   pipelineDeals   PipelineDeal[]
+  budgets         Budget[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
@@ -117,8 +129,9 @@ model Department {
   head       Employee?  @relation("DepartmentHead", fields: [headId], references: [id])
   sortOrder  Int        @default(0)
   employees  Employee[] @relation("DepartmentEmployees")
-  goalLinks  GoalDepartmentLink[]
-  originId   String?
+  goalLinks    GoalDepartmentLink[]
+  budgetLines  BudgetLine[]
+  originId     String?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
@@ -616,4 +629,40 @@ model PipelineDeal {
 
   @@index([scenarioId])
   @@index([clientId])
+}
+
+// --- Budgets ---
+
+model Budget {
+  id          String       @id @default(uuid())
+  scenarioId  String
+  scenario    Scenario     @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  name        String
+  type        BudgetType
+  status      BudgetStatus @default(DRAFT)
+  periodStart DateTime
+  periodEnd   DateTime
+  description String?
+  lines       BudgetLine[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([scenarioId])
+}
+
+model BudgetLine {
+  id            String     @id @default(uuid())
+  budgetId      String
+  budget        Budget     @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  departmentId  String
+  department    Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  category      String     // "Зарплата", "Аренда", "ПО", "Оборудование", etc.
+  plannedAmount Float      @default(0)
+  actualAmount  Float      @default(0)
+  description   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([budgetId])
+  @@index([departmentId])
 }

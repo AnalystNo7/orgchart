@@ -394,5 +394,27 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       ),
       execute: wrapExecute("get_pipeline", currentScenarioId, onProgress),
     }),
+
+    analyze_budget: tool({
+      description:
+        "Анализ бюджетов сценария: план vs факт по подразделениям, отклонения, CapEx/OpEx разбивка.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("analyze_budget", currentScenarioId, onProgress),
+    }),
+
+    get_unit_economics: tool({
+      description:
+        "Unit-экономика: revenue/FTE, cost/FTE, маржинальность, утилизация ПП по подразделениям.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+        })
+      ),
+      execute: wrapExecute("get_unit_economics", currentScenarioId, onProgress),
+    }),
   };
 }
