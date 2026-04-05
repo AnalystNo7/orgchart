@@ -12,7 +12,6 @@ import {
   X,
   TrendingUp,
   TrendingDown,
-  DollarSign,
   Users,
   BarChart3,
   ArrowUpRight,
@@ -211,7 +210,7 @@ export default function FinancePage() {
             <BarChart3 className="inline h-3.5 w-3.5 mr-1" />P&L Аналитика
           </button>
           <button onClick={() => setActiveTab("budgets")} className={`rounded-md px-3 py-1 text-sm font-medium transition ${activeTab === "budgets" ? "bg-white shadow-sm" : "text-neutral-500"}`}>
-            <DollarSign className="inline h-3.5 w-3.5 mr-1" />Бюджеты ({budgets.length})
+            <span className="inline-block w-3.5 h-3.5 mr-1 text-center font-bold leading-[14px]">₽</span>Бюджеты ({budgets.length})
           </button>
         </div>
       </div>
@@ -223,7 +222,7 @@ export default function FinancePage() {
           <div className="grid grid-cols-4 gap-3">
             <KpiCard icon={<TrendingUp className="h-5 w-5 text-green-600" />} label="Выручка" value={fmt(s.totalRevenue)} />
             <KpiCard icon={<TrendingDown className="h-5 w-5 text-red-600" />} label="Затраты" value={fmt(s.totalCost)} />
-            <KpiCard icon={<DollarSign className="h-5 w-5 text-blue-600" />} label="P&L" value={fmt(s.totalPnl)} sub={`Маржа ${s.margin}%`} positive={s.totalPnl >= 0} />
+            <KpiCard icon={<span className="text-blue-600 font-bold text-lg">₽</span>} label="P&L" value={fmt(s.totalPnl)} sub={`Маржа ${s.margin}%`} positive={s.totalPnl >= 0} />
             <KpiCard icon={<Users className="h-5 w-5 text-purple-600" />} label="Утилизация ПП" value={`${s.utilization}%`} sub={`${s.ppUtilized}/${s.ppTotal} ПП`} />
           </div>
 
