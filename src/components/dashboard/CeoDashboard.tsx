@@ -12,6 +12,12 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  AlertTriangle,
+  CheckCircle,
+  Info,
+  XCircle,
+  RefreshCw,
+  Lightbulb,
 } from "lucide-react";
 
 // --- Types ---
@@ -34,6 +40,19 @@ interface OhiData {
     goals: number;
     totalFte: number;
   };
+}
+
+interface InsightData {
+  id: string;
+  category: string;
+  severity: "CRITICAL" | "WARNING" | "INFO" | "POSITIVE";
+  title: string;
+  description: string;
+  metricKey: string | null;
+  currentValue: number | null;
+  benchmarkValue: number | null;
+  resolved: boolean;
+  recommendations: Array<{ id: string; title: string; description: string; priority: number }>;
 }
 
 // --- Constants ---
@@ -174,7 +193,9 @@ function OhiGauge({ score, size = 160 }: { score: number; size?: number }) {
 export function CeoDashboard() {
   const currentScenarioId = useOrgChartStore((s) => s.currentScenarioId);
   const [data, setData] = useState<OhiData | null>(null);
+  const [insights, setInsights] = useState<InsightData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadOhi = useCallback(() => {
@@ -191,9 +212,31 @@ export function CeoDashboard() {
       .finally(() => setLoading(false));
   }, [currentScenarioId]);
 
+  const loadInsights = useCallback(() => {
+    if (!currentScenarioId) return;
+    fetch(`/api/insights?scenarioId=${currentScenarioId}&resolved=false`)
+      .then((r) => r.json())
+      .then((d) => setInsights(d.insights || []))
+      .catch(() => {});
+  }, [currentScenarioId]);
+
+  const runAnalysis = useCallback(async () => {
+    if (!currentScenarioId) return;
+    setAnalyzing(true);
+    try {
+      await fetch("/api/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenarioId: currentScenarioId }),
+      });
+      loadInsights();
+    } catch {} finally { setAnalyzing(false); }
+  }, [currentScenarioId, loadInsights]);
+
   useEffect(() => {
     loadOhi();
-  }, [loadOhi]);
+    loadInsights();
+  }, [loadOhi, loadInsights]);
 
   if (!currentScenarioId) {
     return (
@@ -254,11 +297,89 @@ export function CeoDashboard() {
           ))}
         </div>
       </div>
+
+      {/* AI Insights */}
+      <div className="rounded-lg border bg-white">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-amber-500" />
+            <h2 className="text-sm font-semibold">AI Инсайты</h2>
+            {insights.length > 0 && (
+              <span className="rounded-full bg-amber-100 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium">
+                {insights.filter((i) => i.severity === "CRITICAL" || i.severity === "WARNING").length}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={runAnalysis}
+            disabled={analyzing}
+            className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-neutral-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${analyzing ? "animate-spin" : ""}`} />
+            {analyzing ? "Анализ..." : "Запустить анализ"}
+          </button>
+        </div>
+
+        {insights.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-neutral-400">
+            Нет инсайтов. Нажмите «Запустить анализ» для проверки здоровья организации.
+          </div>
+        ) : (
+          <div className="divide-y">
+            {insights.map((insight) => (
+              <InsightRow key={insight.id} insight={insight} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // --- Sub-components ---
+
+const SEVERITY_CONFIG: Record<string, { icon: React.ReactNode; bg: string; text: string }> = {
+  CRITICAL: { icon: <XCircle className="h-4 w-4 text-red-600" />, bg: "bg-red-50", text: "text-red-700" },
+  WARNING: { icon: <AlertTriangle className="h-4 w-4 text-amber-600" />, bg: "bg-amber-50", text: "text-amber-700" },
+  INFO: { icon: <Info className="h-4 w-4 text-blue-600" />, bg: "bg-blue-50", text: "text-blue-700" },
+  POSITIVE: { icon: <CheckCircle className="h-4 w-4 text-green-600" />, bg: "bg-green-50", text: "text-green-700" },
+};
+
+function InsightRow({ insight }: { insight: InsightData }) {
+  const [expanded, setExpanded] = useState(false);
+  const config = SEVERITY_CONFIG[insight.severity] || SEVERITY_CONFIG.INFO;
+
+  return (
+    <div className={`${config.bg}`}>
+      <div
+        className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-black/5"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="mt-0.5">{config.icon}</div>
+        <div className="flex-1 min-w-0">
+          <div className={`text-sm font-medium ${config.text}`}>{insight.title}</div>
+          <div className="text-xs text-neutral-500 mt-0.5">{insight.description}</div>
+        </div>
+        {insight.recommendations.length > 0 && (
+          <span className="text-[10px] text-neutral-400 shrink-0">{insight.recommendations.length} рек.</span>
+        )}
+      </div>
+      {expanded && insight.recommendations.length > 0 && (
+        <div className="px-4 pb-3 pl-11 space-y-1.5">
+          {insight.recommendations.map((rec) => (
+            <div key={rec.id} className="flex items-start gap-2 text-xs">
+              <Lightbulb className="h-3 w-3 text-amber-500 mt-0.5 shrink-0" />
+              <div>
+                <span className="font-medium">{rec.title}:</span>{" "}
+                <span className="text-neutral-500">{rec.description}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SummaryCard({
   icon,

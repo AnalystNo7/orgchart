@@ -68,6 +68,23 @@ enum BudgetStatus {
   CLOSED
 }
 
+enum InsightSeverity {
+  CRITICAL
+  WARNING
+  INFO
+  POSITIVE
+}
+
+enum InsightCategory {
+  STRUCTURE
+  FINANCIAL
+  PROCESS
+  COMPETENCY
+  STRATEGY
+  OPERATIONS
+  CUSTOMER
+}
+
 enum GoalType {
   BSC_FINANCIAL
   BSC_CLIENT
@@ -111,6 +128,7 @@ model Scenario {
   goals           Goal[]
   pipelineDeals   PipelineDeal[]
   budgets         Budget[]
+  insights        AIInsight[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
@@ -665,4 +683,38 @@ model BudgetLine {
 
   @@index([budgetId])
   @@index([departmentId])
+}
+
+// --- Proactive AI Insights ---
+
+model AIInsight {
+  id              String           @id @default(uuid())
+  scenarioId      String
+  scenario        Scenario         @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  category        InsightCategory
+  severity        InsightSeverity
+  title           String
+  description     String
+  metricKey       String?          // e.g. "overheadRatio", "utilization"
+  currentValue    Float?
+  benchmarkValue  Float?
+  resolved        Boolean          @default(false)
+  recommendations AIRecommendation[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([scenarioId])
+  @@index([scenarioId, resolved])
+}
+
+model AIRecommendation {
+  id          String   @id @default(uuid())
+  insightId   String
+  insight     AIInsight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  priority    Int      @default(0) // 0 = high, 1 = medium, 2 = low
+  createdAt   DateTime @default(now())
+
+  @@index([insightId])
 }
