@@ -124,6 +124,14 @@ export async function executeTool(
           input.stage as string | undefined,
           input.clientId as string | undefined
         );
+      case "analyze_budget":
+        return await analyzeBudget(
+          (input.scenarioId as string) || currentScenarioId
+        );
+      case "get_unit_economics":
+        return await getUnitEconomics(
+          (input.scenarioId as string) || currentScenarioId
+        );
       default:
         return JSON.stringify({ error: `Неизвестный инструмент: ${name}` });
     }
@@ -1477,6 +1485,112 @@ async function getPipeline(scenarioId: string, stage?: string, clientId?: string
       stage: d.stage,
       expectedCloseDate: d.expectedCloseDate,
       weightedValue: Math.round(d.amount * (d.probability / 100)),
+    })),
+  }, null, 2);
+}
+
+// --- Budget & Unit Economics ---
+
+async function analyzeBudget(scenarioId: string): Promise<string> {
+  const budgets = await prisma.budget.findMany({
+    where: { scenarioId },
+    include: {
+      lines: { include: { department: { select: { name: true } } } },
+    },
+  });
+
+  const summary = budgets.map((b) => {
+    const totalPlanned = b.lines.reduce((s, l) => s + l.plannedAmount, 0);
+    const totalActual = b.lines.reduce((s, l) => s + l.actualAmount, 0);
+    return {
+      name: b.name,
+      type: b.type,
+      status: b.status,
+      period: `${b.periodStart.toISOString().slice(0, 10)} — ${b.periodEnd.toISOString().slice(0, 10)}`,
+      totalPlanned: Math.round(totalPlanned),
+      totalActual: Math.round(totalActual),
+      variance: Math.round(totalPlanned - totalActual),
+      lines: b.lines.map((l) => ({
+        department: l.department.name,
+        category: l.category,
+        planned: l.plannedAmount,
+        actual: l.actualAmount,
+        variance: Math.round(l.plannedAmount - l.actualAmount),
+      })),
+    };
+  });
+
+  const totalPlanned = summary.reduce((s, b) => s + b.totalPlanned, 0);
+  const totalActual = summary.reduce((s, b) => s + b.totalActual, 0);
+  const capex = summary.filter((b) => b.type === "CAPEX");
+  const opex = summary.filter((b) => b.type === "OPEX");
+
+  const issues: string[] = [];
+  for (const b of summary) {
+    if (b.variance < 0) issues.push(`${b.name}: перерасход ${Math.abs(b.variance)}`);
+  }
+
+  return JSON.stringify({
+    totalBudgets: budgets.length,
+    totalPlanned,
+    totalActual,
+    totalVariance: totalPlanned - totalActual,
+    capex: { count: capex.length, planned: capex.reduce((s, b) => s + b.totalPlanned, 0) },
+    opex: { count: opex.length, planned: opex.reduce((s, b) => s + b.totalPlanned, 0) },
+    budgets: summary,
+    issues: issues.length > 0 ? issues : ["Бюджеты в рамках плана"],
+  }, null, 2);
+}
+
+async function getUnitEconomics(scenarioId: string): Promise<string> {
+  const employees = await prisma.employee.findMany({
+    where: { scenarioId },
+    include: {
+      department: { select: { id: true, name: true, shetilType: true } },
+      contracts: { include: { contract: { select: { type: true, amount: true } } } },
+    },
+  });
+
+  const totalFte = employees.reduce((s, e) => s + Number(e.fte), 0);
+  const ppEmployees = employees.filter((e) => e.category === "PP");
+  const ppWithContracts = ppEmployees.filter((e) => e.contracts.length > 0);
+
+  // Revenue from contracts linked to PP employees
+  const totalRevenue = employees.reduce((s, e) => {
+    return s + e.contracts
+      .filter((c) => c.contract.type === "REVENUE")
+      .reduce((ss, c) => ss + Number(c.contract.amount || 0) * (Number(e.fte) / totalFte), 0);
+  }, 0);
+
+  const totalCost = employees.reduce((s, e) => s + Number(e.costRate || 0) * Number(e.fte), 0);
+
+  // Per-department breakdown
+  const deptMap = new Map<string, { name: string; fte: number; revenue: number; cost: number; ppCount: number; ppUtilized: number }>();
+  for (const e of employees) {
+    const key = e.departmentId;
+    if (!deptMap.has(key)) deptMap.set(key, { name: e.department.name, fte: 0, revenue: 0, cost: 0, ppCount: 0, ppUtilized: 0 });
+    const d = deptMap.get(key)!;
+    d.fte += Number(e.fte);
+    d.cost += Number(e.costRate || 0) * Number(e.fte);
+    if (e.category === "PP") {
+      d.ppCount++;
+      if (e.contracts.length > 0) d.ppUtilized++;
+    }
+  }
+
+  return JSON.stringify({
+    summary: {
+      totalEmployees: employees.length,
+      totalFte: Math.round(totalFte * 10) / 10,
+      revenuePerFte: totalFte > 0 ? Math.round(totalRevenue / totalFte) : 0,
+      costPerFte: totalFte > 0 ? Math.round(totalCost / totalFte) : 0,
+      utilization: ppEmployees.length > 0 ? Math.round((ppWithContracts.length / ppEmployees.length) * 100) : 0,
+    },
+    departments: Array.from(deptMap.values()).map((d) => ({
+      department: d.name,
+      fte: Math.round(d.fte * 10) / 10,
+      costPerFte: d.fte > 0 ? Math.round(d.cost / d.fte) : 0,
+      ppUtilization: d.ppCount > 0 ? Math.round((d.ppUtilized / d.ppCount) * 100) : null,
     })),
   }, null, 2);
 }
