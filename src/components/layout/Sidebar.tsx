@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gauge, BookOpen, FolderKanban, GitCompare, Target, Bot, BarChart3, BookOpenCheck, Network, GraduationCap, Crosshair, Briefcase, Wallet } from "lucide-react";
+import { Gauge, BookOpen, FolderKanban, GitCompare, Target, Bot, BarChart3, BookOpenCheck, Network, GraduationCap, Crosshair, Briefcase, Wallet, Users, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAiChatStore } from "@/lib/ai-store";
+import { useSession, signOut } from "next-auth/react";
 
 const navItems = [
   { href: "/scenarios", label: "Сценарии", icon: FolderKanban },
@@ -25,6 +26,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const toggleAi = useAiChatStore((s) => s.toggle);
   const isAiOpen = useAiChatStore((s) => s.isOpen);
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.isAdmin ?? false;
 
   return (
     <aside className="flex h-full w-56 flex-col border-r bg-neutral-50">
@@ -54,7 +57,7 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t p-2">
+      <div className="border-t p-2 space-y-1">
         <button
           onClick={toggleAi}
           className={cn(
@@ -67,6 +70,34 @@ export function Sidebar() {
           <Bot className="h-4 w-4" />
           AI-ассистент
         </button>
+        {isAdmin && (
+          <Link
+            href="/admin/users"
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              pathname.startsWith("/admin")
+                ? "bg-neutral-200 text-neutral-900"
+                : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+            )}
+          >
+            <Users className="h-4 w-4" />
+            Пользователи
+          </Link>
+        )}
+      </div>
+      <div className="border-t p-2">
+        <div className="flex items-center justify-between px-3 py-1">
+          <span className="truncate text-xs text-neutral-500">
+            {session?.user?.name ?? session?.user?.email}
+          </span>
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="text-neutral-400 hover:text-neutral-600 transition-colors"
+            title="Выйти"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </aside>
   );
