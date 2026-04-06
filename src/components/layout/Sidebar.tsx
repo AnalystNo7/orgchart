@@ -9,16 +9,16 @@ import { useAiChatStore } from "@/lib/ai-store";
 const navItems = [
   { href: "/scenarios", label: "Сценарии", icon: FolderKanban },
   { href: "/", label: "Дашборд", icon: Gauge },
-  { href: "/references", label: "Справочники", icon: BookOpen },
-  { href: "/compare", label: "Сравнение", icon: GitCompare },
+  { href: "/strategy", label: "Стратегия", icon: Crosshair },
+  { href: "/finance", label: "Финансы", icon: Wallet },
   { href: "/processes", label: "Процессы", icon: Network },
   { href: "/competencies", label: "Компетенции", icon: GraduationCap },
-  { href: "/strategy", label: "Стратегия", icon: Crosshair },
   { href: "/clients", label: "Заказчики", icon: Briefcase },
-  { href: "/finance", label: "Финансы", icon: Wallet },
-  { href: "/gap-analysis", label: "Gap-анализ", icon: Target },
+  { href: "/compare", label: "Сравнение сценариев", icon: GitCompare },
+  { href: "/gap-analysis", label: "Gap-анализ сценариев", icon: Target },
   { href: "/benchmarks", label: "Бенчмарки", icon: BarChart3 },
   { href: "/knowledge", label: "База знаний", icon: BookOpenCheck },
+  { href: "/references", label: "Справочники", icon: BookOpen },
 ];
 
 export function Sidebar() {
