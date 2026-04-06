@@ -127,11 +127,11 @@ export function ChatMessage({ message }: { message: AiMessage }) {
             components={{
               // Render source-badge custom elements
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              "source-badge": ({ node, ...props }: any) => {
+              ...({ "source-badge": ({ node, ...props }: any) => {
                 const type = props["data-type"] || node?.properties?.dataType || "LLM";
                 const label = props["data-label"] || node?.properties?.dataLabel || type;
                 return <SourceBadge type={type} label={label} />;
-              },
+              }} as any),
             }}
           >
             {processedContent}
