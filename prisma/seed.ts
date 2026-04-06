@@ -371,7 +371,7 @@ async function main() {
   console.log(`Seed completed: ${totalDepts} departments, ${totalEmps} employees, ${totalTariffs} tariffs`);
 
   // Seed processes for the baseline scenario
-  const existingProcesses = await prisma.process.count({ where: { scenarioId: baseline.id } });
+  const existingProcesses = await prisma.process.count({ where: { scenarioId: scenario.id } });
   if (existingProcesses === 0) {
     const processData = [
       // Macro processes
@@ -385,7 +385,7 @@ async function main() {
     const macroIds: Record<string, string> = {};
     for (const p of processData) {
       const created = await prisma.process.create({
-        data: { scenarioId: baseline.id, ...p },
+        data: { scenarioId: scenario.id, ...p },
       });
       macroIds[p.name] = created.id;
     }
@@ -404,7 +404,7 @@ async function main() {
 
     for (const cp of childProcesses) {
       await prisma.process.create({
-        data: { scenarioId: baseline.id, ...cp },
+        data: { scenarioId: scenario.id, ...cp },
       });
     }
 
