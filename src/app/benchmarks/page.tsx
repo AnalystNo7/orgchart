@@ -163,7 +163,7 @@ export default function BenchmarksPage() {
   // Get current value for a metric
   function getCurrentValue(metric: string): number | null {
     if (!currentMetrics) return null;
-    const m = currentMetrics as Record<string, number | null>;
+    const m = currentMetrics as unknown as Record<string, number | null>;
     return m[metric] ?? null;
   }
 
