@@ -49,6 +49,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Check for overlapping periods
+  const overlapping = await prisma.employeeContract.findFirst({
+    where: {
+      employeeId: parsed.data.employeeId,
+      contractId: parsed.data.contractId,
+      OR: [
+        { periodStart: { lt: periodEnd }, periodEnd: { gt: periodStart } },
+      ],
+    },
+  });
+
+  if (overlapping) {
+    return NextResponse.json(
+      { error: "Периоды не должны пересекаться. Уже существует период с " +
+        new Date(overlapping.periodStart).toLocaleDateString("ru-RU") + " по " +
+        new Date(overlapping.periodEnd).toLocaleDateString("ru-RU") },
+      { status: 400 }
+    );
+  }
+
   const employeeContract = await prisma.employeeContract.create({
     data: {
       employeeId: parsed.data.employeeId,
