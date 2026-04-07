@@ -18,6 +18,10 @@ function formatMoney(value: string): string {
   const parts = clean.split(".");
   // Format integer part with spaces every 3 digits
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  // Limit decimal to 2 digits
+  if (parts[1] !== undefined) {
+    parts[1] = parts[1].slice(0, 2);
+  }
   return (negative ? "-" : "") + parts.join(".");
 }
 
