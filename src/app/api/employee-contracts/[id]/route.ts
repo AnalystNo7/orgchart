@@ -40,6 +40,25 @@ export async function PUT(
     );
   }
 
+  // Check for overlapping periods (exclude current record)
+  const overlapping = await prisma.employeeContract.findFirst({
+    where: {
+      id: { not: id },
+      employeeId: previous.employeeId,
+      contractId: previous.contractId,
+      OR: [
+        { periodStart: { lt: periodEnd }, periodEnd: { gt: periodStart } },
+      ],
+    },
+  });
+
+  if (overlapping) {
+    return NextResponse.json(
+      { error: "Периоды не должны пересекаться" },
+      { status: 400 }
+    );
+  }
+
   const data: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.periodStart) data.periodStart = new Date(parsed.data.periodStart);
   if (parsed.data.periodEnd) data.periodEnd = new Date(parsed.data.periodEnd);

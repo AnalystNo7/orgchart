@@ -240,7 +240,7 @@ model EmployeeContract {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
-  @@unique([employeeId, contractId])
+  @@unique([employeeId, contractId, periodStart])
   @@index([employeeId])
   @@index([contractId])
 }
