@@ -376,7 +376,7 @@ export function EmployeeContractsModal({
                             {editingRowId === ec.id ? (
                               <Input
                                 type="number"
-                                step="0.1"
+                                step="0.01"
                                 min="0"
                                 max="1"
                                 value={editFte}
@@ -502,7 +502,7 @@ export function EmployeeContractsModal({
                 <Label>FTE</Label>
                 <Input
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   max="1"
                   value={addFte}
