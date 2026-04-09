@@ -331,7 +331,7 @@ export function ExcelImport({
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent
-        className="max-w-4xl"
+        className="w-[95vw] max-w-[95vw] max-h-[90vh] overflow-y-auto"
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
       >
@@ -516,24 +516,12 @@ export function ExcelImport({
                 <TableBody>
                   {rows.slice(0, 10).map((row, i) => (
                     <TableRow key={i}>
-                      <TableCell className="max-w-[80px] truncate">
-                        {row.cfo}
-                      </TableCell>
-                      <TableCell className="max-w-[100px] truncate">
-                        {row.block}
-                      </TableCell>
-                      <TableCell className="max-w-[120px] truncate">
-                        {row.department}
-                      </TableCell>
-                      <TableCell className="max-w-[120px] truncate">
-                        {row.subDepartment}
-                      </TableCell>
-                      <TableCell className="max-w-[120px] truncate">
-                        {row.position}
-                      </TableCell>
-                      <TableCell className="max-w-[140px] truncate">
-                        {row.fullName}
-                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{row.cfo}</TableCell>
+                      <TableCell className="whitespace-nowrap">{row.block}</TableCell>
+                      <TableCell className="whitespace-nowrap">{row.department}</TableCell>
+                      <TableCell className="whitespace-nowrap">{row.subDepartment}</TableCell>
+                      <TableCell className="whitespace-nowrap">{row.position}</TableCell>
+                      <TableCell className="whitespace-nowrap">{row.fullName}</TableCell>
                       <TableCell>{row.fte}</TableCell>
                       <TableCell>{row.category}</TableCell>
                     </TableRow>
