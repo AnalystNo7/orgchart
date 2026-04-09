@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -78,14 +78,33 @@ const ALL_KNOWN_ALIASES = [
   ...COL_POSITION, ...COL_NAME, ...COL_FTE, ...COL_CATEGORY,
 ];
 
-function findColumn(
-  row: Record<string, string | number>,
-  aliases: string[]
-): string | number | undefined {
-  for (const alias of aliases) {
-    if (alias in row) return row[alias];
-  }
-  return undefined;
+interface DbField {
+  key: keyof ImportRow;
+  label: string;
+  defaultValue: string | number;
+  aliases: string[];
+}
+
+const DB_FIELDS: DbField[] = [
+  { key: "cfo", label: "ЦФО", defaultValue: "", aliases: COL_CFO },
+  { key: "block", label: "Блок", defaultValue: "", aliases: COL_BLOCK },
+  { key: "department", label: "Подразделение", defaultValue: "", aliases: COL_DEPT },
+  { key: "subDepartment", label: "Дочернее подразделение", defaultValue: "", aliases: COL_SUB_DEPT },
+  { key: "position", label: "Должность", defaultValue: "Не указана", aliases: COL_POSITION },
+  { key: "fullName", label: "ФИО", defaultValue: "", aliases: COL_NAME },
+  { key: "fte", label: "FTE", defaultValue: 1, aliases: COL_FTE },
+  { key: "category", label: "Тип занятости", defaultValue: "PP", aliases: COL_CATEGORY },
+];
+
+const MAPPING_STORAGE_KEY = "excel-import-mapping-v2";
+const NONE_VALUE = "__none__";
+
+type ColumnMapping = Record<keyof ImportRow, string | null>;
+
+function createEmptyMapping(): ColumnMapping {
+  const m = {} as ColumnMapping;
+  for (const f of DB_FIELDS) m[f.key] = null;
+  return m;
 }
 
 // Find the row number (0-based) that contains column headers
@@ -107,6 +126,73 @@ function findHeaderRow(
   return 0; // fallback to first row
 }
 
+function loadSavedMapping(): Partial<Record<keyof ImportRow, string>> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(MAPPING_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveMapping(mapping: ColumnMapping) {
+  if (typeof window === "undefined") return;
+  const toSave: Record<string, string> = {};
+  for (const [k, v] of Object.entries(mapping)) {
+    if (v) toSave[k] = v;
+  }
+  localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(toSave));
+}
+
+function autoDetectMapping(headers: string[]): ColumnMapping {
+  const saved = loadSavedMapping();
+  const mapping = createEmptyMapping();
+
+  for (const field of DB_FIELDS) {
+    // Priority 1: saved mapping from localStorage (if header still exists)
+    const savedHeader = saved[field.key];
+    if (savedHeader && headers.includes(savedHeader)) {
+      mapping[field.key] = savedHeader;
+      continue;
+    }
+
+    // Priority 2: match by aliases
+    for (const alias of field.aliases) {
+      const normalizedAlias = alias.replace(/\r?\n/g, " ").trim();
+      const found = headers.find((h) => h === normalizedAlias || h === alias);
+      if (found) {
+        mapping[field.key] = found;
+        break;
+      }
+    }
+  }
+
+  return mapping;
+}
+
+function applyMapping(
+  rawRows: Record<string, string | number>[],
+  mapping: ColumnMapping
+): ImportRow[] {
+  return rawRows.map((row) => {
+    const out = {} as ImportRow;
+    for (const field of DB_FIELDS) {
+      const sourceCol = mapping[field.key];
+      const rawValue = sourceCol ? row[sourceCol] : undefined;
+
+      if (field.key === "fte") {
+        const num = rawValue != null ? Number(rawValue) : NaN;
+        out.fte = isNaN(num) ? (field.defaultValue as number) : num;
+      } else {
+        const str = rawValue != null ? String(rawValue) : "";
+        (out as Record<string, string | number>)[field.key] =
+          str || (field.defaultValue as string);
+      }
+    }
+    return out;
+  });
+}
+
 export function ExcelImport({
   open,
   onClose,
@@ -114,6 +200,9 @@ export function ExcelImport({
   onImportComplete,
 }: ExcelImportProps) {
   const [rows, setRows] = useState<ImportRow[]>([]);
+  const [rawRows, setRawRows] = useState<Record<string, string | number>[]>([]);
+  const [rawHeaders, setRawHeaders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<ColumnMapping>(() => createEmptyMapping());
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -124,6 +213,24 @@ export function ExcelImport({
   const [defaultShetilType, setDefaultShetilType] =
     useState<ShetilType>("BACKOFFICE");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Recompute rows whenever mapping or rawRows change
+  useEffect(() => {
+    if (rawRows.length === 0) {
+      setRows([]);
+      return;
+    }
+    const applied = applyMapping(rawRows, mapping).filter((r) => r.fullName.trim());
+    setRows(applied);
+  }, [rawRows, mapping]);
+
+  const updateMapping = useCallback((fieldKey: keyof ImportRow, value: string | null) => {
+    setMapping((prev) => {
+      const next = { ...prev, [fieldKey]: value };
+      saveMapping(next);
+      return next;
+    });
+  }, []);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -160,41 +267,10 @@ export function ExcelImport({
         return out;
       });
 
-      // Check which columns were found
-      const sampleRow = normalizedData[0];
-      const headers = Object.keys(sampleRow);
-      const nameFound = findColumn(sampleRow, COL_NAME) !== undefined;
-
-      if (!nameFound) {
-        setError(
-          `Не найдена колонка с ФИО. Ожидается одна из: ${COL_NAME.join(", ")}. ` +
-          `Найденные колонки: ${headers.join(", ")}` +
-          (headerRowIdx > 0 ? ` (заголовки найдены в строке ${headerRowIdx + 1})` : "")
-        );
-        return;
-      }
-
-      const parsed: ImportRow[] = normalizedData.map((row) => ({
-        cfo: String(findColumn(row, COL_CFO) ?? ""),
-        block: String(findColumn(row, COL_BLOCK) ?? ""),
-        department: String(findColumn(row, COL_DEPT) ?? ""),
-        subDepartment: String(findColumn(row, COL_SUB_DEPT) ?? ""),
-        position: String(findColumn(row, COL_POSITION) ?? ""),
-        fullName: String(findColumn(row, COL_NAME) ?? ""),
-        fte: Number(findColumn(row, COL_FTE) ?? 1),
-        category: String(findColumn(row, COL_CATEGORY) ?? "PP"),
-      }));
-
-      const filtered = parsed.filter((r) => r.fullName.trim());
-      if (filtered.length === 0) {
-        setError(
-          `Все ${parsed.length} строк отфильтрованы (пустое ФИО). ` +
-          `Найденные колонки: ${headers.join(", ")}`
-        );
-        return;
-      }
-
-      setRows(filtered);
+      const headers = Object.keys(normalizedData[0]);
+      setRawHeaders(headers);
+      setRawRows(normalizedData);
+      setMapping(autoDetectMapping(headers));
     } catch (err) {
       setError(
         `Ошибка чтения файла: ${err instanceof Error ? err.message : "неизвестная ошибка"}. ` +
@@ -209,6 +285,7 @@ export function ExcelImport({
     setError("");
 
     try {
+      saveMapping(mapping);
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -241,6 +318,9 @@ export function ExcelImport({
 
   function handleClose() {
     setRows([]);
+    setRawRows([]);
+    setRawHeaders([]);
+    setMapping(createEmptyMapping());
     setFileName("");
     setError("");
     setLoading(false);
@@ -282,11 +362,50 @@ export function ExcelImport({
               )}
             </div>
             <p className="mt-1 text-xs text-neutral-500">
-              Колонки: ЦФО, Блок, Подразделение, Дочернее подразделение,
-              Должность, Сотрудник (ФИО или вакансия), Плановая ставка, Тип
-              занятости
+              После загрузки файла сопоставьте колонки из Excel с полями БД
             </p>
           </div>
+
+          {/* Column mapping */}
+          {rawHeaders.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">📋 Сопоставление колонок</h4>
+              <div className="overflow-x-auto rounded-md border p-3">
+                <div className="flex gap-3 min-w-max">
+                  {DB_FIELDS.map((field) => (
+                    <div
+                      key={field.key}
+                      className="flex flex-col gap-1 min-w-[170px]"
+                    >
+                      <Label className="text-xs text-neutral-600 whitespace-nowrap">
+                        {field.label}
+                      </Label>
+                      <Select
+                        value={mapping[field.key] ?? NONE_VALUE}
+                        onValueChange={(v) =>
+                          updateMapping(field.key, v === NONE_VALUE ? null : v)
+                        }
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>
+                            — не импортировать —
+                          </SelectItem>
+                          {rawHeaders.map((header) => (
+                            <SelectItem key={header} value={header}>
+                              {header}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Options */}
           {rows.length > 0 && (
