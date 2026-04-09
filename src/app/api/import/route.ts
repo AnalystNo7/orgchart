@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import type { ShetilType, EmployeeCategory } from "@prisma/client";
 
 interface ImportRowData {
+  generalDirector?: string;
   cfo: string;
   block: string;
   department: string;
@@ -81,8 +82,8 @@ async function handleFullImport(
     const deptCfo = new Map<string, string>();
 
     for (const row of rows) {
-      const levels = [row.block, row.department, row.subDepartment].filter(
-        (l) => l && l.trim()
+      const levels = [row.generalDirector, row.block, row.department, row.subDepartment].filter(
+        (l): l is string => !!l && l.trim().length > 0
       );
 
       if (levels.length === 0) continue;
@@ -149,8 +150,8 @@ async function handleFullImport(
     let departmentsCreated = 0;
 
     for (const row of rows) {
-      const levels = [row.block, row.department, row.subDepartment].filter(
-        (l) => l && l.trim()
+      const levels = [row.generalDirector, row.block, row.department, row.subDepartment].filter(
+        (l): l is string => !!l && l.trim().length > 0
       );
 
       if (levels.length === 0 || !row.fullName?.trim()) continue;
@@ -202,8 +203,8 @@ async function handleEmployeesOnly(
     if (!row.fullName?.trim()) continue;
 
     // Try to find matching department by name (deepest level first)
-    const levels = [row.subDepartment, row.department, row.block].filter(
-      (l) => l && l.trim()
+    const levels = [row.subDepartment, row.department, row.block, row.generalDirector].filter(
+      (l): l is string => !!l && l.trim().length > 0
     );
 
     let departmentId: string | null = null;
