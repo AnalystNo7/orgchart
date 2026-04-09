@@ -39,6 +39,7 @@ interface ExcelImportProps {
 }
 
 export interface ImportRow {
+  generalDirector: string;
   cfo: string;
   block: string;
   department: string;
@@ -58,6 +59,7 @@ export interface ImportResult {
 }
 
 // Column name aliases for flexible mapping
+const COL_GENERAL_DIRECTOR = ["Генеральный директор", "Ген. директор", "CEO", "ceo"];
 const COL_CFO = ["ЦФО", "CFO", "cfo"];
 const COL_BLOCK = ["Блок", "Block", "block"];
 const COL_DEPT = ["Подразделение", "Department", "department"];
@@ -74,7 +76,7 @@ const COL_FTE = ["Плановая ставка", "FTE", "fte", "Ставка"];
 const COL_CATEGORY = ["Тип занятости", "Категория", "Category", "category"];
 
 const ALL_KNOWN_ALIASES = [
-  ...COL_CFO, ...COL_BLOCK, ...COL_DEPT, ...COL_SUB_DEPT,
+  ...COL_GENERAL_DIRECTOR, ...COL_CFO, ...COL_BLOCK, ...COL_DEPT, ...COL_SUB_DEPT,
   ...COL_POSITION, ...COL_NAME, ...COL_FTE, ...COL_CATEGORY,
 ];
 
@@ -86,6 +88,7 @@ interface DbField {
 }
 
 const DB_FIELDS: DbField[] = [
+  { key: "generalDirector", label: "Генеральный директор", defaultValue: "Генеральный директор", aliases: COL_GENERAL_DIRECTOR },
   { key: "cfo", label: "ЦФО", defaultValue: "", aliases: COL_CFO },
   { key: "block", label: "Блок", defaultValue: "", aliases: COL_BLOCK },
   { key: "department", label: "Подразделение", defaultValue: "", aliases: COL_DEPT },
@@ -212,16 +215,44 @@ export function ExcelImport({
   );
   const [defaultShetilType, setDefaultShetilType] =
     useState<ShetilType>("BACKOFFICE");
+  const [gdConflictValues, setGdConflictValues] = useState<string[]>([]);
+  const [gdSelected, setGdSelected] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Recompute rows whenever mapping or rawRows change
   useEffect(() => {
     if (rawRows.length === 0) {
       setRows([]);
+      setGdConflictValues([]);
+      setGdSelected(null);
       return;
     }
     const applied = applyMapping(rawRows, mapping).filter((r) => r.fullName.trim());
+
+    // Detect unique non-empty generalDirector values
+    if (mapping.generalDirector) {
+      const unique = Array.from(
+        new Set(
+          applied
+            .map((r) => r.generalDirector?.trim())
+            .filter((v): v is string => !!v && v !== "Генеральный директор")
+        )
+      );
+      setGdConflictValues(unique);
+      if (unique.length === 1) {
+        setGdSelected(unique[0]);
+      } else if (unique.length === 0) {
+        setGdSelected("Генеральный директор");
+      } else if (gdSelected && !unique.includes(gdSelected)) {
+        setGdSelected(null);
+      }
+    } else {
+      setGdConflictValues([]);
+      setGdSelected(null);
+    }
+
     setRows(applied);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawRows, mapping]);
 
   const updateMapping = useCallback((fieldKey: keyof ImportRow, value: string | null) => {
@@ -281,8 +312,24 @@ export function ExcelImport({
 
   async function handleImport() {
     if (!scenarioId || rows.length === 0) return;
+    if (mapping.generalDirector && gdConflictValues.length > 1 && !gdSelected) {
+      setError("Выберите одно значение 'Генеральный директор' для всей организации");
+      return;
+    }
     setLoading(true);
     setError("");
+
+    // Apply selected GD value to all rows (if mapping is set)
+    const finalRows = mapping.generalDirector
+      ? rows.map((r) => ({
+          ...r,
+          generalDirector:
+            gdSelected ||
+            (r.generalDirector && r.generalDirector.trim()
+              ? r.generalDirector
+              : "Генеральный директор"),
+        }))
+      : rows;
 
     try {
       saveMapping(mapping);
@@ -294,7 +341,7 @@ export function ExcelImport({
           modelOrgStructure,
           clearExisting: modelOrgStructure && clearExisting === "clear",
           defaultShetilType,
-          rows,
+          rows: finalRows,
         }),
       });
 
@@ -321,6 +368,8 @@ export function ExcelImport({
     setRawRows([]);
     setRawHeaders([]);
     setMapping(createEmptyMapping());
+    setGdConflictValues([]);
+    setGdSelected(null);
     setFileName("");
     setError("");
     setLoading(false);
@@ -404,6 +453,33 @@ export function ExcelImport({
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* GD conflict selector */}
+          {rows.length > 0 && mapping.generalDirector && gdConflictValues.length > 1 && (
+            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-4">
+              <h4 className="text-sm font-medium text-amber-900">
+                ⚠️ Найдено несколько значений &quot;Генеральный директор&quot;
+              </h4>
+              <p className="text-xs text-amber-800">
+                В разных строках указаны разные значения. Выберите одно,
+                которое будет применено ко всей организации:
+              </p>
+              <RadioGroup
+                value={gdSelected ?? ""}
+                onValueChange={(v) => setGdSelected(v)}
+                className="space-y-1"
+              >
+                {gdConflictValues.map((v) => (
+                  <div key={v} className="flex items-center space-x-2">
+                    <RadioGroupItem value={v} id={`gd-${v}`} />
+                    <Label htmlFor={`gd-${v}`} className="cursor-pointer font-normal">
+                      {v}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
             </div>
           )}
 
@@ -497,6 +573,7 @@ export function ExcelImport({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="whitespace-nowrap">Ген. директор</TableHead>
                     <TableHead className="whitespace-nowrap">ЦФО</TableHead>
                     <TableHead className="whitespace-nowrap">Блок</TableHead>
                     <TableHead className="whitespace-nowrap">
@@ -516,6 +593,7 @@ export function ExcelImport({
                 <TableBody>
                   {rows.slice(0, 10).map((row, i) => (
                     <TableRow key={i}>
+                      <TableCell className="whitespace-nowrap">{row.generalDirector}</TableCell>
                       <TableCell className="whitespace-nowrap">{row.cfo}</TableCell>
                       <TableCell className="whitespace-nowrap">{row.block}</TableCell>
                       <TableCell className="whitespace-nowrap">{row.department}</TableCell>
@@ -529,7 +607,7 @@ export function ExcelImport({
                   {rows.length > 10 && (
                     <TableRow>
                       <TableCell
-                        colSpan={8}
+                        colSpan={9}
                         className="text-center text-neutral-500"
                       >
                         ...и ещё {rows.length - 10} строк
