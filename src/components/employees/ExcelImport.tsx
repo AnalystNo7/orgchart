@@ -61,7 +61,7 @@ export interface ImportResult {
 const COL_CFO = ["ЦФО", "CFO", "cfo"];
 const COL_BLOCK = ["Блок", "Block", "block"];
 const COL_DEPT = ["Подразделение", "Department", "department"];
-const COL_SUB_DEPT = ["Нижестоящее подразделение", "SubDepartment", "subDepartment"];
+const COL_SUB_DEPT = ["Дочернее подразделение", "SubDepartment", "subDepartment"];
 const COL_POSITION = ["Должность", "Position", "position"];
 const COL_NAME = [
   "Сотрудник\n(ФИО или вакансия)",
@@ -282,7 +282,7 @@ export function ExcelImport({
               )}
             </div>
             <p className="mt-1 text-xs text-neutral-500">
-              Колонки: ЦФО, Блок, Подразделение, Нижестоящее подразделение,
+              Колонки: ЦФО, Блок, Подразделение, Дочернее подразделение,
               Должность, Сотрудник (ФИО или вакансия), Плановая ставка, Тип
               занятости
             </p>
@@ -384,7 +384,7 @@ export function ExcelImport({
                       Подразделение
                     </TableHead>
                     <TableHead className="whitespace-nowrap">
-                      Ниж. подр.
+                      Дочернее подр.
                     </TableHead>
                     <TableHead className="whitespace-nowrap">
                       Должность
