@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
 
     if (existing) {
       const updateData: Record<string, unknown> = {};
-      if (maxAmount > 0) updateData.amount = maxAmount;
+      if (maxAmount > 0) updateData.expectedAmount = maxAmount;
       if (description) updateData.description = description;
       if (Object.keys(updateData).length > 0) {
         await prisma.contract.update({
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
           description: description || null,
           type: "REVENUE",
           status: "PLANNED",
-          amount: maxAmount || null,
+          expectedAmount: maxAmount || null,
           periodStart: minDate,
           periodEnd: maxDate,
         },
