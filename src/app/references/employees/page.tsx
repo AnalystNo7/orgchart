@@ -15,6 +15,7 @@ import { DataTable } from "@/components/employees/data-table";
 import { getColumns, type EmployeeRow } from "@/components/employees/columns";
 import { EmployeeForm } from "@/components/employees/EmployeeForm";
 import { ExcelImport, type ImportResult } from "@/components/employees/ExcelImport";
+import { ReferenceImport, type ReferenceImportResult } from "@/components/employees/ReferenceImport";
 import { ExcelExport } from "@/components/employees/ExcelExport";
 import { EmployeeContractsModal } from "@/components/employees/EmployeeContractsModal";
 import { useOrgChartStore } from "@/lib/store";
@@ -58,6 +59,7 @@ export default function EmployeesPage() {
   );
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showRefImport, setShowRefImport] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(
     null
   );
@@ -254,6 +256,10 @@ export default function EmployeesPage() {
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Импорт Excel
           </Button>
+          <Button variant="outline" onClick={() => setShowRefImport(true)}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Загрузить справочные данные
+          </Button>
           <Button onClick={() => setShowAdd(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Добавить
@@ -426,6 +432,28 @@ export default function EmployeesPage() {
         onClose={() => setShowImport(false)}
         scenarioId={currentScenarioId}
         onImportComplete={handleImportComplete}
+      />
+
+      {/* Reference data import */}
+      <ReferenceImport
+        open={showRefImport}
+        onClose={() => setShowRefImport(false)}
+        scenarioId={currentScenarioId}
+        onImportComplete={(result: ReferenceImportResult) => {
+          const parts: string[] = [];
+          if (result.employeesUpdated > 0) parts.push(`Обновлено сотрудников: ${result.employeesUpdated}`);
+          if (result.contractsCreated > 0) parts.push(`Создано договоров: ${result.contractsCreated}`);
+          if (result.contractsUpdated > 0) parts.push(`Обновлено договоров: ${result.contractsUpdated}`);
+          if (result.periodsCreated > 0) parts.push(`Создано периодов: ${result.periodsCreated}`);
+          if (result.employeesNotFound > 0) {
+            parts.push(`Не найдено сотрудников: ${result.employeesNotFound}`);
+            if (result.notFoundNames?.length) {
+              parts.push(`(${result.notFoundNames.slice(0, 5).join(", ")}${result.notFoundNames.length > 5 ? "..." : ""})`);
+            }
+          }
+          alert(parts.join("\n") || "Импорт завершён");
+          triggerRefresh();
+        }}
       />
     </div>
   );
