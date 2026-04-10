@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 interface RefRow {
-  fullName: string;
-  tariff: string;
-  costRate: string;
-  contractName: string;
-  contractAmount: number;
-  month: number | string;
-  fte: number;
-  contractCode: string;
-  contractNumber: string;
+  employeeCode: string;        // "Сотрудник" — match key vs Employee.fullName
+  tariff: string;              // "К" — К1-К6 or "0"
+  costRate: number;            // "Оценка Себес Р/Ч"
+  contractName: string;        // "Проект (Код)" → Contract.name
+  contractDescription: string; // "Проект (Наименование)" → Contract.description
+  contractAmount: number;      // "Оценка Сумма"
+  month: number | string;      // Excel serial date
+  fte: number;                 // "Оценка FTE"
 }
 
 interface ImportRequest {
@@ -18,19 +17,16 @@ interface ImportRequest {
   rows: RefRow[];
 }
 
-const TARIFF_MAP: Record<string, string> = {
-  "К1": "К-1", "К2": "К-2", "К3": "К-3", "К4": "К-4", "К5": "К-5", "К6": "К-6",
-  "K1": "К-1", "K2": "К-2", "K3": "К-3", "K4": "К-4", "K5": "К-5", "K6": "К-6",
-  "К-1": "К-1", "К-2": "К-2", "К-3": "К-3", "К-4": "К-4", "К-5": "К-5", "К-6": "К-6",
-};
-
-function parseCostRate(val: string): number | null {
-  if (!val) return null;
-  // Handle "3 325,56 ₽" format
-  const clean = val.replace(/[^\d,.\-]/g, "").replace(",", ".");
-  const num = parseFloat(clean);
-  return isNaN(num) ? null : num;
+// Normalize for matching: trim, collapse spaces, lowercase
+function norm(s: string): string {
+  return s.trim().replace(/\s+/g, " ").toLowerCase();
 }
+
+const TARIFF_MAP: Record<string, string> = {
+  "к1": "К-1", "к2": "К-2", "к3": "К-3", "к4": "К-4", "к5": "К-5", "к6": "К-6",
+  "k1": "К-1", "k2": "К-2", "k3": "К-3", "k4": "К-4", "k5": "К-5", "k6": "К-6",
+  "к-1": "К-1", "к-2": "К-2", "к-3": "К-3", "к-4": "К-4", "к-5": "К-5", "к-6": "К-6",
+};
 
 function excelDateToMonth(val: number | string): { start: Date; end: Date } | null {
   let date: Date;
@@ -76,23 +72,23 @@ export async function POST(req: NextRequest) {
     tariffByName.set(t.name, t.id);
   }
 
-  // Load all employees in scenario
+  // Load all employees in scenario — match by fullName (normalized)
   const allEmployees = await prisma.employee.findMany({
     where: { scenarioId },
     select: { id: true, fullName: true },
   });
   const employeeByName = new Map<string, string>();
   for (const emp of allEmployees) {
-    employeeByName.set(emp.fullName.trim().toLowerCase(), emp.id);
+    employeeByName.set(norm(emp.fullName), emp.id);
   }
 
-  // Load existing contracts
+  // Load existing contracts — match by name (normalized)
   const allContracts = await prisma.contract.findMany({
     select: { id: true, name: true },
   });
   const contractByName = new Map<string, string>();
   for (const c of allContracts) {
-    contractByName.set(c.name.trim().toLowerCase(), c.id);
+    contractByName.set(norm(c.name), c.id);
   }
 
   let employeesUpdated = 0;
@@ -100,34 +96,36 @@ export async function POST(req: NextRequest) {
   let contractsCreated = 0;
   let contractsUpdated = 0;
   let periodsCreated = 0;
+  let periodsUpdated = 0;
   const notFoundNames = new Set<string>();
 
-  // Group rows by employee to update costRate and tariffId once
+  // Group rows by employee code (for updating costRate/tariff)
   const empGroups = new Map<string, RefRow[]>();
   for (const row of rows) {
-    if (!row.fullName?.trim()) continue;
-    const key = row.fullName.trim();
+    if (!row.employeeCode) continue;
+    const key = norm(row.employeeCode);
     if (!empGroups.has(key)) empGroups.set(key, []);
     empGroups.get(key)!.push(row);
   }
 
-  // Group rows by contract name to create contracts and compute period range
+  // Group rows by contract name/code (for creating/updating contracts)
   const contractGroups = new Map<string, RefRow[]>();
   for (const row of rows) {
-    if (!row.contractName?.trim()) continue;
-    const key = row.contractName.trim();
+    if (!row.contractName) continue; // Skip empty contract codes
+    const key = norm(row.contractName);
     if (!contractGroups.has(key)) contractGroups.set(key, []);
     contractGroups.get(key)!.push(row);
   }
 
   // 1. Create or update contracts
-  for (const [name, cRows] of contractGroups) {
-    const existing = contractByName.get(name.toLowerCase());
+  for (const [normName, cRows] of contractGroups) {
+    const existing = contractByName.get(normName);
 
-    // Compute min/max dates from rows
+    // Compute min/max dates and max amount
     let minDate: Date | null = null;
     let maxDate: Date | null = null;
-    let totalAmount = 0;
+    let maxAmount = 0;
+    let description = "";
 
     for (const r of cRows) {
       if (r.month) {
@@ -137,63 +135,77 @@ export async function POST(req: NextRequest) {
           if (!maxDate || period.end > maxDate) maxDate = period.end;
         }
       }
-      if (r.contractAmount && r.contractAmount > totalAmount) {
-        totalAmount = r.contractAmount;
+      if (r.contractAmount > maxAmount) {
+        maxAmount = r.contractAmount;
+      }
+      if (!description && r.contractDescription) {
+        description = r.contractDescription;
       }
     }
 
     if (!minDate) minDate = new Date();
     if (!maxDate) maxDate = new Date(minDate.getFullYear(), 11, 31);
 
+    const originalName = cRows[0].contractName; // preserve original case
+
     if (existing) {
-      // Update amount if larger
-      if (totalAmount > 0) {
+      const updateData: Record<string, unknown> = {};
+      if (maxAmount > 0) updateData.amount = maxAmount;
+      if (description) updateData.description = description;
+      if (Object.keys(updateData).length > 0) {
         await prisma.contract.update({
           where: { id: existing },
-          data: { amount: totalAmount },
+          data: updateData,
         });
         contractsUpdated++;
       }
     } else {
       const contract = await prisma.contract.create({
         data: {
-          name,
+          name: originalName,
+          description: description || null,
           type: "REVENUE",
           status: "PLANNED",
-          amount: totalAmount || null,
+          amount: maxAmount || null,
           periodStart: minDate,
           periodEnd: maxDate,
         },
       });
-      contractByName.set(name.toLowerCase(), contract.id);
+      contractByName.set(normName, contract.id);
       contractsCreated++;
     }
   }
 
   // 2. Update employees (costRate, tariffId)
-  for (const [name, eRows] of empGroups) {
-    const empId = employeeByName.get(name.toLowerCase());
+  for (const [normCode, eRows] of empGroups) {
+    const empId = employeeByName.get(normCode);
     if (!empId) {
       employeesNotFound++;
-      notFoundNames.add(name);
+      notFoundNames.add(eRows[0].employeeCode);
       continue;
     }
 
-    // Take first row's tariff and costRate
-    const firstRow = eRows[0];
     const updateData: Record<string, unknown> = {};
 
-    if (firstRow.tariff) {
-      const tariffName = TARIFF_MAP[firstRow.tariff.trim()];
-      if (tariffName) {
+    // Find first non-zero tariff across all rows for this employee
+    for (const row of eRows) {
+      const t = row.tariff?.trim().toLowerCase();
+      if (t && t !== "0" && TARIFF_MAP[t]) {
+        const tariffName = TARIFF_MAP[t];
         const tariffId = tariffByName.get(tariffName);
-        if (tariffId) updateData.tariffId = tariffId;
+        if (tariffId) {
+          updateData.tariffId = tariffId;
+          break;
+        }
       }
     }
 
-    if (firstRow.costRate) {
-      const rate = parseCostRate(firstRow.costRate);
-      if (rate !== null) updateData.costRate = rate;
+    // Take first non-zero costRate
+    for (const row of eRows) {
+      if (row.costRate > 0) {
+        updateData.costRate = row.costRate;
+        break;
+      }
     }
 
     if (Object.keys(updateData).length > 0) {
@@ -205,14 +217,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3. Create EmployeeContract periods
+  // 3. Create/update EmployeeContract periods
   for (const row of rows) {
-    if (!row.fullName?.trim() || !row.contractName?.trim() || !row.month) continue;
+    if (!row.employeeCode || !row.contractName || !row.month) continue;
 
-    const empId = employeeByName.get(row.fullName.trim().toLowerCase());
+    const empId = employeeByName.get(norm(row.employeeCode));
     if (!empId) continue;
 
-    const contractId = contractByName.get(row.contractName.trim().toLowerCase());
+    const contractId = contractByName.get(norm(row.contractName));
     if (!contractId) continue;
 
     const period = excelDateToMonth(row.month);
@@ -220,7 +232,7 @@ export async function POST(req: NextRequest) {
 
     const fte = typeof row.fte === "number" && !isNaN(row.fte) ? row.fte : 0;
 
-    // Check if period already exists
+    // Check if period already exists (employee + contract + periodStart)
     const existing = await prisma.employeeContract.findFirst({
       where: {
         employeeId: empId,
@@ -236,6 +248,7 @@ export async function POST(req: NextRequest) {
           where: { id: existing.id },
           data: { fte },
         });
+        periodsUpdated++;
       }
     } else {
       await prisma.employeeContract.create({
@@ -259,6 +272,7 @@ export async function POST(req: NextRequest) {
       contractsCreated,
       contractsUpdated,
       periodsCreated,
+      periodsUpdated,
       notFoundNames: [...notFoundNames].slice(0, 20),
     },
     { status: 201 }

@@ -445,6 +445,7 @@ export default function EmployeesPage() {
           if (result.contractsCreated > 0) parts.push(`Создано договоров: ${result.contractsCreated}`);
           if (result.contractsUpdated > 0) parts.push(`Обновлено договоров: ${result.contractsUpdated}`);
           if (result.periodsCreated > 0) parts.push(`Создано периодов: ${result.periodsCreated}`);
+          if (result.periodsUpdated > 0) parts.push(`Обновлено периодов: ${result.periodsUpdated}`);
           if (result.employeesNotFound > 0) {
             parts.push(`Не найдено сотрудников: ${result.employeesNotFound}`);
             if (result.notFoundNames?.length) {
