@@ -3,6 +3,17 @@ import type { MetricsMode } from "@/types";
 
 export type ViewMode = "orgchart" | "pnl-heatmap" | "ceo-dashboard";
 export type PnlDisplayMode = "plan" | "forecast" | "combined";
+export type PnlAllocationMode = "fte" | "transfer" | "earning";
+
+const ALLOCATION_MODE_VALUES: readonly PnlAllocationMode[] = ["fte", "transfer", "earning"] as const;
+
+function readStoredAllocationMode(): PnlAllocationMode {
+  if (typeof window === "undefined") return "fte";
+  const raw = localStorage.getItem("pnlAllocationMode");
+  return raw && (ALLOCATION_MODE_VALUES as readonly string[]).includes(raw)
+    ? (raw as PnlAllocationMode)
+    : "fte";
+}
 
 interface OrgChartState {
   currentScenarioId: string | null;
@@ -17,6 +28,8 @@ interface OrgChartState {
   // P&L Heatmap state
   pnlDisplayMode: PnlDisplayMode;
   setPnlDisplayMode: (mode: PnlDisplayMode) => void;
+  pnlAllocationMode: PnlAllocationMode;
+  setPnlAllocationMode: (mode: PnlAllocationMode) => void;
   pnlDrillDownDeptId: string | null;
   setPnlDrillDownDeptId: (id: string | null) => void;
 
@@ -112,6 +125,13 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
   setPnlDisplayMode: (mode) => {
     localStorage.setItem("pnlDisplayMode", mode);
     set({ pnlDisplayMode: mode });
+  },
+  pnlAllocationMode: readStoredAllocationMode(),
+  setPnlAllocationMode: (mode) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("pnlAllocationMode", mode);
+    }
+    set({ pnlAllocationMode: mode });
   },
   pnlDrillDownDeptId: null,
   setPnlDrillDownDeptId: (id) => set({ pnlDrillDownDeptId: id }),

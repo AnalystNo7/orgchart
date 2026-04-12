@@ -5,10 +5,10 @@ import {
   type PnlAllocationMode,
 } from "@/lib/pnl-calculator";
 
-const ALLOCATION_MODES: PnlAllocationMode[] = ["classic", "fte", "transfer"];
+const ALLOCATION_MODES: PnlAllocationMode[] = ["earning", "fte", "transfer"];
 
 function parseAllocationMode(raw: string | null): PnlAllocationMode | null {
-  if (!raw) return "classic";
+  if (!raw) return "earning";
   return (ALLOCATION_MODES as string[]).includes(raw)
     ? (raw as PnlAllocationMode)
     : null;
@@ -17,7 +17,7 @@ function parseAllocationMode(raw: string | null): PnlAllocationMode | null {
 /**
  * GET /api/pnl?scenarioId=...&mode=...&periodStart=...&periodEnd=...&allocationMode=...
  * Calculates P&L on-the-fly (no cache dependency).
- * allocationMode is optional; defaults to "classic".
+ * allocationMode is optional; defaults to "earning".
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 
   if (allocationMode === null) {
     return NextResponse.json(
-      { error: "allocationMode must be classic, fte, or transfer" },
+      { error: "allocationMode must be earning, fte, or transfer" },
       { status: 400 }
     );
   }
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
 
   if (allocationMode === null) {
     return NextResponse.json(
-      { error: "allocationMode must be classic, fte, or transfer" },
+      { error: "allocationMode must be earning, fte, or transfer" },
       { status: 400 }
     );
   }

@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db";
 import { computeDiff } from "@/lib/diff";
-import { calculatePnl, type PnlMode } from "@/lib/pnl-calculator";
+import {
+  calculatePnl,
+  type PnlMode,
+  type PnlAllocationMode,
+} from "@/lib/pnl-calculator";
 import { calculateOhi } from "@/lib/ohi-calculator";
 import { runHealthCheck } from "@/lib/org-analyzer";
 import { getBenchmarks, listAvailableMetrics, listAvailableIndustries, type BenchmarkCategory } from "./benchmarks";
@@ -85,7 +89,8 @@ export async function executeTool(
           (input.scenarioId as string) || currentScenarioId,
           input.mode as PnlMode | undefined,
           input.periodStart as string | undefined,
-          input.periodEnd as string | undefined
+          input.periodEnd as string | undefined,
+          input.allocationMode as PnlAllocationMode | undefined
         );
       case "list_scenarios":
         return await listScenarios();
@@ -561,7 +566,8 @@ async function calculatePnlTool(
   scenarioId: string,
   mode?: PnlMode,
   periodStartStr?: string,
-  periodEndStr?: string
+  periodEndStr?: string,
+  allocationMode?: PnlAllocationMode
 ): Promise<string> {
   const now = new Date();
   const periodStart = periodStartStr
@@ -571,11 +577,14 @@ async function calculatePnlTool(
     ? new Date(periodEndStr)
     : new Date(now.getFullYear(), 11, 31);
 
+  const effectiveAllocation: PnlAllocationMode = allocationMode ?? "fte";
+
   const results = await calculatePnl(
     scenarioId,
     mode || "combined",
     periodStart,
-    periodEnd
+    periodEnd,
+    effectiveAllocation
   );
 
   // Summarize
@@ -599,6 +608,7 @@ async function calculatePnlTool(
         end: periodEnd.toISOString().split("T")[0],
       },
       mode: mode || "combined",
+      allocationMode: effectiveAllocation,
       totals: {
         revenue: Math.round(totalRevenue),
         cost: Math.round(totalCost),

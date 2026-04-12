@@ -543,7 +543,7 @@ model PnlCache {
   scenarioId     String
   departmentId   String
   mode           String   // "forecast" | "plan" | "combined"
-  allocationMode String   @default("classic") // "classic" | "fte" | "transfer"
+  allocationMode String   @default("earning") // "earning" | "fte" | "transfer"
   periodStart    DateTime
   periodEnd      DateTime
   revenue        Decimal  @default(0)

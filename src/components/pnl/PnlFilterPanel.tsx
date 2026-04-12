@@ -3,7 +3,11 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useOrgChartStore, type PnlDisplayMode } from "@/lib/store";
+import {
+  useOrgChartStore,
+  type PnlDisplayMode,
+  type PnlAllocationMode,
+} from "@/lib/store";
 import {
   RefreshCw,
   ChevronsDownUp,
@@ -16,6 +20,28 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+const ALLOCATION_ORDER: readonly PnlAllocationMode[] = ["fte", "transfer", "earning"] as const;
+
+const ALLOCATION_LABELS: Record<PnlAllocationMode, string> = {
+  fte: "По FTE",
+  transfer: "Трансфертная цена",
+  earning: "Только зарабатывающие",
+};
+
+const ALLOCATION_HINTS: Record<PnlAllocationMode, string> = {
+  fte: "Выручка договора делится между подразделениями пропорционально FTE их сотрудников, закреплённых в EmployeeContract.",
+  transfer:
+    "Ресурсные/сервисные подразделения «продают» FTE по тарифу: Tariff.rate × FTE × часы × overlap. Сумма договора не используется.",
+  earning:
+    "Выручка начисляется только зарабатывающим (REVENUE) подразделениям. Ресурсные и сервисные получают только затраты — baseline-режим.",
+};
 
 interface PnlFilterPanelProps {
   periodStart: string;
@@ -58,6 +84,8 @@ export function PnlFilterPanel({
 }: PnlFilterPanelProps) {
   const pnlDisplayMode = useOrgChartStore((s) => s.pnlDisplayMode);
   const setPnlDisplayMode = useOrgChartStore((s) => s.setPnlDisplayMode);
+  const allocationMode = useOrgChartStore((s) => s.pnlAllocationMode);
+  const setAllocationMode = useOrgChartStore((s) => s.setPnlAllocationMode);
 
   const planActive = pnlDisplayMode === "plan" || pnlDisplayMode === "combined";
   const forecastActive = pnlDisplayMode === "forecast" || pnlDisplayMode === "combined";
@@ -103,6 +131,28 @@ export function PnlFilterPanel({
           Прогноз
         </Button>
       </div>
+
+      {/* Allocation mode buttons */}
+      <TooltipProvider>
+        <div className="flex items-center gap-1 border-l pl-3">
+          {ALLOCATION_ORDER.map((m) => (
+            <Tooltip key={m}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={allocationMode === m ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAllocationMode(m)}
+                >
+                  {ALLOCATION_LABELS[m]}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                {ALLOCATION_HINTS[m]}
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+      </TooltipProvider>
 
       {/* Period pickers */}
       <div className="flex items-center gap-2">

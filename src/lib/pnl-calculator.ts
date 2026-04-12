@@ -7,14 +7,16 @@ export type PnlMode = "forecast" | "plan" | "combined";
 
 /**
  * Revenue allocation method.
- * - "classic":  Current behaviour — only REVENUE-type departments get revenue.
+ * - "earning":  Only REVENUE-type departments earn revenue. Resource/service
+ *               departments accrue costs only. This is the baseline used on the
+ *               dashboard.
  * - "fte":      Contract revenue is split between all departments proportionally
  *               to the FTE their employees contribute via EmployeeContract links.
  * - "transfer": Resource/service departments "sell" FTE to earning ones at an
  *               internal transfer price = Tariff.rate × FTE × workingHours × overlap.
  *               The Contract.amount field is ignored in this mode.
  */
-export type PnlAllocationMode = "classic" | "fte" | "transfer";
+export type PnlAllocationMode = "earning" | "fte" | "transfer";
 
 export interface EmployeeCostDetail {
   employeeId: string;
@@ -99,7 +101,7 @@ export async function calculatePnl(
   mode: PnlMode,
   periodStart: Date,
   periodEnd: Date,
-  allocationMode: PnlAllocationMode = "classic"
+  allocationMode: PnlAllocationMode = "earning"
 ): Promise<DepartmentPnlResult[]> {
   // 1. Fetch all departments
   const departments = await prisma.department.findMany({
@@ -170,10 +172,10 @@ export async function calculatePnl(
     }
 
     // --- REVENUE CALCULATION ---
-    // Classic: only REVENUE-type departments earn.
-    // FTE / Transfer: every department that has employees on REVENUE contracts earns.
+    // earning: only REVENUE-type departments earn (baseline behaviour).
+    // fte / transfer: every department that has employees on REVENUE contracts earns.
     const runRevenueAllocation =
-      allocationMode === "classic" ? isEarning : true;
+      allocationMode === "earning" ? isEarning : true;
 
     if (runRevenueAllocation) {
       if (allocationMode === "transfer") {
@@ -253,7 +255,7 @@ export async function calculatePnl(
           });
         }
       } else {
-        // --- Classic / FTE-proportional allocation ---
+        // --- Earning-only / FTE-proportional allocation ---
         // Collect contracts through employees
         const contractMap = new Map<
           string,
@@ -382,7 +384,7 @@ export async function calculateAndCachePnl(
   mode: PnlMode,
   periodStart: Date,
   periodEnd: Date,
-  allocationMode: PnlAllocationMode = "classic"
+  allocationMode: PnlAllocationMode = "earning"
 ): Promise<DepartmentPnlResult[]> {
   const results = await calculatePnl(scenarioId, mode, periodStart, periodEnd, allocationMode);
 

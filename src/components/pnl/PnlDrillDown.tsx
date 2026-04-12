@@ -51,6 +51,7 @@ export function PnlDrillDown() {
   const deptId = useOrgChartStore((s) => s.pnlDrillDownDeptId);
   const scenarioId = useOrgChartStore((s) => s.currentScenarioId);
   const pnlDisplayMode = useOrgChartStore((s) => s.pnlDisplayMode);
+  const pnlAllocationMode = useOrgChartStore((s) => s.pnlAllocationMode);
   const close = useOrgChartStore((s) => s.setPnlDrillDownDeptId);
 
   const [data, setData] = useState<DrillDownData | null>(null);
@@ -62,7 +63,7 @@ export function PnlDrillDown() {
     if (!deptId || !scenarioId) return;
     setLoading(true);
     fetch(
-      `/api/pnl/${deptId}?scenarioId=${scenarioId}&mode=${pnlDisplayMode}&periodStart=${currentYear}-01-01&periodEnd=${currentYear}-12-31`
+      `/api/pnl/${deptId}?scenarioId=${scenarioId}&mode=${pnlDisplayMode}&periodStart=${currentYear}-01-01&periodEnd=${currentYear}-12-31&allocationMode=${pnlAllocationMode}`
     )
       .then((r) => {
         if (!r.ok) throw new Error("not found");
@@ -71,7 +72,7 @@ export function PnlDrillDown() {
       .then((d) => setData(d))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [deptId, scenarioId, pnlDisplayMode, currentYear]);
+  }, [deptId, scenarioId, pnlDisplayMode, pnlAllocationMode, currentYear]);
 
   if (!deptId) return null;
 

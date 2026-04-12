@@ -236,7 +236,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
 
     calculate_pnl: tool({
       description:
-        "Рассчитать P&L (прибыли и убытки) для сценария. Возвращает доход, расход и маржинальность по подразделениям.",
+        "Рассчитать P&L (прибыли и убытки) для сценария. Возвращает доход, расход и маржинальность по подразделениям. Поддерживает три метода аллокации выручки: fte (делить между всеми подразделениями пропорционально FTE — целевой режим), transfer (трансфертная цена Tariff.rate × FTE × часы), earning (только REVENUE-подразделения, baseline).",
       inputSchema: zodSchema(
         z.object({
           scenarioId: z.string().optional().describe("ID сценария"),
@@ -244,6 +244,12 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
             .enum(["forecast", "plan", "combined"])
             .optional()
             .describe("Режим расчёта: forecast (факт), plan (план), combined (оба)"),
+          allocationMode: z
+            .enum(["fte", "transfer", "earning"])
+            .optional()
+            .describe(
+              "Метод аллокации выручки: fte (целевой, пропорционально FTE), transfer (трансфертная цена по тарифу), earning (только зарабатывающие подразделения). По умолчанию fte."
+            ),
           periodStart: z.string().optional().describe("Начало периода (ISO date)"),
           periodEnd: z.string().optional().describe("Конец периода (ISO date)"),
         })

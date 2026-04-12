@@ -6,12 +6,12 @@ import {
   type PnlAllocationMode,
 } from "@/lib/pnl-calculator";
 
-const ALLOCATION_MODES: PnlAllocationMode[] = ["classic", "fte", "transfer"];
+const ALLOCATION_MODES: PnlAllocationMode[] = ["earning", "fte", "transfer"];
 
 /**
  * GET /api/pnl/[departmentId]?scenarioId=...&mode=...&periodStart=...&periodEnd=...&allocationMode=...
  * Returns drill-down details for a specific department (calculated on-the-fly).
- * allocationMode is optional; defaults to "classic".
+ * allocationMode is optional; defaults to "earning".
  */
 export async function GET(
   req: NextRequest,
@@ -27,7 +27,7 @@ export async function GET(
   const allocationMode: PnlAllocationMode =
     allocationModeRaw && (ALLOCATION_MODES as string[]).includes(allocationModeRaw)
       ? (allocationModeRaw as PnlAllocationMode)
-      : "classic";
+      : "earning";
 
   if (!scenarioId || !mode || !periodStart || !periodEnd) {
     return NextResponse.json(
@@ -38,7 +38,7 @@ export async function GET(
 
   if (allocationModeRaw && !(ALLOCATION_MODES as string[]).includes(allocationModeRaw)) {
     return NextResponse.json(
-      { error: "allocationMode must be classic, fte, or transfer" },
+      { error: "allocationMode must be earning, fte, or transfer" },
       { status: 400 }
     );
   }

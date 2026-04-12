@@ -82,6 +82,7 @@ export function PnlHeatmap() {
   const {
     currentScenarioId,
     pnlDisplayMode,
+    pnlAllocationMode,
     setPnlDrillDownDeptId,
     collapsedIds,
     setCollapsedIds,
@@ -216,7 +217,7 @@ export function PnlHeatmap() {
     setError(null);
     try {
       const res = await fetch(
-        `/api/pnl?scenarioId=${currentScenarioId}&mode=${pnlDisplayMode}&periodStart=${periodStart}&periodEnd=${periodEnd}`
+        `/api/pnl?scenarioId=${currentScenarioId}&mode=${pnlDisplayMode}&periodStart=${periodStart}&periodEnd=${periodEnd}&allocationMode=${pnlAllocationMode}`
       );
       const json = await res.json();
       if (!res.ok) {
@@ -233,14 +234,14 @@ export function PnlHeatmap() {
     } finally {
       setLoading(false);
     }
-  }, [currentScenarioId, pnlDisplayMode, periodStart, periodEnd]);
+  }, [currentScenarioId, pnlDisplayMode, pnlAllocationMode, periodStart, periodEnd]);
 
-  // Auto-calculate on mode/period change
+  // Auto-calculate on mode/period/allocation change
   useEffect(() => {
     if (currentScenarioId && departments.length > 0) {
       runCalculation();
     }
-  }, [currentScenarioId, pnlDisplayMode, periodStart, periodEnd, departments.length, runCalculation]);
+  }, [currentScenarioId, pnlDisplayMode, pnlAllocationMode, periodStart, periodEnd, departments.length, runCalculation]);
 
   // Build pnl data map
   const pnlMap = useMemo(() => {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { calculatePnl, type PnlAllocationMode } from "@/lib/pnl-calculator";
 
-const ALLOCATION_MODES: PnlAllocationMode[] = ["classic", "fte", "transfer"];
+const ALLOCATION_MODES: PnlAllocationMode[] = ["earning", "fte", "transfer"];
 
 // GET — extended financial analytics for a scenario
 export async function GET(request: Request) {
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const allocationMode: PnlAllocationMode =
     allocationModeRaw && (ALLOCATION_MODES as string[]).includes(allocationModeRaw)
       ? (allocationModeRaw as PnlAllocationMode)
-      : "classic";
+      : "earning";
 
   if (!scenarioId) {
     return NextResponse.json({ error: "scenarioId required" }, { status: 400 });
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
   if (allocationModeRaw && !(ALLOCATION_MODES as string[]).includes(allocationModeRaw)) {
     return NextResponse.json(
-      { error: "allocationMode must be classic, fte, or transfer" },
+      { error: "allocationMode must be earning, fte, or transfer" },
       { status: 400 }
     );
   }

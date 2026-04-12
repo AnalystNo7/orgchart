@@ -90,26 +90,29 @@ function fmt(v: number): string {
 
 // --- Component ---
 
-type AllocationMode = "classic" | "fte" | "transfer";
+// Button order (left → right) as requested by the user.
+const ALLOCATION_ORDER = ["fte", "transfer", "earning"] as const;
+type AllocationMode = (typeof ALLOCATION_ORDER)[number];
 
 const ALLOCATION_MODE_LABELS: Record<AllocationMode, string> = {
-  classic: "Классика",
   fte: "По FTE",
   transfer: "Трансфертная цена",
+  earning: "Только зарабатывающие",
 };
 
 const ALLOCATION_MODE_HINTS: Record<AllocationMode, string> = {
-  classic:
-    "Выручка только у REVENUE-подразделений — текущее поведение дашборда.",
   fte: "Выручка договора делится между подразделениями пропорционально FTE их сотрудников, закреплённых в EmployeeContract.",
   transfer:
     "Ресурсные/сервисные подразделения «продают» FTE по тарифу: Tariff.rate × FTE × часы × overlap. Сумма договора не используется.",
+  earning:
+    "Выручка начисляется только зарабатывающим (REVENUE) подразделениям. Ресурсные и сервисные получают только затраты — это baseline-режим, используемый на дашборде.",
 };
 
 export default function FinancePage() {
   const currentScenarioId = useOrgChartStore((s) => s.currentScenarioId);
+  const allocationMode = useOrgChartStore((s) => s.pnlAllocationMode);
+  const setAllocationMode = useOrgChartStore((s) => s.setPnlAllocationMode);
   const [activeTab, setActiveTab] = useState<"analytics" | "budgets">("analytics");
-  const [allocationMode, setAllocationMode] = useState<AllocationMode>("classic");
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [budgets, setBudgets] = useState<BudgetData[]>([]);
   const [departments, setDepartments] = useState<DeptOption[]>([]);
@@ -240,7 +243,7 @@ export default function FinancePage() {
           {/* Allocation mode switcher */}
           <div className="rounded-lg border bg-white p-3">
             <div className="mb-2 flex items-center gap-1 rounded-md bg-neutral-100 p-1">
-              {(["classic", "fte", "transfer"] as AllocationMode[]).map((m) => (
+              {ALLOCATION_ORDER.map((m) => (
                 <button
                   key={m}
                   onClick={() => setAllocationMode(m)}
