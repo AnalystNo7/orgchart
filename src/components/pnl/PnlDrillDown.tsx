@@ -1,11 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOrgChartStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { X, AlertTriangle } from "lucide-react";
+
+interface DepartmentLite {
+  id: string;
+  parentId: string | null;
+  name: string;
+}
 
 interface TransferFlow {
   contractId: string;
@@ -74,6 +85,7 @@ export function PnlDrillDown() {
 
   const [data, setData] = useState<DrillDownData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [departments, setDepartments] = useState<DepartmentLite[]>([]);
 
   const currentYear = new Date().getFullYear();
 
@@ -92,6 +104,57 @@ export function PnlDrillDown() {
       .finally(() => setLoading(false));
   }, [deptId, scenarioId, pnlDisplayMode, pnlAllocationMode, currentYear]);
 
+  // Load departments list to resolve full parent chain for tooltips.
+  // /api/departments already returns parentId — we just need id/parentId/name.
+  useEffect(() => {
+    if (!scenarioId) return;
+    fetch(`/api/departments?scenarioId=${scenarioId}`)
+      .then((r) => r.json())
+      .then((raw: unknown) => {
+        const list = Array.isArray(raw)
+          ? (raw as Array<{ id: string; parentId: string | null; name: string }>)
+          : ((raw as { departments?: unknown })?.departments as
+              | Array<{ id: string; parentId: string | null; name: string }>
+              | undefined) ?? [];
+        setDepartments(
+          list.map((d) => ({
+            id: d.id,
+            parentId: d.parentId ?? null,
+            name: d.name,
+          }))
+        );
+      })
+      .catch(() => setDepartments([]));
+  }, [scenarioId]);
+
+  // Build full-path map: deptId → [rootName, ..., leafName]
+  const deptPathMap = useMemo(() => {
+    const byId = new Map(departments.map((d) => [d.id, d]));
+    const cache = new Map<string, string[]>();
+    function getPath(id: string): string[] {
+      const cached = cache.get(id);
+      if (cached) return cached;
+      const d = byId.get(id);
+      if (!d) {
+        cache.set(id, []);
+        return [];
+      }
+      const path = d.parentId ? [...getPath(d.parentId), d.name] : [d.name];
+      cache.set(id, path);
+      return path;
+    }
+    const result = new Map<string, string[]>();
+    for (const d of departments) result.set(d.id, getPath(d.id));
+    return result;
+  }, [departments]);
+
+  function pathString(id: string | null | undefined): string | null {
+    if (!id) return null;
+    const p = deptPathMap.get(id);
+    if (!p || p.length === 0) return null;
+    return p.join(" / ");
+  }
+
   if (!deptId) return null;
 
   const shetilColors: Record<string, string> = {
@@ -101,21 +164,43 @@ export function PnlDrillDown() {
     BACKOFFICE: "text-red-600",
   };
 
+  const currentPath = pathString(deptId);
+
   return (
     <div className="w-[400px] border-l bg-white">
       <div className="flex items-center justify-between border-b px-4 py-3">
-        <div>
-          <h3 className="text-sm font-semibold">
-            {data?.departmentName ?? "Загрузка..."}
-          </h3>
-          {data && (
-            <span
-              className={`text-xs ${shetilColors[data.shetilType] ?? "text-neutral-500"}`}
-            >
-              {data.shetilType}
-            </span>
-          )}
-        </div>
+        {currentPath ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="cursor-help">
+                <h3 className="text-sm font-semibold">
+                  {data?.departmentName ?? "Загрузка..."}
+                </h3>
+                {data && (
+                  <span
+                    className={`text-xs ${shetilColors[data.shetilType] ?? "text-neutral-500"}`}
+                  >
+                    {data.shetilType}
+                  </span>
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{currentPath}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <div>
+            <h3 className="text-sm font-semibold">
+              {data?.departmentName ?? "Загрузка..."}
+            </h3>
+            {data && (
+              <span
+                className={`text-xs ${shetilColors[data.shetilType] ?? "text-neutral-500"}`}
+              >
+                {data.shetilType}
+              </span>
+            )}
+          </div>
+        )}
         <Button variant="ghost" size="sm" onClick={() => close(null)}>
           <X className="h-4 w-4" />
         </Button>
@@ -254,22 +339,35 @@ export function PnlDrillDown() {
                       TP-продажи ({data.transferBreakdown.sells.length})
                     </h4>
                     <div className="space-y-1">
-                      {data.transferBreakdown.sells.map((f, i) => (
-                        <div
-                          key={`${f.contractId}-${f.counterpartyDepartmentId}-${i}`}
-                          className="rounded bg-emerald-50 px-2 py-1.5 text-[11px]"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{f.contractName}</span>
-                            <span className="font-semibold text-emerald-700 tabular-nums">
-                              {formatCurrency(f.amount)}
-                            </span>
+                      {data.transferBreakdown.sells.map((f, i) => {
+                        const path = pathString(f.counterpartyDepartmentId);
+                        const card = (
+                          <div
+                            className="cursor-help rounded bg-emerald-50 px-2 py-1.5 text-[11px]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">{f.contractName}</span>
+                              <span className="font-semibold text-emerald-700 tabular-nums">
+                                {formatCurrency(f.amount)}
+                              </span>
+                            </div>
+                            <div className="text-neutral-500">
+                              Покупатель: {f.counterpartyDepartmentName}
+                            </div>
                           </div>
-                          <div className="text-neutral-500">
-                            Покупатель: {f.counterpartyDepartmentName}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                        const key = `${f.contractId}-${f.counterpartyDepartmentId}-${i}`;
+                        return path ? (
+                          <Tooltip key={key}>
+                            <TooltipTrigger asChild>{card}</TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              {path}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <div key={key}>{card}</div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -281,22 +379,35 @@ export function PnlDrillDown() {
                       TP-покупки ({data.transferBreakdown.purchases.length})
                     </h4>
                     <div className="space-y-1">
-                      {data.transferBreakdown.purchases.map((f, i) => (
-                        <div
-                          key={`${f.contractId}-${f.counterpartyDepartmentId}-${i}`}
-                          className="rounded bg-rose-50 px-2 py-1.5 text-[11px]"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{f.contractName}</span>
-                            <span className="font-semibold text-rose-700 tabular-nums">
-                              {formatCurrency(f.amount)}
-                            </span>
+                      {data.transferBreakdown.purchases.map((f, i) => {
+                        const path = pathString(f.counterpartyDepartmentId);
+                        const card = (
+                          <div
+                            className="cursor-help rounded bg-rose-50 px-2 py-1.5 text-[11px]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">{f.contractName}</span>
+                              <span className="font-semibold text-rose-700 tabular-nums">
+                                {formatCurrency(f.amount)}
+                              </span>
+                            </div>
+                            <div className="text-neutral-500">
+                              Продавец: {f.counterpartyDepartmentName}
+                            </div>
                           </div>
-                          <div className="text-neutral-500">
-                            Продавец: {f.counterpartyDepartmentName}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                        const key = `${f.contractId}-${f.counterpartyDepartmentId}-${i}`;
+                        return path ? (
+                          <Tooltip key={key}>
+                            <TooltipTrigger asChild>{card}</TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              {path}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <div key={key}>{card}</div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
