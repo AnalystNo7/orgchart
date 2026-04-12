@@ -7,6 +7,23 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { X, AlertTriangle } from "lucide-react";
 
+interface TransferFlow {
+  contractId: string;
+  contractName: string;
+  counterpartyDepartmentId: string;
+  counterpartyDepartmentName: string;
+  amount: number;
+}
+
+interface TransferBreakdown {
+  externalRevenue: number;
+  internalRevenue: number;
+  ownCost: number;
+  internalCost: number;
+  sells: TransferFlow[];
+  purchases: TransferFlow[];
+}
+
 interface DrillDownData {
   departmentId: string;
   departmentName: string;
@@ -36,6 +53,7 @@ interface DrillDownData {
     childrenPnl: number;
     totalPnl: number;
   };
+  transferBreakdown: TransferBreakdown | null;
   warnings: Array<{ employeeId: string; fullName: string; message: string }> | null;
   calculatedAt: string;
 }
@@ -168,6 +186,122 @@ export function PnlDrillDown() {
                 {formatCurrency(data.details.totalPnl)}
               </span>
             </div>
+
+            {/* Transfer-price breakdown (only in allocationMode=transfer) */}
+            {data.transferBreakdown && (
+              <>
+                <Separator />
+                <div>
+                  <h4 className="mb-2 text-xs font-semibold text-neutral-600">
+                    Трансфертная цена — разбивка
+                  </h4>
+                  <div className="space-y-1 rounded-md border bg-white p-2 text-[11px]">
+                    <div className="mb-1 text-[10px] font-medium uppercase text-neutral-400">
+                      Выручка
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Внешняя (договоры)</span>
+                      <span className="tabular-nums">
+                        {formatCurrency(data.transferBreakdown.externalRevenue)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Внутренняя (TP-продажи)</span>
+                      <span className="tabular-nums">
+                        {formatCurrency(data.transferBreakdown.internalRevenue)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1 font-semibold">
+                      <span>Итого выручка</span>
+                      <span className="tabular-nums">
+                        {formatCurrency(
+                          data.transferBreakdown.externalRevenue +
+                            data.transferBreakdown.internalRevenue
+                        )}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-[10px] font-medium uppercase text-neutral-400">
+                      Затраты
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Свои (сотрудники)</span>
+                      <span className="tabular-nums">
+                        {formatCurrency(data.transferBreakdown.ownCost)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Внутренние (TP-покупки)</span>
+                      <span className="tabular-nums">
+                        {formatCurrency(data.transferBreakdown.internalCost)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1 font-semibold">
+                      <span>Итого затраты</span>
+                      <span className="tabular-nums">
+                        {formatCurrency(
+                          data.transferBreakdown.ownCost +
+                            data.transferBreakdown.internalCost
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* TP sells (for non-REVENUE departments) */}
+                {data.transferBreakdown.sells.length > 0 && (
+                  <div>
+                    <h4 className="mb-2 text-xs font-semibold text-neutral-600">
+                      TP-продажи ({data.transferBreakdown.sells.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {data.transferBreakdown.sells.map((f, i) => (
+                        <div
+                          key={`${f.contractId}-${f.counterpartyDepartmentId}-${i}`}
+                          className="rounded bg-emerald-50 px-2 py-1.5 text-[11px]"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{f.contractName}</span>
+                            <span className="font-semibold text-emerald-700 tabular-nums">
+                              {formatCurrency(f.amount)}
+                            </span>
+                          </div>
+                          <div className="text-neutral-500">
+                            Покупатель: {f.counterpartyDepartmentName}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* TP purchases (for REVENUE departments) */}
+                {data.transferBreakdown.purchases.length > 0 && (
+                  <div>
+                    <h4 className="mb-2 text-xs font-semibold text-neutral-600">
+                      TP-покупки ({data.transferBreakdown.purchases.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {data.transferBreakdown.purchases.map((f, i) => (
+                        <div
+                          key={`${f.contractId}-${f.counterpartyDepartmentId}-${i}`}
+                          className="rounded bg-rose-50 px-2 py-1.5 text-[11px]"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{f.contractName}</span>
+                            <span className="font-semibold text-rose-700 tabular-nums">
+                              {formatCurrency(f.amount)}
+                            </span>
+                          </div>
+                          <div className="text-neutral-500">
+                            Продавец: {f.counterpartyDepartmentName}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
             {/* Warnings */}
             {data.warnings && data.warnings.length > 0 && (

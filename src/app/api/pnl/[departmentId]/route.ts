@@ -91,6 +91,7 @@ export async function GET(
         childrenPnl: result.childrenPnl,
         totalPnl: result.totalPnl,
       },
+      transferBreakdown: result.transferBreakdown ?? null,
       warnings: result.warnings.length > 0 ? result.warnings : null,
       calculatedAt: new Date().toISOString(),
     });

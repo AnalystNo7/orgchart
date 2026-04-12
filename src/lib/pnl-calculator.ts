@@ -38,6 +38,32 @@ export interface ContractRevenueDetail {
   allocatedRevenue: number;
 }
 
+/**
+ * A single internal TP sale or purchase between two departments on a specific
+ * contract. Used only in allocationMode = "transfer".
+ */
+export interface TransferFlow {
+  contractId: string;
+  contractName: string;
+  counterpartyDepartmentId: string;
+  counterpartyDepartmentName: string;
+  amount: number;
+}
+
+/**
+ * Breakdown of transfer-pricing internals for a department. Populated only
+ * when allocationMode = "transfer". Allows the drill-down UI to show
+ * external vs internal revenue/cost and per-contract TP flows.
+ */
+export interface TransferBreakdown {
+  externalRevenue: number; // revenue from contract.amount (REVENUE blocks only)
+  internalRevenue: number; // revenue from selling hours at TP (non-REVENUE blocks)
+  ownCost: number; // costRate × emp.fte × hours (same for all modes)
+  internalCost: number; // cost from buying hours at TP (REVENUE blocks only)
+  sells: TransferFlow[]; // for non-REVENUE blocks: who bought our hours
+  purchases: TransferFlow[]; // for REVENUE blocks: from whom we bought hours
+}
+
 export interface DepartmentPnlResult {
   departmentId: string;
   departmentName: string;
@@ -51,12 +77,28 @@ export interface DepartmentPnlResult {
   warnings: Array<{ employeeId: string; fullName: string; message: string }>;
   childrenPnl: number; // aggregated from children
   totalPnl: number; // own pnl + children pnl
+  transferBreakdown?: TransferBreakdown; // populated only for allocationMode = "transfer"
 }
 
 function toNumber(d: Decimal | null | undefined): number {
   if (d == null) return 0;
   return typeof d === "number" ? d : Number(d);
 }
+
+/**
+ * Shape of a department returned by the Prisma query below. Extracted into
+ * a type alias so helper functions (the transfer allocator) can accept it.
+ */
+type DepartmentWithEmployees = Prisma.DepartmentGetPayload<{
+  include: {
+    employees: {
+      include: {
+        tariff: true;
+        contracts: { include: { contract: true } };
+      };
+    };
+  };
+}>;
 
 /**
  * Calculate date overlap fraction between two ranges.
@@ -93,6 +135,302 @@ function isContractIncludedInMode(status: string, mode: PnlMode): boolean {
   return true;
 }
 
+// --- Transfer-mode allocator --------------------------------------------------
+// The transfer-pricing branch needs contract-first iteration (not department-first),
+// because revenue of one department depends on non-revenue participants of the
+// same contract. We precompute all internal flows in one pass, then the main
+// department loop just reads from these maps.
+
+type TransferCtxMaps = {
+  externalRevenueByDept: Map<string, number>;
+  internalRevenueByDept: Map<string, number>;
+  internalCostByDept: Map<string, number>;
+  // Keyed by deptId, then by `${contractId}__${counterpartyDeptId}` for aggregation.
+  sellsByDept: Map<string, Map<string, TransferFlow>>;
+  purchasesByDept: Map<string, Map<string, TransferFlow>>;
+  // Per-department warnings about employees without tariff (merged into the
+  // department's regular warnings in the main loop).
+  warningsByDept: Map<
+    string,
+    Array<{ employeeId: string; fullName: string; message: string }>
+  >;
+  // Per-department list of external (contract.amount based) revenue details.
+  // Replaces the on-the-fly contractDetails calculation for transfer mode.
+  externalContractDetailsByDept: Map<string, ContractRevenueDetail[]>;
+};
+
+function emptyTransferCtx(): TransferCtxMaps {
+  return {
+    externalRevenueByDept: new Map(),
+    internalRevenueByDept: new Map(),
+    internalCostByDept: new Map(),
+    sellsByDept: new Map(),
+    purchasesByDept: new Map(),
+    warningsByDept: new Map(),
+    externalContractDetailsByDept: new Map(),
+  };
+}
+
+function addTransferFlow(
+  byDept: Map<string, Map<string, TransferFlow>>,
+  deptId: string,
+  contractId: string,
+  contractName: string,
+  counterpartyDeptId: string,
+  counterpartyDeptName: string,
+  amount: number
+) {
+  if (amount === 0) return;
+  let perDept = byDept.get(deptId);
+  if (!perDept) {
+    perDept = new Map();
+    byDept.set(deptId, perDept);
+  }
+  const key = `${contractId}__${counterpartyDeptId}`;
+  const existing = perDept.get(key);
+  if (existing) {
+    existing.amount += amount;
+  } else {
+    perDept.set(key, {
+      contractId,
+      contractName,
+      counterpartyDepartmentId: counterpartyDeptId,
+      counterpartyDepartmentName: counterpartyDeptName,
+      amount,
+    });
+  }
+}
+
+function addToMap(m: Map<string, number>, key: string, delta: number) {
+  if (delta === 0) return;
+  m.set(key, (m.get(key) ?? 0) + delta);
+}
+
+/**
+ * Compute all transfer-mode allocations for a scenario in one contract-first pass.
+ *
+ * Invariant: Σ (externalRevenue + internalRevenue − internalCost) across all departments
+ * equals Σ (amount × overlap) across all eligible contracts. Combined with the
+ * department-agnostic cost calculation, this guarantees that the total P&L
+ * across the whole organization equals the total P&L under allocationMode = "fte".
+ */
+function computeTransferAllocations(
+  departments: DepartmentWithEmployees[],
+  mode: PnlMode,
+  periodStart: Date,
+  periodEnd: Date,
+  workingHours: number
+): TransferCtxMaps {
+  const ctx = emptyTransferCtx();
+
+  // Quick lookup: deptId -> {name, shetilType}
+  const deptInfo = new Map<string, { name: string; shetilType: string }>();
+  for (const d of departments) {
+    deptInfo.set(d.id, { name: d.name, shetilType: d.shetilType });
+  }
+
+  // Invert the data: group all EmployeeContract rows by contractId. Each entry
+  // carries the minimum we need for allocation maths.
+  type Participant = {
+    deptId: string;
+    deptName: string;
+    shetilType: string;
+    employeeId: string;
+    fullName: string;
+    ecFte: number;
+    tariffRate: number | null;
+  };
+  type ContractGroup = {
+    contract: DepartmentWithEmployees["employees"][number]["contracts"][number]["contract"];
+    participants: Participant[];
+  };
+  const contractGroups = new Map<string, ContractGroup>();
+
+  for (const dept of departments) {
+    const info = deptInfo.get(dept.id)!;
+    for (const emp of dept.employees) {
+      for (const ec of emp.contracts) {
+        const contract = ec.contract;
+        if (!isContractIncludedInMode(contract.status, mode)) continue;
+        if (contract.type !== "REVENUE") continue;
+
+        const ecFte = toNumber(ec.fte);
+        if (ecFte === 0) continue;
+
+        let group = contractGroups.get(contract.id);
+        if (!group) {
+          group = { contract, participants: [] };
+          contractGroups.set(contract.id, group);
+        }
+        group.participants.push({
+          deptId: dept.id,
+          deptName: info.name,
+          shetilType: info.shetilType,
+          employeeId: emp.id,
+          fullName: emp.fullName,
+          ecFte,
+          tariffRate: emp.tariff ? toNumber(emp.tariff.rate) : null,
+        });
+      }
+    }
+  }
+
+  // Now process each contract independently.
+  for (const { contract, participants } of contractGroups.values()) {
+    const amountRaw =
+      contract.status === "CONCLUDED"
+        ? toNumber(contract.amount)
+        : toNumber(contract.expectedAmount);
+    if (amountRaw === 0) continue;
+
+    const overlapFraction = getOverlapFraction(
+      contract.periodStart,
+      contract.periodEnd,
+      periodStart,
+      periodEnd
+    );
+    const effectiveOverlap =
+      contract.status === "PLANNED" && !contract.periodStart ? 1 : overlapFraction;
+    if (effectiveOverlap === 0) continue;
+
+    const contractAmount = amountRaw * effectiveOverlap;
+
+    // Partition participants into REVENUE vs non-REVENUE buckets. Aggregate
+    // per-department FTE for the REVENUE side.
+    const revenueByDept = new Map<string, { fte: number; name: string }>();
+    let contractRevenueFTE = 0;
+    let contractTotalFTE = 0;
+    for (const p of participants) {
+      contractTotalFTE += p.ecFte;
+      if (p.shetilType === "REVENUE") {
+        contractRevenueFTE += p.ecFte;
+        const existing = revenueByDept.get(p.deptId);
+        if (existing) existing.fte += p.ecFte;
+        else revenueByDept.set(p.deptId, { fte: p.ecFte, name: p.deptName });
+      }
+    }
+
+    // ---- CASE 2: no REVENUE participants → fallback to "fte" split ----
+    if (contractRevenueFTE === 0) {
+      // Aggregate per-department total FTE on this contract (all types).
+      const perDept = new Map<string, { fte: number; name: string }>();
+      for (const p of participants) {
+        const existing = perDept.get(p.deptId);
+        if (existing) existing.fte += p.ecFte;
+        else perDept.set(p.deptId, { fte: p.ecFte, name: p.deptName });
+      }
+      for (const [deptId, { fte }] of perDept) {
+        const share = fte / contractTotalFTE;
+        const externalRevenue = contractAmount * share;
+        addToMap(ctx.externalRevenueByDept, deptId, externalRevenue);
+
+        // Record this contract in the department's external details list.
+        const list = ctx.externalContractDetailsByDept.get(deptId) ?? [];
+        list.push({
+          contractId: contract.id,
+          contractName: contract.name,
+          status: contract.status,
+          totalAmount: amountRaw,
+          periodOverlapFraction: Math.round(effectiveOverlap * 10000) / 10000,
+          departmentFteFraction: Math.round(share * 10000) / 10000,
+          allocatedRevenue: Math.round(externalRevenue * 100) / 100,
+        });
+        ctx.externalContractDetailsByDept.set(deptId, list);
+      }
+      // No TP exchange in fallback mode.
+      continue;
+    }
+
+    // ---- CASE 1: at least one REVENUE block → standard TP allocation ----
+
+    // 1. Distribute contract.amount between REVENUE blocks proportionally to
+    //    their REVENUE-FTE (non-revenue blocks get zero external revenue here).
+    for (const [revDeptId, { fte: revFte }] of revenueByDept) {
+      const share = revFte / contractRevenueFTE;
+      const externalRevenue = contractAmount * share;
+      addToMap(ctx.externalRevenueByDept, revDeptId, externalRevenue);
+
+      const list = ctx.externalContractDetailsByDept.get(revDeptId) ?? [];
+      list.push({
+        contractId: contract.id,
+        contractName: contract.name,
+        status: contract.status,
+        totalAmount: amountRaw,
+        periodOverlapFraction: Math.round(effectiveOverlap * 10000) / 10000,
+        departmentFteFraction: Math.round(share * 10000) / 10000,
+        allocatedRevenue: Math.round(externalRevenue * 100) / 100,
+      });
+      ctx.externalContractDetailsByDept.set(revDeptId, list);
+    }
+
+    // 2. TP exchange for every non-REVENUE employee on this contract.
+    for (const p of participants) {
+      if (p.shetilType === "REVENUE") continue; // own employees don't "sell to themselves"
+
+      if (p.tariffRate == null) {
+        // Skip without contributing TP revenue but emit warning. The employee's
+        // cost still stays in their department, so the center takes the hit.
+        const warns = ctx.warningsByDept.get(p.deptId) ?? [];
+        warns.push({
+          employeeId: p.employeeId,
+          fullName: p.fullName,
+          message: `Не задан тариф — сотрудник исключён из трансфертной выручки (договор «${contract.name}»).`,
+        });
+        ctx.warningsByDept.set(p.deptId, warns);
+        continue;
+      }
+
+      const tp = p.tariffRate * p.ecFte * workingHours * effectiveOverlap;
+      if (tp === 0) continue;
+
+      // Seller (non-revenue department) receives internal revenue.
+      addToMap(ctx.internalRevenueByDept, p.deptId, tp);
+
+      // Distribute the cost of this TP across REVENUE buyers proportionally
+      // to their REVENUE-FTE share of the contract.
+      for (const [revDeptId, { fte: revFte, name: revName }] of revenueByDept) {
+        const share = revFte / contractRevenueFTE;
+        const portion = tp * share;
+        addToMap(ctx.internalCostByDept, revDeptId, portion);
+
+        addTransferFlow(
+          ctx.sellsByDept,
+          p.deptId,
+          contract.id,
+          contract.name,
+          revDeptId,
+          revName,
+          portion
+        );
+        addTransferFlow(
+          ctx.purchasesByDept,
+          revDeptId,
+          contract.id,
+          contract.name,
+          p.deptId,
+          p.deptName,
+          portion
+        );
+      }
+    }
+  }
+
+  return ctx;
+}
+
+// Utility: flatten per-dept flow aggregation map into a plain array.
+function flattenFlows(
+  byDept: Map<string, Map<string, TransferFlow>>,
+  deptId: string
+): TransferFlow[] {
+  const inner = byDept.get(deptId);
+  if (!inner) return [];
+  return Array.from(inner.values()).map((f) => ({
+    ...f,
+    amount: Math.round(f.amount * 100) / 100,
+  }));
+}
+
 /**
  * Calculate P&L for all departments in a scenario.
  */
@@ -104,7 +442,7 @@ export async function calculatePnl(
   allocationMode: PnlAllocationMode = "earning"
 ): Promise<DepartmentPnlResult[]> {
   // 1. Fetch all departments
-  const departments = await prisma.department.findMany({
+  const departments: DepartmentWithEmployees[] = await prisma.department.findMany({
     where: { scenarioId },
     include: {
       employees: {
@@ -121,7 +459,8 @@ export async function calculatePnl(
   // 2. Working hours for the period
   const workingHours = getWorkingHours(periodStart, periodEnd);
 
-  // 3. Build a map of total FTE per contract (across all departments)
+  // 3. Build a map of total FTE per contract (across all departments).
+  //    Used by earning/fte branches in the per-department loop.
   const contractTotalFte = new Map<string, number>();
   for (const dept of departments) {
     for (const emp of dept.employees) {
@@ -131,6 +470,13 @@ export async function calculatePnl(
       }
     }
   }
+
+  // 3b. Transfer mode uses a contract-first pre-pass so that per-department
+  //     revenue/cost can depend on other departments on the same contract.
+  const transferCtx =
+    allocationMode === "transfer"
+      ? computeTransferAllocations(departments, mode, periodStart, periodEnd, workingHours)
+      : null;
 
   // 4. Calculate P&L per department
   const results: DepartmentPnlResult[] = [];
@@ -172,95 +518,33 @@ export async function calculatePnl(
     }
 
     // --- REVENUE CALCULATION ---
-    // earning: only REVENUE-type departments earn (baseline behaviour).
-    // fte / transfer: every department that has employees on REVENUE contracts earns.
-    const runRevenueAllocation =
-      allocationMode === "earning" ? isEarning : true;
+    if (allocationMode === "transfer") {
+      // Contract-first pre-pass already computed everything. Just read results.
+      const ext = transferCtx!.externalRevenueByDept.get(dept.id) ?? 0;
+      const intRev = transferCtx!.internalRevenueByDept.get(dept.id) ?? 0;
+      const intCost = transferCtx!.internalCostByDept.get(dept.id) ?? 0;
 
-    if (runRevenueAllocation) {
-      if (allocationMode === "transfer") {
-        // --- Transfer pricing ---
-        // Aggregate per-contract for contractDetails display.
-        const tpAgg = new Map<
-          string,
-          {
-            contract: (typeof dept.employees)[0]["contracts"][0]["contract"];
-            departmentFte: number;
-            allocatedRevenue: number;
-            overlapFraction: number;
-          }
-        >();
+      totalRevenue = ext + intRev;
+      totalCost += intCost; // own cost (already in totalCost) + internal TP purchases
 
-        for (const emp of dept.employees) {
-          for (const ec of emp.contracts) {
-            const contract = ec.contract;
+      const extDetails = transferCtx!.externalContractDetailsByDept.get(dept.id) ?? [];
+      contractDetails.push(...extDetails);
 
-            if (!isContractIncludedInMode(contract.status, mode)) continue;
-            if (contract.type !== "REVENUE") continue;
+      // Merge per-department TP warnings (e.g. "employee without tariff").
+      const tpWarnings = transferCtx!.warningsByDept.get(dept.id) ?? [];
+      warnings.push(...tpWarnings);
+    } else {
+      // earning: only REVENUE-type departments earn (baseline behaviour).
+      // fte: every department that has employees on REVENUE contracts earns.
+      const runRevenueAllocation =
+        allocationMode === "earning" ? isEarning : true;
 
-            const ecFte = toNumber(ec.fte);
-            if (ecFte === 0) continue;
-
-            if (!emp.tariff) {
-              warnings.push({
-                employeeId: emp.id,
-                fullName: emp.fullName,
-                message:
-                  "Не задан тариф — исключён из расчёта трансфертной выручки.",
-              });
-              continue;
-            }
-
-            const overlapFraction = getOverlapFraction(
-              contract.periodStart,
-              contract.periodEnd,
-              periodStart,
-              periodEnd
-            );
-            const effectiveOverlap =
-              contract.status === "PLANNED" && !contract.periodStart
-                ? 1
-                : overlapFraction;
-
-            if (effectiveOverlap === 0) continue;
-
-            const tariffRate = toNumber(emp.tariff.rate);
-            const tp = tariffRate * ecFte * workingHours * effectiveOverlap;
-            totalRevenue += tp;
-
-            const existing = tpAgg.get(contract.id);
-            if (existing) {
-              existing.departmentFte += ecFte;
-              existing.allocatedRevenue += tp;
-            } else {
-              tpAgg.set(contract.id, {
-                contract,
-                departmentFte: ecFte,
-                allocatedRevenue: tp,
-                overlapFraction: effectiveOverlap,
-              });
-            }
-          }
-        }
-
-        for (const [contractId, agg] of tpAgg) {
-          contractDetails.push({
-            contractId,
-            contractName: agg.contract.name,
-            status: agg.contract.status,
-            totalAmount: 0, // contract.amount is ignored in transfer mode
-            periodOverlapFraction: Math.round(agg.overlapFraction * 10000) / 10000,
-            departmentFteFraction: Math.round(agg.departmentFte * 10000) / 10000,
-            allocatedRevenue: Math.round(agg.allocatedRevenue * 100) / 100,
-          });
-        }
-      } else {
-        // --- Earning-only / FTE-proportional allocation ---
+      if (runRevenueAllocation) {
         // Collect contracts through employees
         const contractMap = new Map<
           string,
           {
-            contract: (typeof dept.employees)[0]["contracts"][0]["contract"];
+            contract: DepartmentWithEmployees["employees"][number]["contracts"][number]["contract"];
             departmentFte: number;
           }
         >();
@@ -330,6 +614,23 @@ export async function calculatePnl(
 
     const pnl = totalRevenue - totalCost;
 
+    // Build transferBreakdown only for transfer mode.
+    let transferBreakdown: TransferBreakdown | undefined;
+    if (allocationMode === "transfer" && transferCtx) {
+      const ownCost = employeeDetails.reduce((s, e) => s + e.totalCost, 0);
+      const externalRevenue = transferCtx.externalRevenueByDept.get(dept.id) ?? 0;
+      const internalRevenue = transferCtx.internalRevenueByDept.get(dept.id) ?? 0;
+      const internalCost = transferCtx.internalCostByDept.get(dept.id) ?? 0;
+      transferBreakdown = {
+        externalRevenue: Math.round(externalRevenue * 100) / 100,
+        internalRevenue: Math.round(internalRevenue * 100) / 100,
+        ownCost: Math.round(ownCost * 100) / 100,
+        internalCost: Math.round(internalCost * 100) / 100,
+        sells: flattenFlows(transferCtx.sellsByDept, dept.id),
+        purchases: flattenFlows(transferCtx.purchasesByDept, dept.id),
+      };
+    }
+
     results.push({
       departmentId: dept.id,
       departmentName: dept.name,
@@ -343,6 +644,7 @@ export async function calculatePnl(
       warnings,
       childrenPnl: 0,
       totalPnl: Math.round(pnl * 100) / 100,
+      transferBreakdown,
     });
   }
 
