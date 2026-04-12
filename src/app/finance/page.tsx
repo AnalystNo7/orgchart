@@ -90,9 +90,26 @@ function fmt(v: number): string {
 
 // --- Component ---
 
+type AllocationMode = "classic" | "fte" | "transfer";
+
+const ALLOCATION_MODE_LABELS: Record<AllocationMode, string> = {
+  classic: "Классика",
+  fte: "По FTE",
+  transfer: "Трансфертная цена",
+};
+
+const ALLOCATION_MODE_HINTS: Record<AllocationMode, string> = {
+  classic:
+    "Выручка только у REVENUE-подразделений — текущее поведение дашборда.",
+  fte: "Выручка договора делится между подразделениями пропорционально FTE их сотрудников, закреплённых в EmployeeContract.",
+  transfer:
+    "Ресурсные/сервисные подразделения «продают» FTE по тарифу: Tariff.rate × FTE × часы × overlap. Сумма договора не используется.",
+};
+
 export default function FinancePage() {
   const currentScenarioId = useOrgChartStore((s) => s.currentScenarioId);
   const [activeTab, setActiveTab] = useState<"analytics" | "budgets">("analytics");
+  const [allocationMode, setAllocationMode] = useState<AllocationMode>("classic");
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [budgets, setBudgets] = useState<BudgetData[]>([]);
   const [departments, setDepartments] = useState<DeptOption[]>([]);
@@ -113,12 +130,14 @@ export default function FinancePage() {
   const loadAnalytics = useCallback(() => {
     if (!currentScenarioId) return;
     setLoading(true);
-    fetch(`/api/finance/analytics?scenarioId=${currentScenarioId}`)
+    fetch(
+      `/api/finance/analytics?scenarioId=${currentScenarioId}&allocationMode=${allocationMode}`
+    )
       .then((r) => r.json())
       .then((d) => setAnalytics(d))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [currentScenarioId]);
+  }, [currentScenarioId, allocationMode]);
 
   const loadBudgets = useCallback(() => {
     if (!currentScenarioId) return;
@@ -218,6 +237,28 @@ export default function FinancePage() {
       {/* Analytics tab */}
       {activeTab === "analytics" && s && (
         <>
+          {/* Allocation mode switcher */}
+          <div className="rounded-lg border bg-white p-3">
+            <div className="mb-2 flex items-center gap-1 rounded-md bg-neutral-100 p-1">
+              {(["classic", "fte", "transfer"] as AllocationMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setAllocationMode(m)}
+                  className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition ${
+                    allocationMode === m
+                      ? "bg-white shadow-sm"
+                      : "text-neutral-500 hover:text-neutral-700"
+                  }`}
+                >
+                  {ALLOCATION_MODE_LABELS[m]}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-neutral-500">
+              {ALLOCATION_MODE_HINTS[allocationMode]}
+            </p>
+          </div>
+
           {/* KPI cards */}
           <div className="grid grid-cols-4 gap-3">
             <KpiCard icon={<TrendingUp className="h-5 w-5 text-green-600" />} label="Выручка" value={fmt(s.totalRevenue)} />

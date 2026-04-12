@@ -5,6 +5,17 @@ import type { Decimal } from "@prisma/client/runtime/library";
 
 export type PnlMode = "forecast" | "plan" | "combined";
 
+/**
+ * Revenue allocation method.
+ * - "classic":  Current behaviour — only REVENUE-type departments get revenue.
+ * - "fte":      Contract revenue is split between all departments proportionally
+ *               to the FTE their employees contribute via EmployeeContract links.
+ * - "transfer": Resource/service departments "sell" FTE to earning ones at an
+ *               internal transfer price = Tariff.rate × FTE × workingHours × overlap.
+ *               The Contract.amount field is ignored in this mode.
+ */
+export type PnlAllocationMode = "classic" | "fte" | "transfer";
+
 export interface EmployeeCostDetail {
   employeeId: string;
   fullName: string;
@@ -71,13 +82,24 @@ function getOverlapFraction(
 }
 
 /**
+ * Check whether a contract should be included given the current PnlMode filter.
+ * "forecast" = concluded only; "plan" = planned only; "combined" = both.
+ */
+function isContractIncludedInMode(status: string, mode: PnlMode): boolean {
+  if (mode === "forecast" && status !== "CONCLUDED") return false;
+  if (mode === "plan" && status !== "PLANNED") return false;
+  return true;
+}
+
+/**
  * Calculate P&L for all departments in a scenario.
  */
 export async function calculatePnl(
   scenarioId: string,
   mode: PnlMode,
   periodStart: Date,
-  periodEnd: Date
+  periodEnd: Date,
+  allocationMode: PnlAllocationMode = "classic"
 ): Promise<DepartmentPnlResult[]> {
   // 1. Fetch all departments
   const departments = await prisma.department.findMany({
@@ -85,6 +107,7 @@ export async function calculatePnl(
     include: {
       employees: {
         include: {
+          tariff: true,
           contracts: {
             include: { contract: true },
           },
@@ -146,79 +169,160 @@ export async function calculatePnl(
       });
     }
 
-    // --- REVENUE CALCULATION (only for earning departments) ---
-    if (isEarning) {
-      // Collect contracts through employees
-      const contractMap = new Map<
-        string,
-        {
-          contract: (typeof dept.employees)[0]["contracts"][0]["contract"];
-          departmentFte: number;
-        }
-      >();
+    // --- REVENUE CALCULATION ---
+    // Classic: only REVENUE-type departments earn.
+    // FTE / Transfer: every department that has employees on REVENUE contracts earns.
+    const runRevenueAllocation =
+      allocationMode === "classic" ? isEarning : true;
 
-      for (const emp of dept.employees) {
-        for (const ec of emp.contracts) {
-          const contract = ec.contract;
+    if (runRevenueAllocation) {
+      if (allocationMode === "transfer") {
+        // --- Transfer pricing ---
+        // Aggregate per-contract for contractDetails display.
+        const tpAgg = new Map<
+          string,
+          {
+            contract: (typeof dept.employees)[0]["contracts"][0]["contract"];
+            departmentFte: number;
+            allocatedRevenue: number;
+            overlapFraction: number;
+          }
+        >();
 
-          // Filter by mode
-          if (mode === "forecast" && contract.status !== "CONCLUDED") continue;
-          if (mode === "plan" && contract.status !== "PLANNED") continue;
-          // "combined" includes both
+        for (const emp of dept.employees) {
+          for (const ec of emp.contracts) {
+            const contract = ec.contract;
 
-          // Only REVENUE contracts
-          if (contract.type !== "REVENUE") continue;
+            if (!isContractIncludedInMode(contract.status, mode)) continue;
+            if (contract.type !== "REVENUE") continue;
 
-          const existing = contractMap.get(contract.id);
-          if (existing) {
-            existing.departmentFte += toNumber(ec.fte);
-          } else {
-            contractMap.set(contract.id, {
-              contract,
-              departmentFte: toNumber(ec.fte),
-            });
+            const ecFte = toNumber(ec.fte);
+            if (ecFte === 0) continue;
+
+            if (!emp.tariff) {
+              warnings.push({
+                employeeId: emp.id,
+                fullName: emp.fullName,
+                message:
+                  "Не задан тариф — исключён из расчёта трансфертной выручки.",
+              });
+              continue;
+            }
+
+            const overlapFraction = getOverlapFraction(
+              contract.periodStart,
+              contract.periodEnd,
+              periodStart,
+              periodEnd
+            );
+            const effectiveOverlap =
+              contract.status === "PLANNED" && !contract.periodStart
+                ? 1
+                : overlapFraction;
+
+            if (effectiveOverlap === 0) continue;
+
+            const tariffRate = toNumber(emp.tariff.rate);
+            const tp = tariffRate * ecFte * workingHours * effectiveOverlap;
+            totalRevenue += tp;
+
+            const existing = tpAgg.get(contract.id);
+            if (existing) {
+              existing.departmentFte += ecFte;
+              existing.allocatedRevenue += tp;
+            } else {
+              tpAgg.set(contract.id, {
+                contract,
+                departmentFte: ecFte,
+                allocatedRevenue: tp,
+                overlapFraction: effectiveOverlap,
+              });
+            }
           }
         }
-      }
 
-      for (const [contractId, { contract, departmentFte }] of contractMap) {
-        const totalFte = contractTotalFte.get(contractId) || 1;
-        const fteFraction = departmentFte / totalFte;
+        for (const [contractId, agg] of tpAgg) {
+          contractDetails.push({
+            contractId,
+            contractName: agg.contract.name,
+            status: agg.contract.status,
+            totalAmount: 0, // contract.amount is ignored in transfer mode
+            periodOverlapFraction: Math.round(agg.overlapFraction * 10000) / 10000,
+            departmentFteFraction: Math.round(agg.departmentFte * 10000) / 10000,
+            allocatedRevenue: Math.round(agg.allocatedRevenue * 100) / 100,
+          });
+        }
+      } else {
+        // --- Classic / FTE-proportional allocation ---
+        // Collect contracts through employees
+        const contractMap = new Map<
+          string,
+          {
+            contract: (typeof dept.employees)[0]["contracts"][0]["contract"];
+            departmentFte: number;
+          }
+        >();
 
-        // Amount based on contract status
-        const amount =
-          contract.status === "CONCLUDED"
-            ? toNumber(contract.amount)
-            : toNumber(contract.expectedAmount);
+        for (const emp of dept.employees) {
+          for (const ec of emp.contracts) {
+            const contract = ec.contract;
 
-        if (amount === 0) continue;
+            if (!isContractIncludedInMode(contract.status, mode)) continue;
 
-        // Period overlap
-        const overlapFraction = getOverlapFraction(
-          contract.periodStart,
-          contract.periodEnd,
-          periodStart,
-          periodEnd
-        );
+            // Only REVENUE contracts
+            if (contract.type !== "REVENUE") continue;
 
-        // For planned contracts without dates (REV-007), use full amount
-        const effectiveOverlap =
-          contract.status === "PLANNED" && !contract.periodStart ? 1 : overlapFraction;
+            const existing = contractMap.get(contract.id);
+            if (existing) {
+              existing.departmentFte += toNumber(ec.fte);
+            } else {
+              contractMap.set(contract.id, {
+                contract,
+                departmentFte: toNumber(ec.fte),
+              });
+            }
+          }
+        }
 
-        if (effectiveOverlap === 0) continue;
+        for (const [contractId, { contract, departmentFte }] of contractMap) {
+          const totalFte = contractTotalFte.get(contractId) || 1;
+          const fteFraction = departmentFte / totalFte;
 
-        const allocatedRevenue = amount * effectiveOverlap * fteFraction;
-        totalRevenue += allocatedRevenue;
+          // Amount based on contract status
+          const amount =
+            contract.status === "CONCLUDED"
+              ? toNumber(contract.amount)
+              : toNumber(contract.expectedAmount);
 
-        contractDetails.push({
-          contractId,
-          contractName: contract.name,
-          status: contract.status,
-          totalAmount: amount,
-          periodOverlapFraction: Math.round(effectiveOverlap * 10000) / 10000,
-          departmentFteFraction: Math.round(fteFraction * 10000) / 10000,
-          allocatedRevenue: Math.round(allocatedRevenue * 100) / 100,
-        });
+          if (amount === 0) continue;
+
+          // Period overlap
+          const overlapFraction = getOverlapFraction(
+            contract.periodStart,
+            contract.periodEnd,
+            periodStart,
+            periodEnd
+          );
+
+          // For planned contracts without dates (REV-007), use full amount
+          const effectiveOverlap =
+            contract.status === "PLANNED" && !contract.periodStart ? 1 : overlapFraction;
+
+          if (effectiveOverlap === 0) continue;
+
+          const allocatedRevenue = amount * effectiveOverlap * fteFraction;
+          totalRevenue += allocatedRevenue;
+
+          contractDetails.push({
+            contractId,
+            contractName: contract.name,
+            status: contract.status,
+            totalAmount: amount,
+            periodOverlapFraction: Math.round(effectiveOverlap * 10000) / 10000,
+            departmentFteFraction: Math.round(fteFraction * 10000) / 10000,
+            allocatedRevenue: Math.round(allocatedRevenue * 100) / 100,
+          });
+        }
       }
     }
 
@@ -277,18 +381,20 @@ export async function calculateAndCachePnl(
   scenarioId: string,
   mode: PnlMode,
   periodStart: Date,
-  periodEnd: Date
+  periodEnd: Date,
+  allocationMode: PnlAllocationMode = "classic"
 ): Promise<DepartmentPnlResult[]> {
-  const results = await calculatePnl(scenarioId, mode, periodStart, periodEnd);
+  const results = await calculatePnl(scenarioId, mode, periodStart, periodEnd, allocationMode);
 
   // Upsert cache entries
   for (const r of results) {
     await prisma.pnlCache.upsert({
       where: {
-        scenarioId_departmentId_mode_periodStart_periodEnd: {
+        scenarioId_departmentId_mode_allocationMode_periodStart_periodEnd: {
           scenarioId,
           departmentId: r.departmentId,
           mode,
+          allocationMode,
           periodStart,
           periodEnd,
         },
@@ -312,6 +418,7 @@ export async function calculateAndCachePnl(
         scenarioId,
         departmentId: r.departmentId,
         mode,
+        allocationMode,
         periodStart,
         periodEnd,
         revenue: r.revenue,

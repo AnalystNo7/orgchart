@@ -1,14 +1,28 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { calculatePnl } from "@/lib/pnl-calculator";
+import { calculatePnl, type PnlAllocationMode } from "@/lib/pnl-calculator";
+
+const ALLOCATION_MODES: PnlAllocationMode[] = ["classic", "fte", "transfer"];
 
 // GET — extended financial analytics for a scenario
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const scenarioId = searchParams.get("scenarioId");
+  const allocationModeRaw = searchParams.get("allocationMode");
+  const allocationMode: PnlAllocationMode =
+    allocationModeRaw && (ALLOCATION_MODES as string[]).includes(allocationModeRaw)
+      ? (allocationModeRaw as PnlAllocationMode)
+      : "classic";
 
   if (!scenarioId) {
     return NextResponse.json({ error: "scenarioId required" }, { status: 400 });
+  }
+
+  if (allocationModeRaw && !(ALLOCATION_MODES as string[]).includes(allocationModeRaw)) {
+    return NextResponse.json(
+      { error: "allocationMode must be classic, fte, or transfer" },
+      { status: 400 }
+    );
   }
 
   const now = new Date();
@@ -16,7 +30,7 @@ export async function GET(request: Request) {
   const yearEnd = new Date(now.getFullYear(), 11, 31);
 
   // P&L data
-  const pnlResults = await calculatePnl(scenarioId, "combined", yearStart, yearEnd);
+  const pnlResults = await calculatePnl(scenarioId, "combined", yearStart, yearEnd, allocationMode);
 
   // Employee data for utilization
   const employees = await prisma.employee.findMany({
@@ -65,6 +79,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     period: { start: yearStart.toISOString(), end: yearEnd.toISOString() },
+    allocationMode,
     summary: {
       totalRevenue: Math.round(totalRevenue),
       totalCost: Math.round(totalCost),
