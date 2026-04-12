@@ -22,10 +22,15 @@ function norm(s: string): string {
   return s.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+// Maps normalized tariff input (Cyrillic/Latin, with/without dash) to DB name.
+// DB stores Latin "K-1" through "K-6" (see prisma/seed.ts).
 const TARIFF_MAP: Record<string, string> = {
-  "к1": "К-1", "к2": "К-2", "к3": "К-3", "к4": "К-4", "к5": "К-5", "к6": "К-6",
-  "k1": "К-1", "k2": "К-2", "k3": "К-3", "k4": "К-4", "k5": "К-5", "k6": "К-6",
-  "к-1": "К-1", "к-2": "К-2", "к-3": "К-3", "к-4": "К-4", "к-5": "К-5", "к-6": "К-6",
+  // Cyrillic "К" (U+041A) — as it appears in the Excel file
+  "к1": "K-1", "к2": "K-2", "к3": "K-3", "к4": "K-4", "к5": "K-5", "к6": "K-6",
+  "к-1": "K-1", "к-2": "K-2", "к-3": "K-3", "к-4": "K-4", "к-5": "K-5", "к-6": "K-6",
+  // Latin "k" (U+004B)
+  "k1": "K-1", "k2": "K-2", "k3": "K-3", "k4": "K-4", "k5": "K-5", "k6": "K-6",
+  "k-1": "K-1", "k-2": "K-2", "k-3": "K-3", "k-4": "K-4", "k-5": "K-5", "k-6": "K-6",
 };
 
 function excelDateToMonth(val: number | string): { start: Date; end: Date } | null {
