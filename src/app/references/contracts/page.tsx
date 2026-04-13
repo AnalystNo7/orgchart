@@ -1,7 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, Download, Upload, Search, MoreHorizontal } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Plus,
+  Download,
+  Upload,
+  Search,
+  MoreHorizontal,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+} from "lucide-react";
 import { EditableHeader } from "@/components/employees/EditableHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +36,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ContractForm } from "@/components/contracts/ContractForm";
+import { useOrgChartStore } from "@/lib/store";
 import {
   CONTRACT_TYPE_LABELS,
   CONTRACT_STATUS_LABELS,
@@ -77,7 +87,65 @@ const CONTRACT_COLUMN_DEFAULTS: Record<string, string> = {
 
 const CONTRACT_STORAGE_KEY = "contract-column-names";
 
+// localStorage key for per-scenario exclusions.
+// Shape: { [scenarioId]: string[] }  — list of excluded contract ids.
+// A fallback "__global" key is used when no scenario is selected.
+const EXCLUDED_STORAGE_KEY = "excludedContractIdsPerScenario";
+const EXCLUDED_GLOBAL_FALLBACK = "__global";
+
+function readExcludedMap(): Record<string, string[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(EXCLUDED_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeExcludedMap(map: Record<string, string[]>) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(EXCLUDED_STORAGE_KEY, JSON.stringify(map));
+}
+
+// Returns the raw amount used for totals (respects CONCLUDED/PLANNED fallback).
+function getContractAmount(c: Contract): number {
+  if (c.status === "CONCLUDED" && c.amount != null) return Number(c.amount);
+  if (c.status === "PLANNED" && c.expectedAmount != null)
+    return Number(c.expectedAmount);
+  return 0;
+}
+
+interface SumBreakdown {
+  concluded: number;
+  planned: number;
+  total: number;
+}
+
+interface TotalsSummary {
+  revenue: SumBreakdown;
+  expense: SumBreakdown;
+  delta: number;
+  includedCount: number;
+  excludedCount: number;
+  excludedAmount: number; // absolute sum of excluded (revenue+expense) for the plaque
+}
+
+function emptyBreakdown(): SumBreakdown {
+  return { concluded: 0, planned: 0, total: 0 };
+}
+
+function fmtMoney(n: number): string {
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(
+    Math.round(n)
+  );
+}
+
 export default function ContractsPage() {
+  const currentScenarioId = useOrgChartStore((s) => s.currentScenarioId);
+
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
@@ -91,6 +159,55 @@ export default function ContractsPage() {
       return JSON.parse(localStorage.getItem(CONTRACT_STORAGE_KEY) || "{}");
     } catch { return {}; }
   });
+
+  // Per-scenario exclusions (localStorage-persistent).
+  const scenarioKey = currentScenarioId ?? EXCLUDED_GLOBAL_FALLBACK;
+  const [excludedMap, setExcludedMap] = useState<Record<string, string[]>>(
+    () => readExcludedMap()
+  );
+  const excludedSet = useMemo(
+    () => new Set(excludedMap[scenarioKey] ?? []),
+    [excludedMap, scenarioKey]
+  );
+
+  function toggleExcluded(contractId: string) {
+    setExcludedMap((prev) => {
+      const current = new Set(prev[scenarioKey] ?? []);
+      if (current.has(contractId)) current.delete(contractId);
+      else current.add(contractId);
+      const next = { ...prev, [scenarioKey]: Array.from(current) };
+      writeExcludedMap(next);
+      return next;
+    });
+  }
+
+  function setExcludedForScenario(ids: string[]) {
+    setExcludedMap((prev) => {
+      const next = { ...prev, [scenarioKey]: ids };
+      writeExcludedMap(next);
+      return next;
+    });
+  }
+
+  function resetExclusions() {
+    setExcludedForScenario([]);
+  }
+
+  // Master toggle: if every visible row is excluded → include all; otherwise exclude all.
+  function toggleAllVisible(visibleIds: string[]) {
+    const allExcluded = visibleIds.every((id) => excludedSet.has(id));
+    if (allExcluded) {
+      // Unexclude all visible
+      const next = new Set(excludedSet);
+      for (const id of visibleIds) next.delete(id);
+      setExcludedForScenario(Array.from(next));
+    } else {
+      // Exclude all visible
+      const next = new Set(excludedSet);
+      for (const id of visibleIds) next.add(id);
+      setExcludedForScenario(Array.from(next));
+    }
+  }
 
   function getColName(id: string) {
     return columnNames[id] ?? CONTRACT_COLUMN_DEFAULTS[id] ?? id;
@@ -120,6 +237,42 @@ export default function ContractsPage() {
   useEffect(() => {
     fetchContracts();
   }, [fetchContracts]);
+
+  // Sum breakdown over currently visible contracts (backend already filters
+  // by search). Excluded contracts don't contribute to totals but stay in
+  // the visible list (crossed out).
+  const totals: TotalsSummary = useMemo(() => {
+    const res: TotalsSummary = {
+      revenue: emptyBreakdown(),
+      expense: emptyBreakdown(),
+      delta: 0,
+      includedCount: 0,
+      excludedCount: 0,
+      excludedAmount: 0,
+    };
+    for (const c of contracts) {
+      const amt = getContractAmount(c);
+      const isExcluded = excludedSet.has(c.id);
+      if (isExcluded) {
+        res.excludedCount += 1;
+        res.excludedAmount += amt;
+        continue;
+      }
+      res.includedCount += 1;
+      const bucket = c.type === "REVENUE" ? res.revenue : res.expense;
+      if (c.status === "CONCLUDED") bucket.concluded += amt;
+      else if (c.status === "PLANNED") bucket.planned += amt;
+      bucket.total += amt;
+    }
+    res.delta = res.revenue.total - res.expense.total;
+    return res;
+  }, [contracts, excludedSet]);
+
+  // Are all currently visible contracts excluded?
+  const allVisibleExcluded = useMemo(() => {
+    if (contracts.length === 0) return false;
+    return contracts.every((c) => excludedSet.has(c.id));
+  }, [contracts, excludedSet]);
 
   async function saveDescription(id: string) {
     await fetch(`/api/contracts/${id}`, {
@@ -202,6 +355,7 @@ export default function ContractsPage() {
       "Дата начала": formatDate(c.periodStart),
       "Дата окончания": formatDate(c.periodEnd),
       "Описание": c.description ?? "",
+      "Исключено из суммы": excludedSet.has(c.id) ? "Да" : "Нет",
     }));
     const ws = XLSX.utils.json_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
@@ -294,6 +448,33 @@ export default function ContractsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[44px] text-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleAllVisible(contracts.map((c) => c.id))
+                        }
+                        className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-100"
+                        aria-label="Переключить все видимые"
+                      >
+                        {allVisibleExcluded ? (
+                          <EyeOff className="h-4 w-4 text-neutral-400" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-neutral-600" />
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        {allVisibleExcluded
+                          ? "Вернуть все видимые в сумму"
+                          : "Исключить все видимые из суммы"}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
                 <TableHead>
                   <EditableHeader value={getColName("name")} onSave={(v) => renameColumn("name", v)} />
                 </TableHead>
@@ -321,106 +502,197 @@ export default function ContractsPage() {
             <TableBody>
               {contracts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={9} className="h-24 text-center">
                     Нет данных
                   </TableCell>
                 </TableRow>
               ) : (
-                contracts.map((contract) => (
-                  <TableRow key={contract.id}>
-                    <TableCell>
-                      <TruncatedCell text={contract.name} maxWidth="max-w-[250px]" />
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={
-                        contract.type === "REVENUE"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-orange-100 text-orange-800"
-                      }>
-                        {CONTRACT_TYPE_LABELS[contract.type]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {CONTRACT_STATUS_LABELS[contract.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {contract.status === "CONCLUDED" && contract.amount
-                        ? Number(contract.amount).toLocaleString("ru-RU") + " ₽"
-                        : contract.status === "PLANNED" && contract.expectedAmount
-                        ? Number(contract.expectedAmount).toLocaleString("ru-RU") + " ₽"
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-sm">
-                      {formatDate(contract.periodStart)} – {formatDate(contract.periodEnd)}
-                    </TableCell>
-                    <TableCell className="text-center text-sm">
-                      {contract._count.employees}
-                    </TableCell>
-                    <TableCell>
-                      {editingDescId === contract.id ? (
-                        <Input
-                          value={editingDescValue}
-                          onChange={(e) => setEditingDescValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveDescription(contract.id);
-                            if (e.key === "Escape") setEditingDescId(null);
-                          }}
-                          onBlur={() => saveDescription(contract.id)}
-                          className="h-8"
-                          autoFocus
-                        />
-                      ) : (
-                        <span
-                          className="block max-w-[200px] cursor-pointer truncate hover:text-blue-600"
-                          onClick={() => {
-                            setEditingDescId(contract.id);
-                            setEditingDescValue(contract.description ?? "");
-                          }}
-                        >
-                          {contract.description ? (
-                            <TruncatedCell text={contract.description} maxWidth="max-w-[200px]" />
-                          ) : (
-                            <span className="text-neutral-300">—</span>
-                          )}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() =>
-                              setEditingContract({
-                                ...contract,
-                                periodStart: new Date(contract.periodStart).toISOString().split("T")[0],
-                                periodEnd: new Date(contract.periodEnd).toISOString().split("T")[0],
-                              })
-                            }
+                contracts.map((contract) => {
+                  const isExcluded = excludedSet.has(contract.id);
+                  const rowClass = isExcluded
+                    ? "opacity-50 [&>td]:line-through"
+                    : "";
+                  return (
+                    <TableRow key={contract.id} className={rowClass}>
+                      <TableCell className="text-center">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={() => toggleExcluded(contract.id)}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded no-underline hover:bg-neutral-100"
+                              aria-label={
+                                isExcluded
+                                  ? "Вернуть в сумму"
+                                  : "Исключить из суммы"
+                              }
+                            >
+                              {isExcluded ? (
+                                <EyeOff className="h-4 w-4 text-neutral-400" />
+                              ) : (
+                                <Eye className="h-4 w-4 text-neutral-600" />
+                              )}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              {isExcluded
+                                ? "Вернуть в сумму"
+                                : "Исключить из суммы"}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell>
+                        <TruncatedCell text={contract.name} maxWidth="max-w-[250px]" />
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={
+                          contract.type === "REVENUE"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-orange-100 text-orange-800"
+                        }>
+                          {CONTRACT_TYPE_LABELS[contract.type]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {CONTRACT_STATUS_LABELS[contract.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {contract.status === "CONCLUDED" && contract.amount
+                          ? Number(contract.amount).toLocaleString("ru-RU") + " ₽"
+                          : contract.status === "PLANNED" && contract.expectedAmount
+                          ? Number(contract.expectedAmount).toLocaleString("ru-RU") + " ₽"
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {formatDate(contract.periodStart)} – {formatDate(contract.periodEnd)}
+                      </TableCell>
+                      <TableCell className="text-center text-sm">
+                        {contract._count.employees}
+                      </TableCell>
+                      <TableCell>
+                        {editingDescId === contract.id ? (
+                          <Input
+                            value={editingDescValue}
+                            onChange={(e) => setEditingDescValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveDescription(contract.id);
+                              if (e.key === "Escape") setEditingDescId(null);
+                            }}
+                            onBlur={() => saveDescription(contract.id)}
+                            className="h-8"
+                            autoFocus
+                          />
+                        ) : (
+                          <span
+                            className="block max-w-[200px] cursor-pointer truncate hover:text-blue-600"
+                            onClick={() => {
+                              setEditingDescId(contract.id);
+                              setEditingDescValue(contract.description ?? "");
+                            }}
                           >
-                            Редактировать
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-red-600"
-                            onClick={() => handleDelete(contract.id)}
-                          >
-                            Удалить
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
+                            {contract.description ? (
+                              <TruncatedCell text={contract.description} maxWidth="max-w-[200px]" />
+                            ) : (
+                              <span className="text-neutral-300">—</span>
+                            )}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setEditingContract({
+                                  ...contract,
+                                  periodStart: new Date(contract.periodStart).toISOString().split("T")[0],
+                                  periodEnd: new Date(contract.periodEnd).toISOString().split("T")[0],
+                                })
+                              }
+                            >
+                              Редактировать
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => handleDelete(contract.id)}
+                            >
+                              Удалить
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </TooltipProvider>
+      </div>
+
+      {/* Sticky summary footer */}
+      <div className="sticky bottom-0 z-10 -mx-6 border-t bg-white/95 px-6 py-3 backdrop-blur shadow-[0_-4px_12px_-6px_rgba(0,0,0,0.08)]">
+        {totals.excludedCount > 0 && (
+          <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="flex-1">
+              Исключено {totals.excludedCount}{" "}
+              {totals.excludedCount === 1 ? "договор" : "договоров"} на сумму{" "}
+              <span className="font-semibold tabular-nums">
+                {fmtMoney(totals.excludedAmount)} ₽
+              </span>
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs text-amber-900 hover:bg-amber-100"
+              onClick={resetExclusions}
+            >
+              Вернуть все
+            </Button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-3">
+          <SummaryBlock
+            label="Выручка"
+            colorClass="text-green-700"
+            breakdown={totals.revenue}
+          />
+          <SummaryBlock
+            label="Расходы"
+            colorClass="text-orange-700"
+            breakdown={totals.expense}
+          />
+          <div className="rounded-md border bg-neutral-50 px-3 py-2">
+            <div className="text-[10px] font-medium uppercase text-neutral-500">
+              Дельта (Выручка − Расходы)
+            </div>
+            <div
+              className={`mt-0.5 text-base font-bold tabular-nums ${
+                totals.delta >= 0 ? "text-emerald-700" : "text-red-700"
+              }`}
+            >
+              {fmtMoney(totals.delta)} ₽
+            </div>
+            <div className="text-[10px] text-neutral-400">
+              Учтено {totals.includedCount}
+              {totals.excludedCount > 0
+                ? ` из ${totals.includedCount + totals.excludedCount}`
+                : ""}{" "}
+              {totals.includedCount === 1 ? "договор" : "договоров"}
+            </div>
+          </div>
+        </div>
       </div>
 
       <ContractForm
@@ -450,6 +722,31 @@ export default function ContractsPage() {
           title="Редактировать договор"
         />
       )}
+    </div>
+  );
+}
+
+function SummaryBlock({
+  label,
+  colorClass,
+  breakdown,
+}: {
+  label: string;
+  colorClass: string;
+  breakdown: SumBreakdown;
+}) {
+  return (
+    <div className="rounded-md border bg-neutral-50 px-3 py-2">
+      <div className="text-[10px] font-medium uppercase text-neutral-500">
+        {label}
+      </div>
+      <div className={`mt-0.5 text-base font-bold tabular-nums ${colorClass}`}>
+        {fmtMoney(breakdown.total)} ₽
+      </div>
+      <div className="text-[10px] text-neutral-400">
+        Заключено {fmtMoney(breakdown.concluded)} · Планируется{" "}
+        {fmtMoney(breakdown.planned)}
+      </div>
     </div>
   );
 }
