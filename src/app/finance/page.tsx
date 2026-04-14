@@ -16,6 +16,7 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
+  BrainCircuit,
 } from "lucide-react";
 
 // --- Types ---
@@ -242,20 +243,37 @@ export default function FinancePage() {
         <>
           {/* Allocation mode switcher */}
           <div className="rounded-lg border bg-white p-3">
-            <div className="mb-2 flex items-center gap-1 rounded-md bg-neutral-100 p-1">
-              {ALLOCATION_ORDER.map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setAllocationMode(m)}
-                  className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition ${
-                    allocationMode === m
-                      ? "bg-white shadow-sm"
-                      : "text-neutral-500 hover:text-neutral-700"
-                  }`}
-                >
-                  {ALLOCATION_MODE_LABELS[m]}
-                </button>
-              ))}
+            <div className="mb-2 flex items-center gap-2">
+              <div className="flex flex-1 items-center gap-1 rounded-md bg-neutral-100 p-1">
+                {ALLOCATION_ORDER.map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setAllocationMode(m)}
+                    className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition ${
+                      allocationMode === m
+                        ? "bg-white shadow-sm"
+                        : "text-neutral-500 hover:text-neutral-700"
+                    }`}
+                  >
+                    {ALLOCATION_MODE_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  if (!currentScenarioId) return;
+                  window.open(
+                    `/api/export/ai-analysis?scenarioId=${currentScenarioId}`,
+                    "_blank"
+                  );
+                }}
+                disabled={!currentScenarioId}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                title="Скачать .md файл со всем срезом сценария для загрузки в Claude Opus"
+              >
+                <BrainCircuit className="h-4 w-4 text-purple-600" />
+                Экспорт для AI-анализа
+              </button>
             </div>
             <p className="text-xs text-neutral-500">
               {ALLOCATION_MODE_HINTS[allocationMode]}
