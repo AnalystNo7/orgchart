@@ -2,7 +2,13 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  ArrowDownUp,
+  ArrowLeftRight,
+} from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -20,6 +26,7 @@ export interface HeatmapNodeData {
   warningCount: number;
   hasChildren: boolean;
   isExpanded: boolean;
+  isVertical: boolean;
   thresholds: {
     deepRed: number;
     red: number;
@@ -28,6 +35,7 @@ export interface HeatmapNodeData {
     deepGreen: number;
   };
   onToggleExpand: (id: string) => void;
+  onToggleVertical: (id: string) => void;
   onSelectDepartment: (id: string) => void;
   departmentId: string;
 }
@@ -73,8 +81,15 @@ export const HeatmapNode = memo(function HeatmapNode({
 
   return (
     <>
-      <Handle type="target" position={Position.Top} className="!bg-neutral-300" />
-      <Handle type="source" position={Position.Bottom} className="!bg-neutral-300" />
+      <Handle type="target" position={Position.Top} id="top" className="!bg-neutral-300" />
+      {/* Left handle for vertical layout (target — incoming edge from parent's bottom) */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className="!h-0 !w-0 !border-0 !bg-transparent"
+      />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-neutral-300" />
 
       <div
         className="cursor-pointer rounded-lg border-2 shadow-sm transition-shadow hover:shadow-md"
@@ -108,19 +123,47 @@ export const HeatmapNode = memo(function HeatmapNode({
           )}
 
           {d.hasChildren && (
-            <button
-              className="rounded p-0.5 hover:bg-neutral-200/50"
-              onClick={(e) => {
-                e.stopPropagation();
-                d.onToggleExpand(id);
-              }}
-            >
-              {d.isExpanded ? (
-                <ChevronDown className="h-3.5 w-3.5 text-neutral-500" />
-              ) : (
-                <ChevronRight className="h-3.5 w-3.5 text-neutral-500" />
-              )}
-            </button>
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="nopan nodrag rounded p-0.5 hover:bg-neutral-200/50"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      d.onToggleVertical(d.departmentId);
+                    }}
+                  >
+                    {d.isVertical ? (
+                      <ArrowDownUp className="h-3.5 w-3.5 text-neutral-500" />
+                    ) : (
+                      <ArrowLeftRight className="h-3.5 w-3.5 text-neutral-500" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {d.isVertical
+                    ? "Вертикальная раскладка (нажмите для горизонтальной)"
+                    : "Горизонтальная раскладка (нажмите для вертикальной)"}
+                </TooltipContent>
+              </Tooltip>
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="nopan nodrag rounded p-0.5 hover:bg-neutral-200/50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  d.onToggleExpand(id);
+                }}
+              >
+                {d.isExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-neutral-500" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-neutral-500" />
+                )}
+              </button>
+            </>
           )}
         </div>
 

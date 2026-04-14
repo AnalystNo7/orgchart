@@ -14,7 +14,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useRouter } from "next/navigation";
-import dagre from "dagre";
 import { DepartmentNode, type DepartmentNodeData } from "./DepartmentNode";
 import { ShetilLegend } from "./ShetilLegend";
 import { MetricsToolbar } from "./MetricsToolbar";
@@ -23,6 +22,7 @@ import { DeleteDepartmentDialog } from "./DeleteDepartmentDialog";
 import { AddParentDialog } from "@/components/department-card/AddParentDialog";
 import { useOrgChartStore } from "@/lib/store";
 import { useUndoRedoKeys } from "@/hooks/useUndoRedoKeys";
+import { hybridDagreLayout } from "@/lib/layout/hybrid-layout";
 import type { MetricsMode } from "@/types";
 import type { ShetilType } from "@prisma/client";
 
@@ -43,237 +43,22 @@ const INDENT = 30; // horizontal indent for vertical children from parent's left
 const V_GAP = 20; // vertical gap between siblings in vertical mode
 const RANKSEP = 80; // vertical gap between ranks (same as dagre ranksep)
 
-/**
- * Hybrid layout: dagre for horizontal subtrees, manual positioning for vertical.
- *
- * Vertical subtrees are removed from dagre. The vertical parent node is enlarged
- * in dagre to reserve space for its subtree (extends to the right and below).
- * After dagre runs, vertical children are placed manually.
- */
 function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
   verticalIds: Set<string>,
   departments: DepartmentAPI[]
 ): { nodes: Node[]; edges: Edge[] } {
-  if (nodes.length === 0) return { nodes: [], edges: [] };
-
-  const visibleIdSet = new Set(nodes.map((n) => n.id));
-
-  // Build children map from edges (only visible nodes)
-  const childrenMap = new Map<string, string[]>();
-  edges.forEach((edge) => {
-    const list = childrenMap.get(edge.source) ?? [];
-    list.push(edge.target);
-    childrenMap.set(edge.source, list);
+  return hybridDagreLayout(nodes, edges, verticalIds, departments, {
+    nodeWidth: NODE_WIDTH,
+    nodeHeight: NODE_HEIGHT,
+    indent: INDENT,
+    vGap: V_GAP,
+    rankSep: RANKSEP,
+    nodeSep: 50,
   });
-
-  // Determine effective vertical status (cascading from ancestors)
-  const effectiveVerticalCache = new Map<string, boolean>();
-  const deptMap = new Map(
-    departments.filter((d) => visibleIdSet.has(d.id)).map((d) => [d.id, d])
-  );
-
-  function isEffectivelyVertical(id: string): boolean {
-    if (effectiveVerticalCache.has(id))
-      return effectiveVerticalCache.get(id)!;
-    let result = false;
-    if (verticalIds.has(id)) {
-      result = true;
-    } else {
-      const dept = deptMap.get(id);
-      if (dept?.parentId && visibleIdSet.has(dept.parentId)) {
-        result = isEffectivelyVertical(dept.parentId);
-      }
-    }
-    effectiveVerticalCache.set(id, result);
-    return result;
-  }
-
-  // Collect manually positioned nodes (children of effectively vertical nodes)
-  const manualNodeIds = new Set<string>();
-  function collectManualDescendants(parentId: string) {
-    const children = childrenMap.get(parentId) ?? [];
-    children.forEach((childId) => {
-      manualNodeIds.add(childId);
-      collectManualDescendants(childId);
-    });
-  }
-
-  nodes.forEach((node) => {
-    if (isEffectivelyVertical(node.id) && !manualNodeIds.has(node.id)) {
-      collectManualDescendants(node.id);
-    }
-  });
-
-  // Compute vertical extent: total height of node + all stacked vertical descendants
-  const verticalExtentCache = new Map<string, number>();
-  function verticalExtent(nodeId: string): number {
-    if (verticalExtentCache.has(nodeId)) return verticalExtentCache.get(nodeId)!;
-
-    const children = (childrenMap.get(nodeId) ?? []).filter((id) =>
-      manualNodeIds.has(id)
-    );
-    if (children.length === 0) {
-      verticalExtentCache.set(nodeId, NODE_HEIGHT);
-      return NODE_HEIGHT;
-    }
-
-    let childrenH = 0;
-    children.forEach((childId, i) => {
-      if (i > 0) childrenH += V_GAP;
-      childrenH += verticalExtent(childId);
-    });
-
-    const result = NODE_HEIGHT + RANKSEP + childrenH;
-    verticalExtentCache.set(nodeId, result);
-    return result;
-  }
-
-  // Compute horizontal extent: total width of node + all indented descendants
-  const horizontalExtentCache = new Map<string, number>();
-  function horizontalExtent(nodeId: string): number {
-    if (horizontalExtentCache.has(nodeId)) return horizontalExtentCache.get(nodeId)!;
-
-    const children = (childrenMap.get(nodeId) ?? []).filter((id) =>
-      manualNodeIds.has(id)
-    );
-    if (children.length === 0) {
-      horizontalExtentCache.set(nodeId, NODE_WIDTH);
-      return NODE_WIDTH;
-    }
-
-    let maxChildW = 0;
-    children.forEach((childId) => {
-      maxChildW = Math.max(maxChildW, horizontalExtent(childId));
-    });
-
-    const result = Math.max(NODE_WIDTH, INDENT + maxChildW);
-    horizontalExtentCache.set(nodeId, result);
-    return result;
-  }
-
-  // Set up dagre — height = NODE_HEIGHT for ALL nodes (dagre only handles X + rank)
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 50, ranksep: RANKSEP });
-
-  const dagreNodes = nodes.filter((n) => !manualNodeIds.has(n.id));
-
-  dagreNodes.forEach((node) => {
-    const w = horizontalExtent(node.id);
-    g.setNode(node.id, { width: w, height: NODE_HEIGHT });
-  });
-
-  // Add edges only between dagre nodes
-  edges
-    .filter(
-      (e) => !manualNodeIds.has(e.source) && !manualNodeIds.has(e.target)
-    )
-    .forEach((e) => g.setEdge(e.source, e.target));
-
-  dagre.layout(g);
-
-  // Compute dagre depth (rank) for each dagre node
-  const depthCache = new Map<string, number>();
-  function getDagreDepth(id: string): number {
-    if (depthCache.has(id)) return depthCache.get(id)!;
-    const dept = deptMap.get(id);
-    if (!dept?.parentId || !visibleIdSet.has(dept.parentId) || manualNodeIds.has(dept.parentId)) {
-      depthCache.set(id, 0);
-      return 0;
-    }
-    const result = getDagreDepth(dept.parentId) + 1;
-    depthCache.set(id, result);
-    return result;
-  }
-
-  // Group dagre nodes by rank, find max verticalExtent per rank
-  const rankGroups = new Map<number, string[]>();
-  let maxRank = 0;
-  dagreNodes.forEach((n) => {
-    const d = getDagreDepth(n.id);
-    maxRank = Math.max(maxRank, d);
-    const group = rankGroups.get(d);
-    if (group) {
-      group.push(n.id);
-    } else {
-      rankGroups.set(d, [n.id]);
-    }
-  });
-
-  const rankMaxExtent = new Map<number, number>();
-  rankGroups.forEach((ids, rank) => {
-    rankMaxExtent.set(rank, Math.max(...ids.map((id) => verticalExtent(id))));
-  });
-
-  // Cumulative Y positions per rank
-  const rankY = new Map<number, number>();
-  let cumY = 0;
-  for (let r = 0; r <= maxRank; r++) {
-    rankY.set(r, cumY);
-    cumY += (rankMaxExtent.get(r) ?? NODE_HEIGHT) + RANKSEP;
-  }
-
-  // Position dagre nodes: X from dagre, Y from rank computation
-  const positions = new Map<string, { x: number; y: number }>();
-
-  dagreNodes.forEach((node) => {
-    const dagreNode = g.node(node.id);
-    const w = horizontalExtent(node.id);
-    positions.set(node.id, {
-      x: dagreNode.x - w / 2,
-      y: rankY.get(getDagreDepth(node.id)) ?? 0,
-    });
-  });
-
-  // Position vertical children below parent, indented
-  function positionVerticalChildren(parentId: string) {
-    const parentPos = positions.get(parentId)!;
-    const children = (childrenMap.get(parentId) ?? []).filter((id) =>
-      manualNodeIds.has(id)
-    );
-
-    let currentY = parentPos.y + NODE_HEIGHT + RANKSEP;
-    const childX = parentPos.x + INDENT;
-
-    children.forEach((childId, i) => {
-      if (i > 0) currentY += V_GAP;
-      positions.set(childId, { x: childX, y: currentY });
-      positionVerticalChildren(childId);
-      currentY += verticalExtent(childId);
-    });
-  }
-
-  // Find vertical roots in dagre and position their children
-  dagreNodes
-    .filter((n) => isEffectivelyVertical(n.id))
-    .forEach((node) => {
-      positionVerticalChildren(node.id);
-    });
-
-  // Build final nodes with positions
-  const layoutedNodes = nodes.map((node) => ({
-    ...node,
-    position: positions.get(node.id) ?? { x: 0, y: 0 },
-  }));
-
-  // Build edges with correct handles for vertical children
-  const layoutedEdges = edges.map((edge) => {
-    if (manualNodeIds.has(edge.target)) {
-      // Child is in a vertical subtree — use bottom→left handles
-      return {
-        ...edge,
-        sourceHandle: "bottom",
-        targetHandle: "left",
-        type: "smoothstep",
-      };
-    }
-    return edge;
-  });
-
-  return { nodes: layoutedNodes, edges: layoutedEdges };
 }
+
 
 // Client-side metrics aggregation
 function aggregateMetrics(

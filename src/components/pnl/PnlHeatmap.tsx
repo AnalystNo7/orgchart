@@ -14,11 +14,11 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useRouter } from "next/navigation";
-import dagre from "dagre";
 import { HeatmapNode, type HeatmapNodeData } from "./HeatmapNode";
 import { PnlFilterPanel } from "./PnlFilterPanel";
 import { PnlLegend } from "./PnlLegend";
 import { useOrgChartStore } from "@/lib/store";
+import { hybridDagreLayout } from "@/lib/layout/hybrid-layout";
 
 interface DepartmentAPI {
   id: string;
@@ -43,35 +43,24 @@ interface PnlDataItem {
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 140;
+const INDENT = 30;
+const V_GAP = 20;
+const RANKSEP = 80;
 
 function getLayoutedElements(
   nodes: Node[],
-  edges: Edge[]
+  edges: Edge[],
+  verticalIds: Set<string>,
+  departments: DepartmentAPI[]
 ): { nodes: Node[]; edges: Edge[] } {
-  if (nodes.length === 0) return { nodes: [], edges: [] };
-
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 40, ranksep: 80 });
-
-  nodes.forEach((node) => {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+  return hybridDagreLayout(nodes, edges, verticalIds, departments, {
+    nodeWidth: NODE_WIDTH,
+    nodeHeight: NODE_HEIGHT,
+    indent: INDENT,
+    vGap: V_GAP,
+    rankSep: RANKSEP,
+    nodeSep: 40,
   });
-  edges.forEach((e) => g.setEdge(e.source, e.target));
-  dagre.layout(g);
-
-  const layoutedNodes = nodes.map((node) => {
-    const dagreNode = g.node(node.id);
-    return {
-      ...node,
-      position: {
-        x: dagreNode.x - NODE_WIDTH / 2,
-        y: dagreNode.y - NODE_HEIGHT / 2,
-      },
-    };
-  });
-
-  return { nodes: layoutedNodes, edges };
 }
 
 const nodeTypes: NodeTypes = {
@@ -87,6 +76,8 @@ export function PnlHeatmap() {
     collapsedIds,
     setCollapsedIds,
     toggleCollapsed,
+    verticalIds,
+    toggleVertical,
     initializedScenarios,
     markScenarioInitialized,
     setEmployeeDeptFilter,
@@ -257,6 +248,13 @@ export function PnlHeatmap() {
     [setPnlDrillDownDeptId]
   );
 
+  const onToggleVertical = useCallback(
+    (id: string) => {
+      toggleVertical(id);
+    },
+    [toggleVertical]
+  );
+
   // Build visible nodes/edges
   const { visibleNodes, visibleEdges } = useMemo(() => {
     if (departments.length === 0)
@@ -292,8 +290,10 @@ export function PnlHeatmap() {
           warningCount: pnl?.warningCount ?? 0,
           hasChildren: dept._count.children > 0,
           isExpanded: !collapsedIds.has(dept.id),
+          isVertical: verticalIds.has(dept.id),
           thresholds,
           onToggleExpand,
+          onToggleVertical,
           onSelectDepartment,
           departmentId: dept.id,
         } as HeatmapNodeData as unknown as Record<string, unknown>,
@@ -311,7 +311,7 @@ export function PnlHeatmap() {
       }));
 
     return { visibleNodes: vNodes, visibleEdges: vEdges };
-  }, [departments, collapsedIds, pnlMap, thresholds, onToggleExpand, onSelectDepartment]);
+  }, [departments, collapsedIds, verticalIds, pnlMap, thresholds, onToggleExpand, onToggleVertical, onSelectDepartment]);
 
   // Layout
   useEffect(() => {
@@ -322,11 +322,13 @@ export function PnlHeatmap() {
     }
     const { nodes: layouted, edges: layoutedEdges } = getLayoutedElements(
       visibleNodes,
-      visibleEdges
+      visibleEdges,
+      verticalIds,
+      departments
     );
     setNodes(layouted);
     setEdges(layoutedEdges);
-  }, [visibleNodes, visibleEdges, setNodes, setEdges]);
+  }, [visibleNodes, visibleEdges, verticalIds, departments, setNodes, setEdges]);
 
   if (!currentScenarioId) {
     return (
