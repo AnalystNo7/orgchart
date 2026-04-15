@@ -269,7 +269,7 @@ export default function FinancePage() {
                 }}
                 disabled={!currentScenarioId}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-                title="Скачать .md файл со всем срезом сценария для загрузки в Claude Opus"
+                title="Скачать .md"
               >
                 <BrainCircuit className="h-4 w-4 text-purple-600" />
                 Экспорт для AI-анализа
