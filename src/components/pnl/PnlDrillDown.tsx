@@ -177,7 +177,7 @@ export function PnlDrillDown() {
   const currentPath = pathString(deptId);
 
   return (
-    <div className="w-[400px] border-l bg-white">
+    <div className="flex h-full w-[400px] flex-col border-l bg-white">
       <div className="flex items-center justify-between border-b px-4 py-3">
         {currentPath ? (
           <Tooltip>
@@ -216,7 +216,7 @@ export function PnlDrillDown() {
         </Button>
       </div>
 
-      <ScrollArea className="h-[calc(100vh-120px)]">
+      <ScrollArea className="flex-1">
         {loading && (
           <div className="p-4 text-sm text-neutral-400">Загрузка...</div>
         )}
