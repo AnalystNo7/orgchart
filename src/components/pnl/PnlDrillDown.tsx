@@ -76,6 +76,16 @@ function formatCurrency(n: number): string {
   }).format(n);
 }
 
+// Hourly cost-rate: always 2 decimals, ru-RU thousands separator.
+// E.g. 4480.483481154397 -> "4 480,48" (which is then rendered as "4 480,48 ₽/ч").
+function formatCostRate(n: number): string {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "decimal",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
 export function PnlDrillDown() {
   const deptId = useOrgChartStore((s) => s.pnlDrillDownDeptId);
   const scenarioId = useOrgChartStore((s) => s.currentScenarioId);
@@ -456,7 +466,7 @@ export function PnlDrillDown() {
                       <div>
                         <div className="font-medium">{emp.fullName}</div>
                         <div className="text-neutral-400">
-                          {emp.position} · FTE {emp.fte} · {emp.costRate}₽/ч
+                          {emp.position} · FTE {emp.fte} · {formatCostRate(emp.costRate)} ₽/ч
                         </div>
                       </div>
                       <div className="font-semibold text-red-600">
