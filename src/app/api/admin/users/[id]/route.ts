@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
-
-async function requireAdmin() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.isAdmin) return null;
-  return session;
-}
 
 export async function PATCH(
   req: NextRequest,

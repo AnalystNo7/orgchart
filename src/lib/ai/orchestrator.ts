@@ -1,5 +1,5 @@
 import { generateText, stepCountIs } from "ai";
-import { getModel } from "./provider";
+import { getLlm } from "./provider";
 import { buildTools } from "./tools";
 import { buildSystemPrompt } from "./system-prompt";
 
@@ -45,8 +45,13 @@ export async function runChat(
   try {
     callbacks.onStatus("llm_thinking");
 
+    const { model, settings } = await getLlm();
+
     const result = await generateText({
-      model: getModel(),
+      model,
+      temperature: settings.temperature,
+      maxOutputTokens: settings.maxOutputTokens,
+      timeout: settings.timeoutMs,
       system: systemPrompt,
       messages: messages.map((m) => ({
         role: m.role,
@@ -86,7 +91,7 @@ export async function runChat(
   }
 }
 
-function formatAIError(error: unknown): string {
+export function formatAIError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   const body =
     (error as Record<string, unknown>)?.responseBody as string | undefined;

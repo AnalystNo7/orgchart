@@ -16,7 +16,7 @@ OHI-индекс, AI-ассистент с 33 инструментами и RAG-
 - **Next.js 16.1.6** (App Router), `output: "standalone"`; **React 19.2.3**; **TypeScript 5** (strict; но `next.config.ts: typescript.ignoreBuildErrors = true` — билд не ловит ошибки типов)
 - **Prisma 6.19.2** + **PostgreSQL** (в compose — образ `pgvector/pgvector:pg16`, но pgvector в коде пока не используется — поиск in-memory)
 - **NextAuth 4.24** — credentials + JWT, `isAdmin` в сессии; `src/middleware.ts` (withAuth) закрывает всё, кроме `/login`, `/api/auth`, статики
-- **AI**: Vercel AI SDK (`ai` ^6) + `@ai-sdk/anthropic|openai|google` — мультипровайдер через env `AI_PROVIDER`/`AI_MODEL` (дефолт anthropic / claude-sonnet-4); RAG-эмбеддинги — **Voyage AI** `voyage-3` (1024 dim, raw fetch, `VOYAGE_API_KEY`)
+- **AI**: Vercel AI SDK (`ai` ^6) + `@ai-sdk/anthropic|openai|google` — мультипровайдер: активный пресет из БД (`LlmSetting`, /admin/llm) или env-fallback `AI_PROVIDER`/`AI_MODEL` (дефолт anthropic / claude-sonnet-4); RAG-эмбеддинги — **Voyage AI** `voyage-3` (1024 dim, raw fetch, `VOYAGE_API_KEY`)
 - UI: **Tailwind 4** + shadcn/ui (Radix, lucide), **@xyflow/react 12** + **dagre** (граф-канвасы), **zustand 5**, **@tanstack/react-table 8**, **react-hook-form 7** + **zod 4**, react-markdown
 - Файлы: **xlsx** (импорт/экспорт Excel), **pdf-parse** / **mammoth** (PDF/DOCX для базы знаний; `serverExternalPackages`)
 - Инфраструктура: Docker multi-stage (node:20-alpine, CMD = `prisma migrate deploy && node server.js`), `docker-compose.yml` (Dokploy) + `docker-compose.prod.yml` (Traefik/letsencrypt)
@@ -24,23 +24,23 @@ OHI-индекс, AI-ассистент с 33 инструментами и RAG-
 ## Структура
 ```
 prisma/
-  schema.prisma        # 25 enum, 31 модель (ядро: Scenario→Department/Employee; Contract/EmployeeContract/Tariff;
+  schema.prisma        # 25 enum, 32 модели (ядро: Scenario→Department/Employee; Contract/EmployeeContract/Tariff;
                        #   Process*/Goal*/Competency*/Client/PipelineDeal/Budget*/Knowledge*/AIInsight*/PnlCache/ActionLog)
-  migrations/          # 5 миграций + migration_lock.toml (postgresql)
+  migrations/          # 6 миграций + migration_lock.toml (postgresql)
   seed.ts              # admin@orgchart.local/admin123 (isAdmin); тарифы K-1..K-6 (1500..6000 ₽/ч);
                        #   baseline-сценарий: 21 подразделение, 52 сотрудника, 6 договоров, 13 процессов
 src/
   middleware.ts        # withAuth: всё под логином, кроме /login и /api/auth
-  app/                 # 20 страниц + 62 API route.ts
+  app/                 # 21 страница + 66 API route.ts
     page.tsx           # дашборд, 3 вида: Оргструктура | P&L Heatmap | CEO Dashboard (ViewMode в store)
     scenarios/ strategy/ finance/ processes/(+[id]) competencies/(+gaps) clients/ compare/
-    gap-analysis/ benchmarks/ knowledge/ references/(employees|contracts|tariffs) admin/users/ login/
-    api/               # группы: auth+admin(3), scenarios(3), departments(3), employees(3),
+    gap-analysis/ benchmarks/ knowledge/ references/(employees|contracts|tariffs) admin/(users|llm)/ login/
+    api/               # группы: auth+admin users/llm(7), scenarios(3), departments(3), employees(3),
                        #   pnl+finance+budgets+benchmarks+ohi(8), contracts+tariffs+clients+pipeline(11),
                        #   competencies(6), goals+gaps+insights(6), processes+diagrams(7),
                        #   ai+knowledge(6), import/export(3), actions undo/redo(3)
-  lib/                 # 37 файлов — вся бизнес-логика (см. таблицу модулей)
-  components/          # 14 директорий, 62 файла: org-chart/ pnl/ dashboard/ ai-chat/ compare/
+  lib/                 # 39 файлов — вся бизнес-логика (см. таблицу модулей)
+  components/          # 15 директорий, 63 файла: org-chart/ pnl/ dashboard/ ai-chat/ admin/ compare/
                        #   department-card/ employees/ contracts/ competencies/ gap-analysis/
                        #   process-diagram/ scenarios/ layout/ ui(18 примитивов, из них кастомные:
                        #   money-input, resizable-panel)
@@ -61,6 +61,7 @@ tasks/                 # рабочие папки задач (tasks/<задач
 | P&L-калькулятор | `src/lib/pnl-calculator.ts` (745 стр.) | `calculatePnl(scenarioId, mode, period, allocationMode)`. `PnlMode`: plan/forecast/combined (фильтр по статусу договора). `PnlAllocationMode`: **earning** (выручка только REVENUE-блокам), **fte** (amount × overlap × доля FTE — всем участникам), **transfer** (contract-first пре-проход `computeTransferAllocations`: REVENUE-блоки получают amount, «покупают» часы не-REVENUE по `Tariff.rate × ec.fte × часы × overlap`; `transferBreakdown` с sells/purchases). Инвариант: ΣP&L орг. в transfer ≡ fte. Кэш — `PnlCache` (upsert по 6-полевому ключу) |
 | Производственный календарь | `src/lib/work-calendar.ts` | Рабочие часы РФ 2025–2027 (хардкод по месяцам), `getWorkingHours(start,end)` с пропорцией частичных месяцев |
 | AI-ассистент | `src/lib/ai/` (8 файлов) | `orchestrator.runChat` (generateText, ≤10 шагов tool-loop); **tools.ts — 33 инструмента**; `tool-executor.ts` (1654 стр.) — единый диспетчер, включая `run_whatif_scenario`; `local-query.ts` — ответы без LLM (бенчмарки/отклонения/поиск KB); `system-prompt.ts` — русский промпт с маркировкой источников 【OSINT】/【KB】/【LLM】 |
+| LLM-пресеты | `src/lib/ai/provider.ts`, `/api/admin/llm*`, `/admin/llm` | `getLlm()`: активный пресет `LlmSetting` из БД (provider openai_compatible/anthropic/openai/google, baseURL, ключ plaintext+маска, temperature, maxOutputTokens, timeout) или env-fallback; `buildModel()` — фабрика (openai_compatible → `.chat()`); переключение без редеплоя; «Проверить подключение» |
 | Бенчмарки | `src/lib/ai/benchmarks/` | Статические OSINT-нормы: 20 метрик × 6 отраслей (org_design/financial/hr), min/optimal/max |
 | RAG / база знаний | `src/lib/rag/` (7 файлов) | Чанкинг (2000/200 симв.), Voyage-эмбеддинги, `retrieveChunks` — **in-memory cosine** (MVP; в коде пометка «заменить на pgvector <=>»), PDF/DOCX-парсеры |
 | OHI + health check | `src/lib/ohi-calculator.ts`, `org-analyzer.ts` | Индекс здоровья 0–100 из 7 взвешенных компонентов; `runHealthCheck` генерит `AIInsight`+рекомендации по порогам |
@@ -71,7 +72,7 @@ tasks/                 # рабочие папки задач (tasks/<задач
 | AI-экспорт | `src/lib/ai-export.ts` | `/api/export/ai-analysis` — markdown-снапшот сценария (11 секций, P&L в fte+transfer, сотрудники анонимизированы «Employee #N») для внешней LLM |
 | Импорты Excel | `components/employees/ExcelImport.tsx`, `ReferenceImport.tsx`, `/api/import`, `/api/import/reference` | Оргструктура+сотрудники (иерархия 4 уровней); справочник: матч по ФИО, тарифы К1–К6, договоры, помесячные FTE-периоды |
 | Клиентский стор | `src/lib/store.ts`, `ai-store.ts` | `useOrgChartStore`: сценарий, viewMode, P&L-режимы (persist в localStorage), collapse/vertical, фильтры, undo/redo. `useAiChatStore`: стриминг-чат, фазы, беседы |
-| Аутентификация | `src/lib/auth.ts`, `middleware.ts`, `/api/admin/users*` | Credentials+JWT+isAdmin; admin-API проверяет сессию на сервере, страница `/admin/users` — только клиентский редирект |
+| Аутентификация | `src/lib/auth.ts`, `middleware.ts`, `/api/admin/users*` | Credentials+JWT+isAdmin; общий `requireAdmin()` в `lib/auth.ts` для admin-API, страницы `/admin/*` — только клиентский редирект |
 
 ## Как запустить / проверить
 ```bash

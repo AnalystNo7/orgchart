@@ -1,4 +1,5 @@
 import { type NextAuthOptions } from "next-auth";
+import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
@@ -54,3 +55,14 @@ export const authOptions: NextAuthOptions = {
     },
   },
 };
+
+/**
+ * Server-side admin guard for API routes.
+ * Returns the session when the caller is an admin, null otherwise.
+ * Usage: if (!(await requireAdmin())) return 403.
+ */
+export async function requireAdmin() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.isAdmin) return null;
+  return session;
+}
