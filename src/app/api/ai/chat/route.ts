@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Local search didn't handle it — ask permission before using external LLM
-      const askPermissionResponse = `Для ответа на этот запрос необходимо обращение к внешней AI-модели (Anthropic Claude).
+      const askPermissionResponse = `Для ответа на этот запрос необходимо обращение к внешней AI-модели.
 
 **Данные из локальных источников не найдены.**
 
