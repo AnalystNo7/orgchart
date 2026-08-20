@@ -1,6 +1,6 @@
 import { generateText, stepCountIs } from "ai";
 import { getLlm } from "./provider";
-import { buildTools } from "./tools";
+import { buildTools, createToolRunStats } from "./tools";
 import { buildSystemPrompt } from "./system-prompt";
 
 export interface ChatMessage {
@@ -42,12 +42,19 @@ export async function runChat(
 
   // Resolve the LLM first: the tool-result cap comes from the active preset.
   const { model, settings } = await getLlm();
-  const tools = buildTools(scenarioId, onToolProgress, settings.toolResultMaxBytes);
+  const toolStats = createToolRunStats();
+  const tools = buildTools(
+    scenarioId,
+    onToolProgress,
+    settings.toolResultMaxBytes,
+    toolStats
+  );
 
   // Step timing: the gaps between steps are the model's own latency, which
   // is what a whole-loop timeout usually burns through.
   const runStartedAt = Date.now();
   let stepNo = 0;
+  let firstStepMs = 0;
 
   try {
     callbacks.onStatus("llm_thinking");
@@ -66,6 +73,7 @@ export async function runChat(
       stopWhen: stepCountIs(10),
       onStepFinish: ({ text, toolCalls, toolResults }) => {
         stepNo += 1;
+        if (stepNo === 1) firstStepMs = Date.now() - runStartedAt;
         console.log(
           `[AI_STEP] #${stepNo} +${Date.now() - runStartedAt}ms` +
             `, tools: ${toolCalls?.map((t) => t.toolName).join(", ") || "—"}` +
@@ -95,13 +103,76 @@ export async function runChat(
       },
     });
 
+    logRunSummary(
+      Date.now() - runStartedAt,
+      stepNo,
+      firstStepMs,
+      toolStats,
+      result.totalUsage,
+      result.finishReason
+    );
+
     callbacks.onDone(result.text, allToolCalls);
   } catch (error) {
+    const elapsed = Date.now() - runStartedAt;
     console.error(
-      `[AI_CHAT_ERROR] after ${Date.now() - runStartedAt}ms, ${stepNo} step(s) completed`,
+      `[AI_CHAT_ERROR] ${sec(elapsed)}s, ${stepNo} шаг(ов)` +
+        ` · инструменты ${sec(toolStats.totalMs)}s (${toolStats.calls} вызов(ов))` +
+        ` · модель ~${sec(Math.max(0, elapsed - toolStats.totalMs))}s`,
       error
     );
     callbacks.onError(new Error(formatAIError(error)));
+  }
+}
+
+/** ms → seconds with one decimal, for log readability. */
+function sec(ms: number): string {
+  return (ms / 1000).toFixed(1);
+}
+
+function tok(n: number | undefined): string {
+  return n === undefined ? "н/д" : String(n);
+}
+
+/**
+ * One-line summary of a finished chat turn: where the wall-clock went
+ * (model vs tools), token usage and why generation stopped.
+ * Providers behind OpenAI-compatible gateways may omit usage — hence "н/д".
+ */
+function logRunSummary(
+  elapsedMs: number,
+  steps: number,
+  firstStepMs: number,
+  toolStats: { calls: number; totalMs: number },
+  usage:
+    | {
+        inputTokens?: number;
+        outputTokens?: number;
+        reasoningTokens?: number;
+        cachedInputTokens?: number;
+      }
+    | undefined,
+  finishReason: string
+): void {
+  const modelMs = Math.max(0, elapsedMs - toolStats.totalMs);
+  console.log(
+    `[AI_DONE] ${steps} шаг(ов) · ${sec(elapsedMs)}s ` +
+      `(модель ${sec(modelMs)}s / инструменты ${sec(toolStats.totalMs)}s, ${toolStats.calls} вызов(ов))` +
+      ` · токены ${tok(usage?.inputTokens)} in + ${tok(usage?.outputTokens)} out` +
+      ` (reasoning ${tok(usage?.reasoningTokens)}, cached ${tok(usage?.cachedInputTokens)})` +
+      ` · finish: ${finishReason}`
+  );
+
+  // A first step that dwarfs everything else is provider-side latency
+  // (cold start of the node, system-prompt + tool-schema ingestion),
+  // not something to look for in application code.
+  if (firstStepMs > 30_000 && firstStepMs > elapsedMs * 0.5) {
+    const pct = Math.round((firstStepMs / elapsedMs) * 100);
+    console.log(
+      `[AI_SLOW_START] шаг #1 занял ${sec(firstStepMs)}s (${pct}% от общего)` +
+        ` — задержка на стороне провайдера (холодный старт узла / обработка` +
+        ` системного промпта), не в коде приложения`
+    );
   }
 }
 
