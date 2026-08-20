@@ -1,23 +1,34 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import { executeTool } from "./tool-executor";
+import {
+  capToolResult,
+  DEFAULT_TOOL_RESULT_MAX_BYTES,
+} from "./tool-result-limit";
 
 export type ToolProgressCallback = (toolName: string, step: string) => void;
 
 function wrapExecute(
   name: string,
   currentScenarioId: string,
-  onProgress?: ToolProgressCallback
+  onProgress?: ToolProgressCallback,
+  maxBytes: number = DEFAULT_TOOL_RESULT_MAX_BYTES
 ) {
   return async (params: Record<string, unknown>) => {
     onProgress?.(name, "started");
     const result = await executeTool(name, params, currentScenarioId, onProgress);
     onProgress?.(name, "completed");
-    return result;
+    // Keep the result inside the provider's per-block limit; oversized results
+    // are paged with an explicit hint instead of blowing up the request.
+    return capToolResult(result, maxBytes);
   };
 }
 
-export function buildTools(currentScenarioId: string, onProgress?: ToolProgressCallback) {
+export function buildTools(
+  currentScenarioId: string,
+  onProgress?: ToolProgressCallback,
+  toolResultMaxBytes: number = DEFAULT_TOOL_RESULT_MAX_BYTES
+) {
   return {
     get_benchmarks: tool({
       description:
@@ -33,7 +44,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           companySize: z.string().optional().describe("Размер компании (100-500, 500-2000 и др.)"),
         })
       ),
-      execute: wrapExecute("get_benchmarks", currentScenarioId, onProgress),
+      execute: wrapExecute("get_benchmarks", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     query_knowledge_base: tool({
@@ -49,7 +60,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
             .describe("Фильтр по категории документов"),
         })
       ),
-      execute: wrapExecute("query_knowledge_base", currentScenarioId, onProgress),
+      execute: wrapExecute("query_knowledge_base", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     analyze_skill_gaps: tool({
@@ -61,14 +72,14 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           departmentId: z.string().optional().describe("ID подразделения (если не указан — все)"),
         })
       ),
-      execute: wrapExecute("analyze_skill_gaps", currentScenarioId, onProgress),
+      execute: wrapExecute("analyze_skill_gaps", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_competencies: tool({
       description:
         "Получить список компетенций с категориями и количеством привязок к ролям/сотрудникам.",
       inputSchema: zodSchema(z.object({})),
-      execute: wrapExecute("get_competencies", currentScenarioId, onProgress),
+      execute: wrapExecute("get_competencies", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     analyze_processes: tool({
@@ -79,7 +90,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("analyze_processes", currentScenarioId, onProgress),
+      execute: wrapExecute("analyze_processes", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_processes: tool({
@@ -90,7 +101,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("get_processes", currentScenarioId, onProgress),
+      execute: wrapExecute("get_processes", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_org_structure: tool({
@@ -99,9 +110,11 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
       inputSchema: zodSchema(
         z.object({
           scenarioId: z.string().optional().describe("ID сценария. Если не указан — используется текущий."),
+          offset: z.number().optional().describe("Смещение для постраничной выдачи (по умолчанию 0). Используй nextOffset из предыдущего ответа."),
+          limit: z.number().optional().describe("Сколько подразделений вернуть (по умолчанию 200)."),
         })
       ),
-      execute: wrapExecute("get_org_structure", currentScenarioId, onProgress),
+      execute: wrapExecute("get_org_structure", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_department_details: tool({
@@ -112,7 +125,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           departmentId: z.string().describe("ID подразделения"),
         })
       ),
-      execute: wrapExecute("get_department_details", currentScenarioId, onProgress),
+      execute: wrapExecute("get_department_details", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_org_metrics: tool({
@@ -123,7 +136,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("get_org_metrics", currentScenarioId, onProgress),
+      execute: wrapExecute("get_org_metrics", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     compare_scenarios: tool({
@@ -135,7 +148,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           rightScenarioId: z.string().describe("ID второго (to-be) сценария"),
         })
       ),
-      execute: wrapExecute("compare_scenarios", currentScenarioId, onProgress),
+      execute: wrapExecute("compare_scenarios", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     clone_scenario: tool({
@@ -147,7 +160,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           newName: z.string().describe("Название нового сценария"),
         })
       ),
-      execute: wrapExecute("clone_scenario", currentScenarioId, onProgress),
+      execute: wrapExecute("clone_scenario", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     create_department: tool({
@@ -162,7 +175,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
             .describe("Тип ШЕТИЛ"),
         })
       ),
-      execute: wrapExecute("create_department", currentScenarioId, onProgress),
+      execute: wrapExecute("create_department", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     move_department: tool({
@@ -173,7 +186,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           newParentId: z.string().optional().describe("ID нового родителя (null для корня)"),
         })
       ),
-      execute: wrapExecute("move_department", currentScenarioId, onProgress),
+      execute: wrapExecute("move_department", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     rename_department: tool({
@@ -184,7 +197,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           newName: z.string().describe("Новое название"),
         })
       ),
-      execute: wrapExecute("rename_department", currentScenarioId, onProgress),
+      execute: wrapExecute("rename_department", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     delete_department: tool({
@@ -195,7 +208,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           departmentId: z.string().describe("ID подразделения"),
         })
       ),
-      execute: wrapExecute("delete_department", currentScenarioId, onProgress),
+      execute: wrapExecute("delete_department", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     move_employees: tool({
@@ -206,7 +219,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           targetDepartmentId: z.string().describe("ID целевого подразделения"),
         })
       ),
-      execute: wrapExecute("move_employees", currentScenarioId, onProgress),
+      execute: wrapExecute("move_employees", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     create_gap_passport: tool({
@@ -231,7 +244,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           aiRationale: z.string().optional().describe("Обоснование AI"),
         })
       ),
-      execute: wrapExecute("create_gap_passport", currentScenarioId, onProgress),
+      execute: wrapExecute("create_gap_passport", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     calculate_pnl: tool({
@@ -254,14 +267,14 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           periodEnd: z.string().optional().describe("Конец периода (ISO date)"),
         })
       ),
-      execute: wrapExecute("calculate_pnl", currentScenarioId, onProgress),
+      execute: wrapExecute("calculate_pnl", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     list_scenarios: tool({
       description:
         "Получить список всех сценариев для выбора при сравнении или what-if.",
       inputSchema: zodSchema(z.object({})),
-      execute: wrapExecute("list_scenarios", currentScenarioId, onProgress),
+      execute: wrapExecute("list_scenarios", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     run_whatif_scenario: tool({
@@ -291,7 +304,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           comparePnl: z.boolean().optional().describe("Сравнить P&L до/после (по умолчанию true)"),
         })
       ),
-      execute: wrapExecute("run_whatif_scenario", currentScenarioId, onProgress),
+      execute: wrapExecute("run_whatif_scenario", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     add_employee: tool({
@@ -306,7 +319,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           fte: z.number().optional().describe("FTE (ставка), по умолчанию 1.0"),
         })
       ),
-      execute: wrapExecute("add_employee", currentScenarioId, onProgress),
+      execute: wrapExecute("add_employee", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     remove_employees: tool({
@@ -317,7 +330,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           employeeIds: z.array(z.string()).describe("Массив ID сотрудников для удаления"),
         })
       ),
-      execute: wrapExecute("remove_employees", currentScenarioId, onProgress),
+      execute: wrapExecute("remove_employees", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_goals: tool({
@@ -330,7 +343,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           status: z.enum(["NOT_STARTED", "IN_PROGRESS", "ACHIEVED", "AT_RISK", "FAILED"]).optional().describe("Фильтр по статусу"),
         })
       ),
-      execute: wrapExecute("get_goals", currentScenarioId, onProgress),
+      execute: wrapExecute("get_goals", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     analyze_strategy: tool({
@@ -341,7 +354,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("analyze_strategy", currentScenarioId, onProgress),
+      execute: wrapExecute("analyze_strategy", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_ohi: tool({
@@ -352,7 +365,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("get_ohi", currentScenarioId, onProgress),
+      execute: wrapExecute("get_ohi", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     generate_board_report: tool({
@@ -363,7 +376,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("generate_board_report", currentScenarioId, onProgress),
+      execute: wrapExecute("generate_board_report", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_clients: tool({
@@ -374,7 +387,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           status: z.enum(["ACTIVE", "PROSPECT", "INACTIVE"]).optional().describe("Фильтр по статусу клиента"),
         })
       ),
-      execute: wrapExecute("get_clients", currentScenarioId, onProgress),
+      execute: wrapExecute("get_clients", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     analyze_portfolio: tool({
@@ -385,7 +398,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("analyze_portfolio", currentScenarioId, onProgress),
+      execute: wrapExecute("analyze_portfolio", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_pipeline: tool({
@@ -398,7 +411,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           clientId: z.string().optional().describe("Фильтр по клиенту"),
         })
       ),
-      execute: wrapExecute("get_pipeline", currentScenarioId, onProgress),
+      execute: wrapExecute("get_pipeline", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     analyze_budget: tool({
@@ -409,7 +422,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("analyze_budget", currentScenarioId, onProgress),
+      execute: wrapExecute("analyze_budget", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_unit_economics: tool({
@@ -420,7 +433,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("get_unit_economics", currentScenarioId, onProgress),
+      execute: wrapExecute("get_unit_economics", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     run_health_check: tool({
@@ -431,7 +444,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("run_health_check", currentScenarioId, onProgress),
+      execute: wrapExecute("run_health_check", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
 
     get_insights: tool({
@@ -442,7 +455,7 @@ export function buildTools(currentScenarioId: string, onProgress?: ToolProgressC
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
-      execute: wrapExecute("get_insights", currentScenarioId, onProgress),
+      execute: wrapExecute("get_insights", currentScenarioId, onProgress, toolResultMaxBytes),
     }),
   };
 }

@@ -44,6 +44,13 @@ const baseFields = {
     .min(30, "Таймаут — минимум 30 секунд")
     .max(600, "Таймаут — максимум 600 секунд")
     .default(300),
+  toolResultMaxBytes: z
+    .number()
+    .int()
+    .min(4000, "Лимит результата инструмента — минимум 4000 байт")
+    .max(1000000, "Лимит результата инструмента — максимум 1000000 байт")
+    .nullable()
+    .optional(),
 };
 
 function requireBaseUrlForCompatible(

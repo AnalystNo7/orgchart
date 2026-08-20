@@ -90,6 +90,8 @@ export interface LlmGenerationSettings {
   maxOutputTokens?: number;
   /** undefined = don't pass (no timeout) — the env-fallback case */
   timeoutMs?: number;
+  /** Cap for a single tool result in UTF-8 bytes (provider block limit) */
+  toolResultMaxBytes?: number;
 }
 
 export interface LlmRuntime {
@@ -132,6 +134,7 @@ export async function getLlm(): Promise<LlmRuntime> {
       temperature: preset.temperature ?? undefined,
       maxOutputTokens: preset.maxOutputTokens ?? undefined,
       timeoutMs: preset.timeoutSec * 1000,
+      toolResultMaxBytes: preset.toolResultMaxBytes ?? undefined,
     },
   };
 }

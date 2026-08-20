@@ -37,6 +37,7 @@ export interface LlmSettingPayload {
   temperature: number | null;
   maxOutputTokens: number | null;
   timeoutSec: number;
+  toolResultMaxBytes: number | null;
 }
 
 interface FormValues {
@@ -49,6 +50,7 @@ interface FormValues {
   limitEnabled: boolean;
   maxOutputTokens: string;
   timeoutSec: string;
+  toolResultMaxBytes: string;
 }
 
 interface LlmSettingFormProps {
@@ -73,6 +75,7 @@ const EMPTY: FormValues = {
   limitEnabled: false,
   maxOutputTokens: "16384",
   timeoutSec: "300",
+  toolResultMaxBytes: "60000",
 };
 
 function toFormValues(d?: LlmSettingFormProps["defaultValues"]): FormValues {
@@ -87,6 +90,8 @@ function toFormValues(d?: LlmSettingFormProps["defaultValues"]): FormValues {
     limitEnabled: d.maxOutputTokens != null,
     maxOutputTokens: d.maxOutputTokens != null ? String(d.maxOutputTokens) : "16384",
     timeoutSec: d.timeoutSec != null ? String(d.timeoutSec) : "300",
+    toolResultMaxBytes:
+      d.toolResultMaxBytes != null ? String(d.toolResultMaxBytes) : "60000",
   };
 }
 
@@ -105,6 +110,10 @@ function toPayload(v: FormValues): LlmSettingPayload {
     temperature: v.temperature.trim() === "" ? null : parseNum(v.temperature),
     maxOutputTokens: v.limitEnabled ? Math.round(parseNum(v.maxOutputTokens)) : null,
     timeoutSec: Math.round(parseNum(v.timeoutSec)) || 300,
+    toolResultMaxBytes:
+      v.toolResultMaxBytes.trim() === ""
+        ? null
+        : Math.round(parseNum(v.toolResultMaxBytes)),
   };
 }
 
@@ -375,6 +384,35 @@ export function LlmSettingForm({
               })}
             />
             {fieldError(errors.timeoutSec?.message)}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="llm-toolbytes">
+              Макс. размер результата инструмента, байт (по умолчанию 60000)
+            </Label>
+            <Input
+              id="llm-toolbytes"
+              type="number"
+              min="4000"
+              max="1000000"
+              {...register("toolResultMaxBytes", {
+                validate: (v) => {
+                  if (v.trim() === "") return true;
+                  const n = parseNum(v);
+                  return (
+                    (!isNaN(n) && n >= 4000 && n <= 1000000) ||
+                    "Лимит результата — число от 4000 до 1000000 байт"
+                  );
+                },
+              })}
+              placeholder="60000"
+            />
+            <p className="text-xs text-neutral-500">
+              Лимит провайдера на один блок данных во входящем сообщении
+              (Gonka/MiniMax — 65536). Большие результаты AI-инструментов
+              отдаются постранично с подсказкой модели.
+            </p>
+            {fieldError(errors.toolResultMaxBytes?.message)}
           </div>
 
           {testResult && (

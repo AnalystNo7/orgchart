@@ -40,7 +40,9 @@ export async function executeTool(
         return await getProcesses((input.scenarioId as string) || currentScenarioId);
       case "get_org_structure":
         return await getOrgStructure(
-          (input.scenarioId as string) || currentScenarioId
+          (input.scenarioId as string) || currentScenarioId,
+          (input.offset as number) ?? 0,
+          (input.limit as number) ?? 200
         );
       case "get_department_details":
         return await getDepartmentDetails(input.departmentId as string);
@@ -155,7 +157,11 @@ export async function executeTool(
   }
 }
 
-async function getOrgStructure(scenarioId: string): Promise<string> {
+async function getOrgStructure(
+  scenarioId: string,
+  offset = 0,
+  limit = 200
+): Promise<string> {
   const departments = await prisma.department.findMany({
     where: { scenarioId },
     include: {
@@ -190,7 +196,7 @@ async function getOrgStructure(scenarioId: string): Promise<string> {
     metricsMap.set(emp.departmentId, m);
   }
 
-  const result = departments.map((d) => ({
+  const all = departments.map((d) => ({
     id: d.id,
     name: d.name,
     parentId: d.parentId,
@@ -201,7 +207,24 @@ async function getOrgStructure(scenarioId: string): Promise<string> {
     metrics: metricsMap.get(d.id) || { pp: 0, opp: 0, aup: 0, totalFte: 0 },
   }));
 
-  return JSON.stringify(result, null, 2);
+  // Paged: a full 1000-department tree blows past the provider's per-block
+  // size limit. Callers ask for the next page via offset.
+  const from = Math.max(0, offset);
+  const page = all.slice(from, from + Math.max(1, limit));
+  const hasMore = from + page.length < all.length;
+
+  return JSON.stringify({
+    total: all.length,
+    offset: from,
+    shown: page.length,
+    ...(hasMore
+      ? {
+          nextOffset: from + page.length,
+          _hint: `Показаны подразделения ${from}..${from + page.length - 1} из ${all.length}. Для продолжения вызовите get_org_structure с offset=${from + page.length}.`,
+        }
+      : {}),
+    departments: page,
+  });
 }
 
 async function getDepartmentDetails(departmentId: string): Promise<string> {
@@ -225,7 +248,7 @@ async function getDepartmentDetails(departmentId: string): Promise<string> {
   });
 
   if (!dept) return JSON.stringify({ error: "Подразделение не найдено" });
-  return JSON.stringify(dept, null, 2);
+  return JSON.stringify(dept);
 }
 
 async function getOrgMetrics(scenarioId: string): Promise<string> {
@@ -632,7 +655,7 @@ async function listScenarios(): Promise<string> {
     },
     orderBy: { createdAt: "desc" },
   });
-  return JSON.stringify(scenarios, null, 2);
+  return JSON.stringify(scenarios);
 }
 
 interface WhatIfOperation {
@@ -924,14 +947,14 @@ function getBenchmarksTool(input: ToolInput): string {
       message: "Бенчмарки не найдены по заданным фильтрам",
       availableMetrics: listAvailableMetrics(),
       availableIndustries: listAvailableIndustries(),
-    }, null, 2);
+    });
   }
 
   return JSON.stringify({
     count: benchmarks.length,
     benchmarks,
     note: "Источник: OSINT-бенчмарки (Уровень 1). Для более точных данных загрузите отраслевые отчёты в Knowledge Base.",
-  }, null, 2);
+  });
 }
 
 async function getProcesses(scenarioId: string): Promise<string> {
@@ -1026,7 +1049,7 @@ async function analyzeProcesses(scenarioId: string): Promise<string> {
       noOwner.length + noRaci.length + noKpi.length + noAccountable.length + uncoveredDepts.length + overloadedDepts.length,
   };
 
-  return JSON.stringify(result, null, 2);
+  return JSON.stringify(result);
 }
 
 async function getCompetencies(): Promise<string> {
@@ -1152,7 +1175,7 @@ async function analyzeSkillGaps(scenarioId: string, departmentId?: string): Prom
       hiring: `Рассмотрите найм специалистов с компетенциями: ${Object.entries(byComp).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name]) => name).join(", ")}`,
       training: `Приоритетное обучение для подразделений: ${Object.entries(byDept).sort(([, a], [, b]) => b - a).slice(0, 3).map(([name]) => name).join(", ")}`,
     },
-  }, null, 2);
+  });
 }
 
 async function queryKnowledgeBaseTool(input: ToolInput): Promise<string> {
@@ -1180,7 +1203,7 @@ async function queryKnowledgeBaseTool(input: ToolInput): Promise<string> {
         category: r.category,
         similarity: `${(r.similarity * 100).toFixed(1)}%`,
       })),
-    }, null, 2);
+    });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     // If pgvector not available or no documents, return graceful message
@@ -1237,7 +1260,7 @@ async function getGoals(
       })),
       childrenCount: g._count.children,
     })),
-  }, null, 2);
+  });
 }
 
 async function analyzeStrategy(scenarioId: string): Promise<string> {
@@ -1333,14 +1356,14 @@ async function analyzeStrategy(scenarioId: string): Promise<string> {
     departmentInvolvement: Object.fromEntries(deptGoalCount),
     deptsWithoutGoals,
     issues: issues.length > 0 ? issues : ["Стратегическое выравнивание в порядке"],
-  }, null, 2);
+  });
 }
 
 // --- OHI ---
 
 async function getOhi(scenarioId: string): Promise<string> {
   const result = await calculateOhi(scenarioId);
-  return JSON.stringify(result, null, 2);
+  return JSON.stringify(result);
 }
 
 async function generateBoardReport(scenarioId: string): Promise<string> {
@@ -1421,7 +1444,7 @@ async function getClients(status?: string): Promise<string> {
         .filter((ct) => ct.type === "REVENUE")
         .reduce((s, ct) => s + Number(ct.amount || 0), 0),
     })),
-  }, null, 2);
+  });
 }
 
 async function analyzePortfolio(scenarioId: string): Promise<string> {
@@ -1479,7 +1502,7 @@ async function analyzePortfolio(scenarioId: string): Promise<string> {
       weightedValue: Math.round(weightedPipeline),
     },
     issues: issues.length > 0 ? issues : ["Портфель в хорошем состоянии"],
-  }, null, 2);
+  });
 }
 
 async function getPipeline(scenarioId: string, stage?: string, clientId?: string): Promise<string> {
@@ -1505,7 +1528,7 @@ async function getPipeline(scenarioId: string, stage?: string, clientId?: string
       expectedCloseDate: d.expectedCloseDate,
       weightedValue: Math.round(d.amount * (d.probability / 100)),
     })),
-  }, null, 2);
+  });
 }
 
 // --- Budget & Unit Economics ---
@@ -1558,7 +1581,7 @@ async function analyzeBudget(scenarioId: string): Promise<string> {
     opex: { count: opex.length, planned: opex.reduce((s, b) => s + b.totalPlanned, 0) },
     budgets: summary,
     issues: issues.length > 0 ? issues : ["Бюджеты в рамках плана"],
-  }, null, 2);
+  });
 }
 
 async function getUnitEconomics(scenarioId: string): Promise<string> {
@@ -1611,7 +1634,7 @@ async function getUnitEconomics(scenarioId: string): Promise<string> {
       costPerFte: d.fte > 0 ? Math.round(d.cost / d.fte) : 0,
       ppUtilization: d.ppCount > 0 ? Math.round((d.ppUtilized / d.ppCount) * 100) : null,
     })),
-  }, null, 2);
+  });
 }
 
 // --- Proactive AI ---
@@ -1630,7 +1653,7 @@ async function runHealthCheckTool(scenarioId: string): Promise<string> {
     warnings: summary.filter((i) => i.severity === "WARNING").length,
     positive: summary.filter((i) => i.severity === "POSITIVE").length,
     insights: summary,
-  }, null, 2);
+  });
 }
 
 async function getInsightsTool(scenarioId: string): Promise<string> {
@@ -1650,5 +1673,5 @@ async function getInsightsTool(scenarioId: string): Promise<string> {
       metric: i.metricKey ? { key: i.metricKey, current: i.currentValue, benchmark: i.benchmarkValue } : null,
       recommendations: i.recommendations.map((r) => r.title),
     })),
-  }, null, 2);
+  });
 }

@@ -23,6 +23,7 @@ interface LlmSettingRow {
   temperature: number | null;
   maxOutputTokens: number | null;
   timeoutSec: number;
+  toolResultMaxBytes: number | null;
   isActive: boolean;
   keyMask: string;
   createdAt: string;
@@ -36,6 +37,8 @@ function summaryLine(s: LlmSettingRow): string {
   if (s.maxOutputTokens != null) parts.push(`лимит ${s.maxOutputTokens}`);
   if (s.temperature != null) parts.push(`t=${s.temperature}`);
   parts.push(`таймаут ${s.timeoutSec} с`);
+  if (s.toolResultMaxBytes != null)
+    parts.push(`tool-лимит ${s.toolResultMaxBytes} Б`);
   return parts.join(" · ");
 }
 

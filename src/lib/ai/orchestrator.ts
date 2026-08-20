@@ -40,12 +40,12 @@ export async function runChat(
     callbacks.onProgress(toolName, step);
   };
 
-  const tools = buildTools(scenarioId, onToolProgress);
+  // Resolve the LLM first: the tool-result cap comes from the active preset.
+  const { model, settings } = await getLlm();
+  const tools = buildTools(scenarioId, onToolProgress, settings.toolResultMaxBytes);
 
   try {
     callbacks.onStatus("llm_thinking");
-
-    const { model, settings } = await getLlm();
 
     const result = await generateText({
       model,

@@ -14,6 +14,7 @@ export function toLlmSettingDto(s: LlmSetting) {
     temperature: s.temperature,
     maxOutputTokens: s.maxOutputTokens,
     timeoutSec: s.timeoutSec,
+    toolResultMaxBytes: s.toolResultMaxBytes,
     isActive: s.isActive,
     keyMask: "••••" + s.apiKey.slice(-4),
     createdAt: s.createdAt,

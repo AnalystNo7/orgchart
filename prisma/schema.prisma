@@ -733,6 +733,7 @@ model LlmSetting {
   temperature     Float?   // null = provider default
   maxOutputTokens Int?     // null = no cap
   timeoutSec      Int      @default(300)
+  toolResultMaxBytes Int?  // null = дефолт 60000; лимит одного результата инструмента (байты UTF-8)
   isActive        Boolean  @default(false) // "only one active" enforced by activate endpoint transaction
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

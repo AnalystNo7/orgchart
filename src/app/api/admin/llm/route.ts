@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec } =
+  const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec, toolResultMaxBytes } =
     parsed.data;
 
   try {
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         temperature: temperature ?? null,
         maxOutputTokens: maxOutputTokens ?? null,
         timeoutSec,
+        toolResultMaxBytes: toolResultMaxBytes ?? null,
         isActive: false,
       },
     });
