@@ -53,6 +53,16 @@ const READ_ONLY_TOOLS = new Set([
   "get_insights",
 ]);
 
+/**
+ * Call arguments for the log, trimmed. Tool inputs are ids and filters — no
+ * keys or personal data — but a full org-structure page of them is noise.
+ */
+function formatArgs(params: Record<string, unknown>): string {
+  const raw = JSON.stringify(params ?? {});
+  if (raw === "{}") return "";
+  return raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
+}
+
 const BUDGET_EXHAUSTED = JSON.stringify({
   error: "context_budget_exhausted",
   message:
@@ -82,8 +92,8 @@ function wrapExecute(
       const cachedHit = key ? cache?.get(key) : undefined;
       if (cachedHit === undefined) {
         console.log(
-          `[AI_BUDGET] ${name} отказ — исчерпан бюджет ${AI_RUN_CONTEXT_BUDGET_BYTES}B` +
-            ` (набрано ${stats.bytesOut}B)`
+          `[AI_BUDGET] ${name} ${formatArgs(params)} отказ — исчерпан бюджет` +
+            ` ${AI_RUN_CONTEXT_BUDGET_BYTES}B (набрано ${stats.bytesOut}B)`
         );
         return BUDGET_EXHAUSTED;
       }
@@ -102,7 +112,7 @@ function wrapExecute(
         onProgress?.(name, "started");
         onProgress?.(name, "completed");
         console.log(
-          `[AI_TOOL] ${name} 0ms → ${Buffer.byteLength(hit, "utf8")}B (cached)`
+          `[AI_TOOL] ${name} ${formatArgs(params)} 0ms → ${Buffer.byteLength(hit, "utf8")}B (cached)`
         );
         return hit;
       }
@@ -127,7 +137,7 @@ function wrapExecute(
     // Timing + size: tells apart "slow tool" from "slow model" when a chat
     // turn times out, and shows whether capToolResult had to page the result.
     console.log(
-      `[AI_TOOL] ${name} ${ms}ms → ${outBytes}B` +
+      `[AI_TOOL] ${name} ${formatArgs(params)} ${ms}ms → ${outBytes}B` +
         (outBytes < rawBytes ? ` (paged from ${rawBytes}B)` : "")
     );
     return capped;

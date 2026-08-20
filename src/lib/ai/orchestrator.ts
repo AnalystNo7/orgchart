@@ -21,7 +21,17 @@ export interface StreamCallbacks {
   onStatus: (phase: string, detail?: string) => void;
   onProgress: (toolName: string, step: string) => void;
   onDone: (fullResponse: string, toolCalls: ToolCallInfo[]) => void;
-  onError: (error: Error) => void;
+  onError: (error: Error, partial: PartialRun) => void;
+}
+
+/** What a turn managed to produce before it was aborted. */
+export interface PartialRun {
+  /** Text the model emitted across completed steps (already streamed to the UI). */
+  text: string;
+  /** Tools that ran, in order. */
+  toolNames: string[];
+  /** Steps that completed. */
+  steps: number;
 }
 
 /**
@@ -42,7 +52,7 @@ export async function runChat(
   };
 
   // Resolve the LLM first: the tool-result cap comes from the active preset.
-  const { model, settings } = await getLlm();
+  const { model, settings, info } = await getLlm();
   const toolStats = createToolRunStats();
   const tools = buildTools(
     scenarioId,
@@ -62,11 +72,30 @@ export async function runChat(
     );
   }
 
+  // Who is actually answering and under what caps. maxOutputTokens is nullable
+  // in the preset, and an absent cap is a different thing from an unknown one —
+  // for a reasoning model it means nothing bounds the generation.
+  console.log(
+    `[AI_RUN] ${info.source === "preset" ? `пресет "${info.name}"` : "env-конфигурация"}` +
+      ` · ${info.provider} · ${info.model}` +
+      ` · maxOutputTokens=${settings.maxOutputTokens ?? "НЕ ЗАДАН"}` +
+      ` · temperature=${settings.temperature ?? "по умолчанию"}` +
+      ` · timeout ${sec(timeoutMs)}s` +
+      ` · tool-cap ${settings.toolResultMaxBytes ?? "по умолчанию"}` +
+      ` · инструментов ${Object.keys(tools).length}`
+  );
+
   // Step timing: the gaps between steps are the model's own latency, which
   // is what a whole-loop timeout usually burns through.
   const runStartedAt = Date.now();
   let stepNo = 0;
   let firstStepMs = 0;
+  // A step that never finishes leaves no [AI_STEP] line at all, so the only
+  // way to name the culprit on abort is to record it when it starts.
+  let inFlightStep = 0;
+  let inFlightStartedAt = 0;
+  let inFlightInputBytes = 0;
+  let partialText = "";
 
   try {
     callbacks.onStatus("llm_thinking");
@@ -83,6 +112,19 @@ export async function runChat(
       })),
       tools,
       stopWhen: stepCountIs(10),
+      experimental_onStepStart: ({ stepNumber, messages: stepMessages }) => {
+        inFlightStep = stepNumber + 1;
+        inFlightStartedAt = Date.now();
+        inFlightInputBytes = Buffer.byteLength(
+          JSON.stringify(stepMessages),
+          "utf8"
+        );
+        console.log(
+          `[AI_STEP_START] #${inFlightStep} +${sec(inFlightStartedAt - runStartedAt)}s` +
+            ` · сообщений ${stepMessages.length}` +
+            ` · вход ~${kb(inFlightInputBytes)} КБ`
+        );
+      },
       onStepFinish: ({ text, toolCalls, toolResults }) => {
         stepNo += 1;
         if (stepNo === 1) firstStepMs = Date.now() - runStartedAt;
@@ -92,6 +134,7 @@ export async function runChat(
             `, text: ${text ? text.length : 0} chars`
         );
         if (text) {
+          partialText += (partialText ? "\n\n" : "") + text;
           callbacks.onText(text);
         }
         if (toolCalls && toolCalls.length > 0) {
@@ -127,13 +170,25 @@ export async function runChat(
     callbacks.onDone(result.text, allToolCalls);
   } catch (error) {
     const elapsed = Date.now() - runStartedAt;
+    // inFlightStep > stepNo means that step started and never finished — that
+    // is the one that hung, and the log below is the only place it is named.
+    const hung =
+      inFlightStep > stepNo
+        ? ` · шаг #${inFlightStep} висел ${sec(Date.now() - inFlightStartedAt)}s` +
+          ` (вход ~${kb(inFlightInputBytes)} КБ)`
+        : "";
     console.error(
       `[AI_CHAT_ERROR] ${sec(elapsed)}s, ${stepNo} шаг(ов)` +
         ` · инструменты ${sec(toolStats.totalMs)}s (${formatToolCalls(toolStats)})` +
-        ` · модель ~${sec(Math.max(0, elapsed - toolStats.totalMs))}s`,
+        ` · модель ~${sec(Math.max(0, elapsed - toolStats.totalMs))}s` +
+        hung,
       error
     );
-    callbacks.onError(new Error(formatAIError(error)));
+    callbacks.onError(new Error(formatAIError(error)), {
+      text: partialText,
+      toolNames: allToolCalls.map((t) => t.name),
+      steps: stepNo,
+    });
   }
 }
 
@@ -148,6 +203,11 @@ function formatToolCalls(stats: ToolRunStats): string {
     `${stats.calls} вызов(ов), ${stats.cached} из кэша, ` +
     `${(stats.bytesOut / 1024).toFixed(1)} КБ`
   );
+}
+
+/** bytes → KB with one decimal. */
+function kb(bytes: number): string {
+  return (bytes / 1024).toFixed(1);
 }
 
 function tok(n: number | undefined): string {

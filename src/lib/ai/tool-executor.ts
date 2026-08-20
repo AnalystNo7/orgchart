@@ -153,6 +153,10 @@ export async function executeTool(
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
+    // The model receives this as a plain result and may quietly work around it,
+    // so without a log an exception here is invisible in diagnostics.
+    console.error(`[AI_TOOL_ERROR] ${name} ${JSON.stringify(input ?? {})}: ${msg}`);
+    if (error instanceof Error && error.stack) console.error(error.stack);
     return JSON.stringify({ error: msg });
   }
 }
@@ -628,6 +632,45 @@ async function calculatePnlTool(
     effectiveAllocation
   );
 
+  // An empty result is indistinguishable from a zero P&L in the payload, and
+  // the model reads it as "no data" without knowing why. The usual cause is a
+  // scenarioId that does not exist — the model may pass one it never fetched.
+  if (results.length === 0) {
+    const scenario = await prisma.scenario.findUnique({
+      where: { id: scenarioId },
+      select: { name: true },
+    });
+    if (!scenario) {
+      const available = await prisma.scenario.findMany({
+        select: { id: true, name: true },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+      });
+      return JSON.stringify({
+        error: "scenario_not_found",
+        message:
+          `Сценарий ${scenarioId} не найден. Не подставляй scenarioId наугад: ` +
+          "вызови calculate_pnl без него, чтобы посчитать по текущему сценарию, " +
+          "либо возьми id из list_scenarios.",
+        availableScenarios: available,
+      });
+    }
+    return JSON.stringify({
+      error: "no_departments",
+      message:
+        `В сценарии «${scenario.name}» нет подразделений — P&L рассчитать не по чему.`,
+      scenarioId,
+    });
+  }
+
+  // The default period is the current calendar year, so data from another year
+  // yields zeros with nothing in the payload explaining it.
+  const contractStats = await countContractsInPeriod(
+    scenarioId,
+    periodStart,
+    periodEnd
+  );
+
   // Summarize
   const totalRevenue = results.reduce((s, r) => s + r.revenue, 0);
   const totalCost = results.reduce((s, r) => s + r.cost, 0);
@@ -655,11 +698,52 @@ async function calculatePnlTool(
         cost: Math.round(totalCost),
         pnl: Math.round(totalRevenue - totalCost),
       },
+      contracts: contractStats,
       departments: summary,
     },
     null,
     2
   );
+}
+
+/**
+ * How many contracts of the scenario fall inside the requested period.
+ * Zero revenue with contracts outside the period is a period problem, not a
+ * data problem — the payload has to say which one it is.
+ */
+async function countContractsInPeriod(
+  scenarioId: string,
+  periodStart: Date,
+  periodEnd: Date
+): Promise<{ total: number; inPeriod: number; note?: string }> {
+  // Contract carries no scenarioId — it reaches a scenario only through
+  // EmployeeContract → Employee, so go that way and de-duplicate.
+  const links = await prisma.employeeContract.findMany({
+    where: { employee: { scenarioId } },
+    select: {
+      contractId: true,
+      contract: { select: { periodStart: true, periodEnd: true } },
+    },
+  });
+  const byContract = new Map<string, { periodStart: Date; periodEnd: Date }>();
+  for (const l of links) byContract.set(l.contractId, l.contract);
+
+  let inPeriod = 0;
+  for (const c of byContract.values()) {
+    if (c.periodStart <= periodEnd && c.periodEnd >= periodStart) inPeriod += 1;
+  }
+
+  return {
+    total: byContract.size,
+    inPeriod,
+    ...(byContract.size > 0 && inPeriod === 0
+      ? {
+          note:
+            "Ни один договор не попадает в запрошенный период — выручка будет нулевой. " +
+            "Задай periodStart/periodEnd по датам договоров.",
+        }
+      : {}),
+  };
 }
 
 async function listScenarios(): Promise<string> {

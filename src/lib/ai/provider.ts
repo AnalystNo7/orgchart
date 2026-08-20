@@ -94,9 +94,19 @@ export interface LlmGenerationSettings {
   toolResultMaxBytes?: number;
 }
 
+/** Which configuration actually answered — for the [AI_RUN] log line. */
+export interface LlmRuntimeInfo {
+  source: "preset" | "env";
+  /** Preset name; absent for the env fallback. */
+  name?: string;
+  provider: string;
+  model: string;
+}
+
 export interface LlmRuntime {
   model: LanguageModel;
   settings: LlmGenerationSettings;
+  info: LlmRuntimeInfo;
 }
 
 /**
@@ -120,7 +130,16 @@ export async function getLlm(): Promise<LlmRuntime> {
 
   if (!preset) {
     // Bit-for-bit the pre-preset behaviour: no temperature/cap/timeout.
-    return { model: getEnvModel(), settings: {} };
+    const provider = getEnvProvider();
+    return {
+      model: getEnvModel(),
+      settings: {},
+      info: {
+        source: "env",
+        provider,
+        model: process.env.AI_MODEL || PROVIDER_DEFAULTS[provider],
+      },
+    };
   }
 
   return {
@@ -135,6 +154,12 @@ export async function getLlm(): Promise<LlmRuntime> {
       maxOutputTokens: preset.maxOutputTokens ?? undefined,
       timeoutMs: preset.timeoutSec * 1000,
       toolResultMaxBytes: preset.toolResultMaxBytes ?? undefined,
+    },
+    info: {
+      source: "preset",
+      name: preset.name,
+      provider: preset.provider,
+      model: preset.model,
     },
   };
 }
