@@ -16,11 +16,22 @@ function wrapExecute(
 ) {
   return async (params: Record<string, unknown>) => {
     onProgress?.(name, "started");
+    const startedAt = Date.now();
     const result = await executeTool(name, params, currentScenarioId, onProgress);
+    const ms = Date.now() - startedAt;
     onProgress?.(name, "completed");
     // Keep the result inside the provider's per-block limit; oversized results
     // are paged with an explicit hint instead of blowing up the request.
-    return capToolResult(result, maxBytes);
+    const capped = capToolResult(result, maxBytes);
+    const rawBytes = Buffer.byteLength(result ?? "", "utf8");
+    const outBytes = Buffer.byteLength(capped ?? "", "utf8");
+    // Timing + size: tells apart "slow tool" from "slow model" when a chat
+    // turn times out, and shows whether capToolResult had to page the result.
+    console.log(
+      `[AI_TOOL] ${name} ${ms}ms → ${outBytes}B` +
+        (outBytes < rawBytes ? ` (paged from ${rawBytes}B)` : "")
+    );
+    return capped;
   };
 }
 

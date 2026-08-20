@@ -4,7 +4,13 @@ import { prisma } from "@/lib/db";
 import { runChat, type ChatMessage, type ToolCallInfo } from "@/lib/ai/orchestrator";
 import { processLocalQuery } from "@/lib/ai/local-query";
 
-export const maxDuration = 60;
+// Must cover the LLM budget: the active preset's timeoutSec (validated
+// 30…600, default 300) is passed to generateText as a whole-tool-loop
+// timeout. Next reads maxDuration at build time, so it cannot be derived
+// from the DB — 300 matches the practical preset ceiling. If the preset
+// upper bound in src/lib/validations/llm-setting.ts changes, update this
+// and the warning timer below.
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -93,10 +99,10 @@ export async function POST(req: NextRequest) {
         send("heartbeat", { ts: Date.now() });
       }, 5000);
 
-      // Timeout warning at 50s (maxDuration is 60s)
+      // Timeout warning a minute before maxDuration (300s)
       const timeoutWarningTimer = setTimeout(() => {
         send("warning", { type: "timeout", message: "Запрос выполняется дольше обычного. Возможен таймаут." });
-      }, 50000);
+      }, 240000);
 
       const cleanup = () => {
         clearInterval(heartbeatInterval);

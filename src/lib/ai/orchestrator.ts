@@ -44,6 +44,11 @@ export async function runChat(
   const { model, settings } = await getLlm();
   const tools = buildTools(scenarioId, onToolProgress, settings.toolResultMaxBytes);
 
+  // Step timing: the gaps between steps are the model's own latency, which
+  // is what a whole-loop timeout usually burns through.
+  const runStartedAt = Date.now();
+  let stepNo = 0;
+
   try {
     callbacks.onStatus("llm_thinking");
 
@@ -60,6 +65,12 @@ export async function runChat(
       tools,
       stopWhen: stepCountIs(10),
       onStepFinish: ({ text, toolCalls, toolResults }) => {
+        stepNo += 1;
+        console.log(
+          `[AI_STEP] #${stepNo} +${Date.now() - runStartedAt}ms` +
+            `, tools: ${toolCalls?.map((t) => t.toolName).join(", ") || "—"}` +
+            `, text: ${text ? text.length : 0} chars`
+        );
         if (text) {
           callbacks.onText(text);
         }
@@ -86,7 +97,10 @@ export async function runChat(
 
     callbacks.onDone(result.text, allToolCalls);
   } catch (error) {
-    console.error("[AI_CHAT_ERROR]", error);
+    console.error(
+      `[AI_CHAT_ERROR] after ${Date.now() - runStartedAt}ms, ${stepNo} step(s) completed`,
+      error
+    );
     callbacks.onError(new Error(formatAIError(error)));
   }
 }
