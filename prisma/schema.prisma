@@ -720,3 +720,20 @@ model AIRecommendation {
 
   @@index([insightId])
 }
+
+// --- LLM connection presets (admin-managed, /admin/llm) ---
+
+model LlmSetting {
+  id              String   @id @default(uuid())
+  name            String
+  provider        String   // "openai_compatible" | "anthropic" | "openai" | "google"
+  baseUrl         String?  // required for openai_compatible (enforced in zod)
+  apiKey          String   // plaintext by explicit user decision; never returned by API (mask only)
+  model           String
+  temperature     Float?   // null = provider default
+  maxOutputTokens Int?     // null = no cap
+  timeoutSec      Int      @default(300)
+  isActive        Boolean  @default(false) // "only one active" enforced by activate endpoint transaction
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

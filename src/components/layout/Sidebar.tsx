@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gauge, BookOpen, FolderKanban, GitCompare, Target, Bot, BarChart3, BookOpenCheck, Network, GraduationCap, Crosshair, Briefcase, Wallet, Users, LogOut } from "lucide-react";
+import { Gauge, BookOpen, FolderKanban, GitCompare, Target, Bot, BarChart3, BookOpenCheck, Network, GraduationCap, Crosshair, Briefcase, Wallet, Users, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAiChatStore } from "@/lib/ai-store";
 import { useSession, signOut } from "next-auth/react";
@@ -20,6 +20,11 @@ const navItems = [
   { href: "/benchmarks", label: "Бенчмарки", icon: BarChart3 },
   { href: "/knowledge", label: "База знаний", icon: BookOpenCheck },
   { href: "/references", label: "Справочники", icon: BookOpen },
+];
+
+const adminLinks = [
+  { href: "/admin/users", label: "Пользователи", icon: Users },
+  { href: "/admin/llm", label: "Настройки LLM", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -70,20 +75,22 @@ export function Sidebar() {
           <Bot className="h-4 w-4" />
           AI-ассистент
         </button>
-        {isAdmin && (
-          <Link
-            href="/admin/users"
-            className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              pathname.startsWith("/admin")
-                ? "bg-neutral-200 text-neutral-900"
-                : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
-            )}
-          >
-            <Users className="h-4 w-4" />
-            Пользователи
-          </Link>
-        )}
+        {isAdmin &&
+          adminLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                pathname.startsWith(link.href)
+                  ? "bg-neutral-200 text-neutral-900"
+                  : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+              )}
+            >
+              <link.icon className="h-4 w-4" />
+              {link.label}
+            </Link>
+          ))}
       </div>
       <div className="border-t p-2">
         <div className="flex items-center justify-between px-3 py-1">

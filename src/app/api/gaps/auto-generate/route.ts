@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { computeDiff } from "@/lib/diff";
 import { generateText } from "ai";
-import { getModel } from "@/lib/ai/provider";
+import { getLlm } from "@/lib/ai/provider";
 import type { GapCategory, GapPriority } from "@prisma/client";
 
 const GAP_CATEGORIES: GapCategory[] = ["STRUCTURE", "PROCESS", "RESOURCE", "COMPETENCY", "TECHNOLOGY"];
@@ -221,10 +221,14 @@ ${JSON.stringify(contextData, null, 2)}
   }
 ]`;
 
+    const { model, settings } = await getLlm();
     const result = await generateText({
-      model: getModel(),
+      model,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
+      // Preset temperature overrides the historical 0.3 default
+      temperature: settings.temperature ?? 0.3,
+      maxOutputTokens: settings.maxOutputTokens,
+      timeout: settings.timeoutMs,
     });
 
     // 9. Parse AI response
