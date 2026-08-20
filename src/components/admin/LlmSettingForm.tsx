@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,6 +90,11 @@ function toFormValues(d?: LlmSettingFormProps["defaultValues"]): FormValues {
   };
 }
 
+/** "0,3" (ru locale) → 0.3; "" → NaN */
+function parseNum(s: string): number {
+  return Number(s.trim().replace(",", "."));
+}
+
 function toPayload(v: FormValues): LlmSettingPayload {
   return {
     name: v.name.trim(),
@@ -97,9 +102,9 @@ function toPayload(v: FormValues): LlmSettingPayload {
     baseUrl: v.baseUrl.trim() || null,
     ...(v.apiKey ? { apiKey: v.apiKey } : {}),
     model: v.model.trim(),
-    temperature: v.temperature.trim() === "" ? null : Number(v.temperature),
-    maxOutputTokens: v.limitEnabled ? Number(v.maxOutputTokens) : null,
-    timeoutSec: Number(v.timeoutSec) || 300,
+    temperature: v.temperature.trim() === "" ? null : parseNum(v.temperature),
+    maxOutputTokens: v.limitEnabled ? Math.round(parseNum(v.maxOutputTokens)) : null,
+    timeoutSec: Math.round(parseNum(v.timeoutSec)) || 300,
   };
 }
 
@@ -112,7 +117,14 @@ export function LlmSettingForm({
   keyMask,
   defaultValues,
 }: LlmSettingFormProps) {
-  const { register, handleSubmit, setValue, watch, reset } = useForm<FormValues>({
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm<FormValues>({
     defaultValues: toFormValues(defaultValues),
   });
 
@@ -129,13 +141,18 @@ export function LlmSettingForm({
   const provider = watch("provider");
   const limitEnabled = watch("limitEnabled");
 
+  // Reset ONLY on the closed→open transition. Parent re-renders while the
+  // dialog is open (e.g. next-auth session refetch on window focus) must not
+  // wipe what the user has typed.
+  const prevOpen = useRef(false);
   useEffect(() => {
-    if (open) {
+    if (open && !prevOpen.current) {
       reset(toFormValues(defaultValues));
       setError("");
       setTestResult(null);
       setShowKey(false);
     }
+    prevOpen.current = open;
   }, [open, defaultValues, reset]);
 
   async function submit(values: FormValues) {
@@ -144,6 +161,8 @@ export function LlmSettingForm({
     try {
       const err = await onSubmit(toPayload(values));
       if (err) setError(err);
+    } catch {
+      setError("Не удалось сохранить настройку");
     } finally {
       setSaving(false);
     }
@@ -175,6 +194,10 @@ export function LlmSettingForm({
     }
   }
 
+  function fieldError(msg?: string) {
+    return msg ? <p className="text-sm text-red-500">{msg}</p> : null;
+  }
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -182,15 +205,18 @@ export function LlmSettingForm({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(submit)} className="space-y-4">
+        {/* noValidate: native constraint validation would silently swallow the
+            submit event on any violation; validation is done via RHF rules with
+            visible per-field messages instead. */}
+        <form onSubmit={handleSubmit(submit)} noValidate className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="llm-name">Название</Label>
             <Input
               id="llm-name"
-              {...register("name")}
-              required
+              {...register("name", { required: "Название обязательно" })}
               placeholder="Например: MiniMax через Gonka"
             />
+            {fieldError(errors.name?.message)}
           </div>
 
           <div className="space-y-2">
@@ -216,14 +242,19 @@ export function LlmSettingForm({
             <Label htmlFor="llm-baseurl">Адрес API (base URL)</Label>
             <Input
               id="llm-baseurl"
-              {...register("baseUrl")}
-              required={provider === "openai_compatible"}
+              {...register("baseUrl", {
+                validate: (v) =>
+                  provider !== "openai_compatible" ||
+                  !!v.trim() ||
+                  "Для OpenAI-совместимого провайдера base URL обязателен",
+              })}
               placeholder={
                 provider === "openai_compatible"
                   ? "https://api.proxy.gonka.gg/v1"
                   : "Необязательно — переопределяет стандартный адрес"
               }
             />
+            {fieldError(errors.baseUrl?.message)}
           </div>
 
           <div className="space-y-2">
@@ -232,8 +263,13 @@ export function LlmSettingForm({
               <Input
                 id="llm-key"
                 type={showKey ? "text" : "password"}
-                {...register("apiKey")}
-                required={!presetId && provider === "openai_compatible"}
+                {...register("apiKey", {
+                  validate: (v) =>
+                    !!presetId ||
+                    provider !== "openai_compatible" ||
+                    !!v ||
+                    "API-ключ обязателен",
+                })}
                 placeholder={
                   presetId && keyMask
                     ? `Сохранён (${keyMask}) — оставьте пустым, чтобы не менять`
@@ -250,16 +286,17 @@ export function LlmSettingForm({
                 {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            {fieldError(errors.apiKey?.message)}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="llm-model">Модель</Label>
             <Input
               id="llm-model"
-              {...register("model")}
-              required
+              {...register("model", { required: "Модель обязательна" })}
               placeholder="Например: MiniMaxAI/MiniMax-M2.7"
             />
+            {fieldError(errors.model?.message)}
           </div>
 
           <div className="space-y-2">
@@ -270,9 +307,19 @@ export function LlmSettingForm({
               step="0.1"
               min="0"
               max="2"
-              {...register("temperature")}
+              {...register("temperature", {
+                validate: (v) => {
+                  if (v.trim() === "") return true;
+                  const n = parseNum(v);
+                  return (
+                    (!isNaN(n) && n >= 0 && n <= 2) ||
+                    "Температура — число от 0 до 2"
+                  );
+                },
+              })}
               placeholder="0.3"
             />
+            {fieldError(errors.temperature?.message)}
           </div>
 
           <div className="space-y-2">
@@ -286,13 +333,25 @@ export function LlmSettingForm({
               Ограничить размер ответа
             </label>
             {limitEnabled && (
-              <Input
-                type="number"
-                min="256"
-                max="128000"
-                {...register("maxOutputTokens")}
-                placeholder="16384"
-              />
+              <>
+                <Input
+                  type="number"
+                  min="256"
+                  max="128000"
+                  {...register("maxOutputTokens", {
+                    validate: (v) => {
+                      if (!limitEnabled) return true;
+                      const n = parseNum(v);
+                      return (
+                        (!isNaN(n) && n >= 256 && n <= 128000) ||
+                        "Лимит ответа — целое число от 256 до 128000"
+                      );
+                    },
+                  })}
+                  placeholder="16384"
+                />
+                {fieldError(errors.maxOutputTokens?.message)}
+              </>
             )}
           </div>
 
@@ -305,8 +364,17 @@ export function LlmSettingForm({
               type="number"
               min="30"
               max="600"
-              {...register("timeoutSec")}
+              {...register("timeoutSec", {
+                validate: (v) => {
+                  const n = parseNum(v);
+                  return (
+                    (!isNaN(n) && n >= 30 && n <= 600) ||
+                    "Таймаут — число от 30 до 600 секунд"
+                  );
+                },
+              })}
             />
+            {fieldError(errors.timeoutSec?.message)}
           </div>
 
           {testResult && (

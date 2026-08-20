@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,24 @@ export default function AdminLlmPage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<LlmSettingRow | null>(null);
+
+  // Stable reference: an inline object literal would be recreated on every
+  // parent re-render and retrigger the form's reset effect.
+  const formDefaults = useMemo(
+    () =>
+      editing
+        ? {
+            name: editing.name,
+            provider: editing.provider,
+            baseUrl: editing.baseUrl,
+            model: editing.model,
+            temperature: editing.temperature,
+            maxOutputTokens: editing.maxOutputTokens,
+            timeoutSec: editing.timeoutSec,
+          }
+        : undefined,
+    [editing]
+  );
 
   const fetchSettings = useCallback(async () => {
     const res = await fetch("/api/admin/llm");
@@ -220,19 +238,7 @@ export default function AdminLlmPage() {
         title={editing ? `Настройка: ${editing.name}` : "Новая настройка LLM"}
         presetId={editing?.id}
         keyMask={editing?.keyMask}
-        defaultValues={
-          editing
-            ? {
-                name: editing.name,
-                provider: editing.provider,
-                baseUrl: editing.baseUrl,
-                model: editing.model,
-                temperature: editing.temperature,
-                maxOutputTokens: editing.maxOutputTokens,
-                timeoutSec: editing.timeoutSec,
-              }
-            : undefined
-        }
+        defaultValues={formDefaults}
       />
     </div>
   );
