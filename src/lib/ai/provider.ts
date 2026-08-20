@@ -104,10 +104,17 @@ export interface LlmRuntime {
  * without a redeploy.
  */
 export async function getLlm(): Promise<LlmRuntime> {
-  const preset = await prisma.llmSetting.findFirst({
-    where: { isActive: true },
-    orderBy: { updatedAt: "desc" },
-  });
+  let preset = null;
+  try {
+    preset = await prisma.llmSetting.findFirst({
+      where: { isActive: true },
+      orderBy: { updatedAt: "desc" },
+    });
+  } catch (e) {
+    // Missing table (migration not applied) or stale client must not take the
+    // whole AI subsystem down — fall back to env configuration.
+    console.warn("[getLlm] Falling back to env config:", e instanceof Error ? e.message : e);
+  }
 
   if (!preset) {
     // Bit-for-bit the pre-preset behaviour: no temperature/cap/timeout.

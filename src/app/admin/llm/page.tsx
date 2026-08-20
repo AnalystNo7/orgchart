@@ -97,8 +97,13 @@ export default function AdminLlmPage() {
         });
 
     if (!res.ok) {
-      const data = await res.json();
-      return data.error || "Ошибка при сохранении";
+      // A crashed route handler returns a non-JSON 500 body — surface the
+      // status instead of throwing on res.json() and masking the cause.
+      const data = await res.json().catch(() => null);
+      return (
+        data?.error ||
+        `Ошибка сервера (HTTP ${res.status}) — подробности в консоли dev-сервера`
+      );
     }
 
     setFormOpen(false);
