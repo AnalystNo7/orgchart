@@ -164,10 +164,8 @@ async function getOrgStructure(
 ): Promise<string> {
   const departments = await prisma.department.findMany({
     where: { scenarioId },
-    include: {
-      head: { select: { id: true, fullName: true } },
-      _count: { select: { employees: true, children: true } },
-    },
+    // headId is enough: the list reports only whether a head exists.
+    include: { _count: { select: { employees: true, children: true } } },
     orderBy: { sortOrder: "asc" },
   });
 
@@ -196,35 +194,55 @@ async function getOrgStructure(
     metricsMap.set(emp.departmentId, m);
   }
 
-  const all = departments.map((d) => ({
-    id: d.id,
-    name: d.name,
-    parentId: d.parentId,
-    shetilType: d.shetilType,
-    head: d.head?.fullName || null,
-    employeeCount: d._count.employees,
-    childrenCount: d._count.children,
-    metrics: metricsMap.get(d.id) || { pp: 0, opp: 0, aup: 0, totalFte: 0 },
-  }));
-
   // Paged: a full 1000-department tree blows past the provider's per-block
   // size limit. Callers ask for the next page via offset.
   const from = Math.max(0, offset);
-  const page = all.slice(from, from + Math.max(1, limit));
-  const hasMore = from + page.length < all.length;
+  const page = departments.slice(from, from + Math.max(1, limit));
+  const hasMore = from + page.length < departments.length;
+
+  // Columnar, not an array of objects: repeating eleven key names on every
+  // record cost more than the data itself (~120 of ~300 bytes per row) and
+  // that weight is re-sent to the model on every subsequent step.
+  // The head's full name is reduced to hasHead — for structural analysis what
+  // matters is whether a unit has a head at all; the name comes from
+  // get_department_details when actually needed.
+  const rows = page.map((d) => {
+    const m = metricsMap.get(d.id) || { pp: 0, opp: 0, aup: 0, totalFte: 0 };
+    return [
+      d.id,
+      d.name,
+      d.parentId,
+      d.shetilType,
+      d._count.employees,
+      d._count.children,
+      d.headId ? 1 : 0,
+      round1(m.pp),
+      round1(m.opp),
+      round1(m.aup),
+      round1(m.totalFte),
+    ];
+  });
 
   return JSON.stringify({
-    total: all.length,
+    total: departments.length,
     offset: from,
     shown: page.length,
     ...(hasMore
       ? {
           nextOffset: from + page.length,
-          _hint: `Показаны подразделения ${from}..${from + page.length - 1} из ${all.length}. Для продолжения вызовите get_org_structure с offset=${from + page.length}.`,
+          _hint: `Показаны подразделения ${from}..${from + page.length - 1} из ${departments.length}. Для продолжения вызовите get_org_structure с offset=${from + page.length}.`,
         }
       : {}),
-    departments: page,
+    // A string, not an array: capToolResult splits its budget across the
+    // arrays it finds, so a second array would halve what rows may occupy.
+    columns: "id,name,parentId,type,emp,children,hasHead,pp,opp,aup,fte",
+    rows,
   });
+}
+
+/** Доли FTE могут быть дробными — одного знака достаточно, длину не раздувает. */
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
 }
 
 async function getDepartmentDetails(departmentId: string): Promise<string> {

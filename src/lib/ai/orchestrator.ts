@@ -1,7 +1,8 @@
 import { generateText, stepCountIs } from "ai";
 import { getLlm } from "./provider";
-import { buildTools, createToolRunStats } from "./tools";
+import { buildTools, createToolRunStats, type ToolRunStats } from "./tools";
 import { buildSystemPrompt } from "./system-prompt";
+import { AI_LOOP_SAFETY_MS, AI_ROUTE_MAX_DURATION_SEC } from "./limits";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -50,6 +51,17 @@ export async function runChat(
     toolStats
   );
 
+  // The loop timeout must fire BEFORE the platform kills the function,
+  // otherwise the SSE error and the conversation save never make it out.
+  const budgetMs = AI_ROUTE_MAX_DURATION_SEC * 1000 - AI_LOOP_SAFETY_MS;
+  const timeoutMs = Math.min(settings.timeoutMs ?? budgetMs, budgetMs);
+  if (settings.timeoutMs !== undefined && settings.timeoutMs > budgetMs) {
+    console.log(
+      `[AI_LIMIT] timeout пресета ${sec(settings.timeoutMs)}s урезан до ${sec(budgetMs)}s` +
+        ` (запас ${sec(AI_LOOP_SAFETY_MS)}s до maxDuration ${AI_ROUTE_MAX_DURATION_SEC}s)`
+    );
+  }
+
   // Step timing: the gaps between steps are the model's own latency, which
   // is what a whole-loop timeout usually burns through.
   const runStartedAt = Date.now();
@@ -63,7 +75,7 @@ export async function runChat(
       model,
       temperature: settings.temperature,
       maxOutputTokens: settings.maxOutputTokens,
-      timeout: settings.timeoutMs,
+      timeout: timeoutMs,
       system: systemPrompt,
       messages: messages.map((m) => ({
         role: m.role,
@@ -117,7 +129,7 @@ export async function runChat(
     const elapsed = Date.now() - runStartedAt;
     console.error(
       `[AI_CHAT_ERROR] ${sec(elapsed)}s, ${stepNo} шаг(ов)` +
-        ` · инструменты ${sec(toolStats.totalMs)}s (${toolStats.calls} вызов(ов))` +
+        ` · инструменты ${sec(toolStats.totalMs)}s (${formatToolCalls(toolStats)})` +
         ` · модель ~${sec(Math.max(0, elapsed - toolStats.totalMs))}s`,
       error
     );
@@ -128,6 +140,14 @@ export async function runChat(
 /** ms → seconds with one decimal, for log readability. */
 function sec(ms: number): string {
   return (ms / 1000).toFixed(1);
+}
+
+/** Bytes of tool output are what the context budget guards — show them. */
+function formatToolCalls(stats: ToolRunStats): string {
+  return (
+    `${stats.calls} вызов(ов), ${stats.cached} из кэша, ` +
+    `${(stats.bytesOut / 1024).toFixed(1)} КБ`
+  );
 }
 
 function tok(n: number | undefined): string {
@@ -143,7 +163,7 @@ function logRunSummary(
   elapsedMs: number,
   steps: number,
   firstStepMs: number,
-  toolStats: { calls: number; totalMs: number },
+  toolStats: ToolRunStats,
   usage:
     | {
         inputTokens?: number;
@@ -157,7 +177,7 @@ function logRunSummary(
   const modelMs = Math.max(0, elapsedMs - toolStats.totalMs);
   console.log(
     `[AI_DONE] ${steps} шаг(ов) · ${sec(elapsedMs)}s ` +
-      `(модель ${sec(modelMs)}s / инструменты ${sec(toolStats.totalMs)}s, ${toolStats.calls} вызов(ов))` +
+      `(модель ${sec(modelMs)}s / инструменты ${sec(toolStats.totalMs)}s, ${formatToolCalls(toolStats)})` +
       ` · токены ${tok(usage?.inputTokens)} in + ${tok(usage?.outputTokens)} out` +
       ` (reasoning ${tok(usage?.reasoningTokens)}, cached ${tok(usage?.cachedInputTokens)})` +
       ` · finish: ${finishReason}`
