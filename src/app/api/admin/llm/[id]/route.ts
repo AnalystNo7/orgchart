@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { updateLlmSettingSchema } from "@/lib/validations/llm-setting";
-import { toLlmSettingDto } from "@/lib/llm-settings";
+import { toLlmSettingDto, llmDbErrorMessage } from "@/lib/llm-settings";
 
 export async function PATCH(
   req: NextRequest,
@@ -22,30 +22,34 @@ export async function PATCH(
     );
   }
 
-  const existing = await prisma.llmSetting.findUnique({ where: { id } });
-  if (!existing) {
-    return NextResponse.json({ error: "Настройка не найдена" }, { status: 404 });
+  try {
+    const existing = await prisma.llmSetting.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Настройка не найдена" }, { status: 404 });
+    }
+
+    const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec } =
+      parsed.data;
+
+    const setting = await prisma.llmSetting.update({
+      where: { id },
+      data: {
+        name,
+        provider,
+        baseUrl: baseUrl ?? null,
+        model,
+        temperature: temperature ?? null,
+        maxOutputTokens: maxOutputTokens ?? null,
+        timeoutSec,
+        // Empty/missing key = keep the stored one
+        ...(apiKey ? { apiKey } : {}),
+      },
+    });
+
+    return NextResponse.json(toLlmSettingDto(setting));
+  } catch (e) {
+    return NextResponse.json({ error: llmDbErrorMessage(e) }, { status: 500 });
   }
-
-  const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec } =
-    parsed.data;
-
-  const setting = await prisma.llmSetting.update({
-    where: { id },
-    data: {
-      name,
-      provider,
-      baseUrl: baseUrl ?? null,
-      model,
-      temperature: temperature ?? null,
-      maxOutputTokens: maxOutputTokens ?? null,
-      timeoutSec,
-      // Empty/missing key = keep the stored one
-      ...(apiKey ? { apiKey } : {}),
-    },
-  });
-
-  return NextResponse.json(toLlmSettingDto(setting));
 }
 
 export async function DELETE(

@@ -2,18 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { createLlmSettingSchema } from "@/lib/validations/llm-setting";
-import { toLlmSettingDto } from "@/lib/llm-settings";
+import { toLlmSettingDto, llmDbErrorMessage } from "@/lib/llm-settings";
 
 export async function GET() {
   if (!(await requireAdmin())) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const settings = await prisma.llmSetting.findMany({
-    orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
-  });
-
-  return NextResponse.json(settings.map(toLlmSettingDto));
+  try {
+    const settings = await prisma.llmSetting.findMany({
+      orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+    });
+    return NextResponse.json(settings.map(toLlmSettingDto));
+  } catch (e) {
+    return NextResponse.json({ error: llmDbErrorMessage(e) }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -33,21 +36,24 @@ export async function POST(req: NextRequest) {
   const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec } =
     parsed.data;
 
-  // Created inactive on purpose: env-fallback keeps working until the admin
-  // explicitly activates the preset.
-  const setting = await prisma.llmSetting.create({
-    data: {
-      name,
-      provider,
-      baseUrl: baseUrl ?? null,
-      apiKey,
-      model,
-      temperature: temperature ?? null,
-      maxOutputTokens: maxOutputTokens ?? null,
-      timeoutSec,
-      isActive: false,
-    },
-  });
-
-  return NextResponse.json(toLlmSettingDto(setting), { status: 201 });
+  try {
+    // Created inactive on purpose: env-fallback keeps working until the admin
+    // explicitly activates the preset.
+    const setting = await prisma.llmSetting.create({
+      data: {
+        name,
+        provider,
+        baseUrl: baseUrl ?? null,
+        apiKey,
+        model,
+        temperature: temperature ?? null,
+        maxOutputTokens: maxOutputTokens ?? null,
+        timeoutSec,
+        isActive: false,
+      },
+    });
+    return NextResponse.json(toLlmSettingDto(setting), { status: 201 });
+  } catch (e) {
+    return NextResponse.json({ error: llmDbErrorMessage(e) }, { status: 500 });
+  }
 }
