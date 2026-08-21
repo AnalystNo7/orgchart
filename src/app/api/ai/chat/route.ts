@@ -126,6 +126,13 @@ export async function POST(req: NextRequest) {
             });
             return;
           }
+          // Retry wait: show the attempt counter in the warning banner AND
+          // switch the phase label.
+          if (phase === "retry_wait") {
+            if (detail) send("warning", { type: "retry", message: detail });
+            send("status", { phase });
+            return;
+          }
           send("status", { phase, detail });
         },
         onProgress: (toolName, step) => {

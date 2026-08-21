@@ -55,6 +55,11 @@ const PHASE_CONFIG: Record<
     icon: BarChart3,
     color: "text-blue-600",
   },
+  retry_wait: {
+    label: "Провайдер занят — жду свободный слот...",
+    icon: Plug,
+    color: "text-amber-600",
+  },
 };
 
 interface StreamingStatusProps {
