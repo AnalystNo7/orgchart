@@ -234,16 +234,26 @@ export function AiChatPanel() {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
+          // SSE framing: events are separated by a blank line. Split into
+          // complete frames and keep the unfinished tail in the buffer.
+          // (The previous line-based scan used lines.indexOf(line), which
+          // returns the FIRST occurrence — with a fast-streaming model many
+          // identical "event: text" lines land in one chunk, so the first
+          // delta was appended N times and the rest were lost.)
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() || "";
 
-          for (const line of lines) {
-            if (line.startsWith("event: ")) {
-              const event = line.slice(7);
-              const dataLine = lines[lines.indexOf(line) + 1];
-              if (dataLine?.startsWith("data: ")) {
+          for (const frame of frames) {
+            let event = "";
+            let dataStr = "";
+            for (const line of frame.split("\n")) {
+              if (line.startsWith("event: ")) event = line.slice(7);
+              else if (line.startsWith("data: ")) dataStr = line.slice(6);
+            }
+            if (event && dataStr) {
+              {
                 try {
-                  const data = JSON.parse(dataLine.slice(6));
+                  const data = JSON.parse(dataStr);
                   if (event === "text") {
                     appendToLastAssistant(data.text);
                   } else if (event === "tool_call") {
