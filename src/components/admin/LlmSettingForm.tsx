@@ -366,19 +366,19 @@ export function LlmSettingForm({
 
           <div className="space-y-2">
             <Label htmlFor="llm-timeout">
-              Таймаут запроса, сек (по умолчанию 300, диапазон 30–600)
+              Таймаут запроса, сек (по умолчанию 300, диапазон 30–3600)
             </Label>
             <Input
               id="llm-timeout"
               type="number"
               min="30"
-              max="600"
+              max="3600"
               {...register("timeoutSec", {
                 validate: (v) => {
                   const n = parseNum(v);
                   return (
-                    (!isNaN(n) && n >= 30 && n <= 600) ||
-                    "Таймаут — число от 30 до 600 секунд"
+                    (!isNaN(n) && n >= 30 && n <= 3600) ||
+                    "Таймаут — число от 30 до 3600 секунд"
                   );
                 },
               })}

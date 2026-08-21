@@ -9,13 +9,11 @@ import {
 } from "@/lib/ai/orchestrator";
 import { processLocalQuery } from "@/lib/ai/local-query";
 
-import { AI_ROUTE_MAX_DURATION_SEC } from "@/lib/ai/limits";
-
-// Must cover the LLM budget: the active preset's timeoutSec (validated
-// 30…600) is clamped in runChat to maxDuration minus AI_LOOP_SAFETY_MS, so
-// the loop aborts before the platform kills the function. Next reads
-// maxDuration at build time and only accepts a literal — keep this number
-// in sync with AI_ROUTE_MAX_DURATION_SEC in src/lib/ai/limits.ts.
+// Binds ONLY on Vercel (locally there is no platform limit; runChat clamps
+// the loop budget under it only when process.env.VERCEL is set). Next reads
+// maxDuration at build time and only accepts a literal — keep this number in
+// sync with AI_ROUTE_MAX_DURATION_SEC in src/lib/ai/limits.ts. Long reports
+// on Vercel need the "автопродолжение" follow-up task.
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
@@ -105,14 +103,8 @@ export async function POST(req: NextRequest) {
         send("heartbeat", { ts: Date.now() });
       }, 5000);
 
-      // Timeout warning a minute before maxDuration
-      const timeoutWarningTimer = setTimeout(() => {
-        send("warning", { type: "timeout", message: "Запрос выполняется дольше обычного. Возможен таймаут." });
-      }, AI_ROUTE_MAX_DURATION_SEC * 1000 - 60_000);
-
       const cleanup = () => {
         clearInterval(heartbeatInterval);
-        clearTimeout(timeoutWarningTimer);
       };
 
       const toolCalls: ToolCallInfo[] = [];
@@ -125,6 +117,15 @@ export async function POST(req: NextRequest) {
           send("text", { text });
         },
         onStatus: (phase, detail) => {
+          // Fired by the orchestrator a minute before the real total budget —
+          // only it knows what that budget is.
+          if (phase === "timeout_warning") {
+            send("warning", {
+              type: "timeout",
+              message: "Запрос выполняется дольше обычного. Возможен таймаут.",
+            });
+            return;
+          }
           send("status", { phase, detail });
         },
         onProgress: (toolName, step) => {

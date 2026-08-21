@@ -42,7 +42,7 @@ const baseFields = {
     .number()
     .int()
     .min(30, "Таймаут — минимум 30 секунд")
-    .max(600, "Таймаут — максимум 600 секунд")
+    .max(3600, "Таймаут — максимум 3600 секунд")
     .default(300),
   toolResultMaxBytes: z
     .number()

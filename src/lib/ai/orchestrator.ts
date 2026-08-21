@@ -1,8 +1,15 @@
-import { generateText, stepCountIs } from "ai";
+import { streamText, stepCountIs } from "ai";
 import { getLlm } from "./provider";
 import { buildTools, createToolRunStats, type ToolRunStats } from "./tools";
 import { getSystemPrompt } from "./system-prompt";
-import { AI_LOOP_SAFETY_MS, AI_ROUTE_MAX_DURATION_SEC } from "./limits";
+import {
+  AI_CHUNK_TIMEOUT_MS,
+  AI_DEFAULT_TOTAL_TIMEOUT_MS,
+  AI_LOOP_SAFETY_MS,
+  AI_MAX_STEPS,
+  AI_ROUTE_MAX_DURATION_SEC,
+  AI_STEP_TIMEOUT_MS,
+} from "./limits";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -62,16 +69,24 @@ export async function runChat(
     toolStats
   );
 
-  // The loop timeout must fire BEFORE the platform kills the function,
-  // otherwise the SSE error and the conversation save never make it out.
-  const budgetMs = AI_ROUTE_MAX_DURATION_SEC * 1000 - AI_LOOP_SAFETY_MS;
-  const timeoutMs = Math.min(settings.timeoutMs ?? budgetMs, budgetMs);
-  if (settings.timeoutMs !== undefined && settings.timeoutMs > budgetMs) {
-    console.log(
-      `[AI_LIMIT] timeout пресета ${sec(settings.timeoutMs)}s урезан до ${sec(budgetMs)}s` +
-        ` (запас ${sec(AI_LOOP_SAFETY_MS)}s до maxDuration ${AI_ROUTE_MAX_DURATION_SEC}s)`
-    );
+  // Total budget: the preset's timeoutSec, or a generous default. The clamp
+  // below the platform's maxDuration applies ONLY on Vercel — locally there is
+  // no platform limit, and a self-imposed 280s ceiling was exactly what kept
+  // killing long reasoning runs.
+  let totalMs = settings.timeoutMs ?? AI_DEFAULT_TOTAL_TIMEOUT_MS;
+  let vercelClamped = false;
+  if (process.env.VERCEL) {
+    const platformBudget = AI_ROUTE_MAX_DURATION_SEC * 1000 - AI_LOOP_SAFETY_MS;
+    if (totalMs > platformBudget) {
+      totalMs = platformBudget;
+      vercelClamped = true;
+      console.log(
+        `[AI_LIMIT] timeout урезан до ${sec(platformBudget)}s` +
+          ` (Vercel maxDuration ${AI_ROUTE_MAX_DURATION_SEC}s − запас ${sec(AI_LOOP_SAFETY_MS)}s)`
+      );
+    }
   }
+  const stepMs = Math.min(AI_STEP_TIMEOUT_MS, totalMs);
 
   // Who is actually answering and under what caps. maxOutputTokens is nullable
   // in the preset, and an absent cap is a different thing from an unknown one —
@@ -81,7 +96,7 @@ export async function runChat(
       ` · ${info.provider} · ${info.model}` +
       ` · maxOutputTokens=${settings.maxOutputTokens ?? "НЕ ЗАДАН"}` +
       ` · temperature=${settings.temperature ?? "по умолчанию"}` +
-      ` · timeout ${sec(timeoutMs)}s` +
+      ` · timeout total ${sec(totalMs)}s / step ${sec(stepMs)}s / chunk ${sec(AI_CHUNK_TIMEOUT_MS)}s${vercelClamped ? " (Vercel clamp)" : ""}` +
       ` · tool-cap ${settings.toolResultMaxBytes ?? "по умолчанию"}` +
       ` · инструментов ${Object.keys(tools).length}` +
       ` · промпт ${promptIsCustom ? "изменён" : "стандартный"}`
@@ -99,22 +114,42 @@ export async function runChat(
   let inFlightInputBytes = 0;
   let partialText = "";
 
+  // Warn the user a minute before the total budget runs out. Lives here (not
+  // in the route) because only this side knows the actual budget.
+  const warnTimer =
+    totalMs > 120_000
+      ? setTimeout(
+          () => callbacks.onStatus("timeout_warning"),
+          totalMs - 60_000
+        )
+      : null;
+
   try {
     callbacks.onStatus("llm_thinking");
 
-    const result = await generateText({
+    const result = streamText({
       model,
       temperature: settings.temperature,
       maxOutputTokens: settings.maxOutputTokens,
-      timeout: timeoutMs,
+      timeout: {
+        totalMs,
+        stepMs,
+        chunkMs: AI_CHUNK_TIMEOUT_MS,
+      },
       system: systemPrompt,
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
       })),
       tools,
-      stopWhen: stepCountIs(10),
+      stopWhen: stepCountIs(AI_MAX_STEPS),
       experimental_onStepStart: ({ stepNumber, messages: stepMessages }) => {
+        // Streamed deltas of consecutive steps would otherwise concatenate
+        // into one paragraph.
+        if (partialText && !partialText.endsWith("\n\n")) {
+          partialText += "\n\n";
+          callbacks.onText("\n\n");
+        }
         inFlightStep = stepNumber + 1;
         inFlightStartedAt = Date.now();
         inFlightInputBytes = Buffer.byteLength(
@@ -135,10 +170,8 @@ export async function runChat(
             `, tools: ${toolCalls?.map((t) => t.toolName).join(", ") || "—"}` +
             `, text: ${text ? text.length : 0} chars`
         );
-        if (text) {
-          partialText += (partialText ? "\n\n" : "") + text;
-          callbacks.onText(text);
-        }
+        // Text is NOT sent from here any more — it already went out as
+        // stream deltas; re-sending would duplicate every step's text.
         if (toolCalls && toolCalls.length > 0) {
           for (let i = 0; i < toolCalls.length; i++) {
             const tc = toolCalls[i];
@@ -160,17 +193,28 @@ export async function runChat(
       },
     });
 
+    // Drive the stream: deltas reach the user the moment the model emits them,
+    // and whatever is on screen at an abort is exactly what partialText holds.
+    for await (const delta of result.textStream) {
+      if (delta) {
+        partialText += delta;
+        callbacks.onText(delta);
+      }
+    }
+
     logRunSummary(
       Date.now() - runStartedAt,
       stepNo,
       firstStepMs,
       toolStats,
-      result.totalUsage,
-      result.finishReason
+      await result.totalUsage,
+      await result.finishReason
     );
 
-    callbacks.onDone(result.text, allToolCalls);
+    if (warnTimer) clearTimeout(warnTimer);
+    callbacks.onDone(partialText, allToolCalls);
   } catch (error) {
+    if (warnTimer) clearTimeout(warnTimer);
     const elapsed = Date.now() - runStartedAt;
     // inFlightStep > stepNo means that step started and never finished — that
     // is the one that hung, and the log below is the only place it is named.
