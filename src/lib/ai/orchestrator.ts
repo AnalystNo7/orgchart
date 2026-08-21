@@ -29,7 +29,16 @@ export interface StreamCallbacks {
   onProgress: (toolName: string, step: string) => void;
   onDone: (fullResponse: string, toolCalls: ToolCallInfo[]) => void;
   onError: (error: Error, partial: PartialRun) => void;
+  onMeta: (meta: RunMeta) => void;
 }
+
+/**
+ * Run metadata for the live status indicator: the client cannot know the
+ * budget or the current step on its own — only this side does.
+ */
+export type RunMeta =
+  | { type: "budget"; totalMs: number; maxSteps: number }
+  | { type: "step_start"; step: number; inputKb: number };
 
 /** What a turn managed to produce before it was aborted. */
 export interface PartialRun {
@@ -125,6 +134,7 @@ export async function runChat(
       : null;
 
   try {
+    callbacks.onMeta({ type: "budget", totalMs, maxSteps: AI_MAX_STEPS });
     callbacks.onStatus("llm_thinking");
 
     const result = streamText({
@@ -161,6 +171,11 @@ export async function runChat(
             ` · сообщений ${stepMessages.length}` +
             ` · вход ~${kb(inFlightInputBytes)} КБ`
         );
+        callbacks.onMeta({
+          type: "step_start",
+          step: inFlightStep,
+          inputKb: Math.round(inFlightInputBytes / 1024),
+        });
       },
       onStepFinish: ({ text, toolCalls, toolResults }) => {
         stepNo += 1;
@@ -202,16 +217,31 @@ export async function runChat(
       }
     }
 
+    const finishReason = await result.finishReason;
     logRunSummary(
       Date.now() - runStartedAt,
       stepNo,
       firstStepMs,
       toolStats,
       await result.totalUsage,
-      await result.finishReason
+      finishReason
     );
 
     if (warnTimer) clearTimeout(warnTimer);
+
+    // A stream timeout does NOT throw — the stream just ends with
+    // finish: "other". Anything but a clean "stop" is an interrupted answer
+    // and must look like one, not like a finished report cut mid-sentence.
+    if (finishReason !== "stop") {
+      console.log(`[AI_INCOMPLETE] finish: ${finishReason} → оформлен как обрыв`);
+      callbacks.onError(new Error(finishMessage(finishReason)), {
+        text: partialText,
+        toolNames: allToolCalls.map((t) => t.name),
+        steps: stepNo,
+      });
+      return;
+    }
+
     callbacks.onDone(partialText, allToolCalls);
   } catch (error) {
     if (warnTimer) clearTimeout(warnTimer);
@@ -299,6 +329,23 @@ function logRunSummary(
         ` — задержка на стороне провайдера (холодный старт узла / обработка` +
         ` системного промпта), не в коде приложения`
     );
+  }
+}
+
+/** Human-readable reason for a stream that ended without a clean "stop". */
+function finishMessage(reason: string): string {
+  switch (reason) {
+    case "other":
+    case "unknown":
+      return "Генерация оборвана по таймауту. Увеличьте таймаут в Настройки → LLM или сузьте запрос.";
+    case "length":
+      return "Достигнут лимит токенов ответа (maxOutputTokens) — увеличьте его в Настройки → LLM.";
+    case "tool-calls":
+      return "Достигнут предел шагов анализа (30). Сузьте запрос или разбейте его на части.";
+    case "error":
+      return "Провайдер прервал генерацию.";
+    default:
+      return `Генерация не завершена (finish: ${reason}).`;
   }
 }
 

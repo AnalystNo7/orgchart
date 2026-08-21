@@ -64,6 +64,10 @@ interface StreamingStatusProps {
   completedSteps: CompletedStep[];
   lastHeartbeat: number | null;
   timeoutWarning: string | null;
+  budgetMs: number | null;
+  maxSteps: number | null;
+  currentStep: number | null;
+  stepStartedAt: number | null;
   onCancel: () => void;
 }
 
@@ -74,6 +78,10 @@ export function StreamingStatus({
   completedSteps,
   lastHeartbeat,
   timeoutWarning,
+  budgetMs,
+  maxSteps,
+  currentStep,
+  stepStartedAt,
   onCancel,
 }: StreamingStatusProps) {
   const [elapsed, setElapsed] = useState(0);
@@ -88,12 +96,13 @@ export function StreamingStatus({
     return () => clearInterval(timer);
   }, [startedAt]);
 
-  // Check heartbeat freshness: if no heartbeat for 10s, mark as stale
+  // Heartbeat arrives every 5s; 15s of silence means the connection is gone
+  // (10s produced false alarms on event-loop pauses).
   useEffect(() => {
     if (!lastHeartbeat) return;
     setHeartbeatAlive(true);
     const check = setInterval(() => {
-      setHeartbeatAlive(Date.now() - lastHeartbeat < 10000);
+      setHeartbeatAlive(Date.now() - lastHeartbeat < 15000);
     }, 2000);
     return () => clearInterval(check);
   }, [lastHeartbeat]);
@@ -110,11 +119,36 @@ export function StreamingStatus({
     return m > 0 ? `${m}м ${sec}с` : `${sec}с`;
   };
 
+  // The 1s `elapsed` interval already re-renders us — derive the step timer
+  // and the budget colour from the same tick instead of extra timers.
+  const stepElapsed = stepStartedAt
+    ? Math.max(0, Math.floor((Date.now() - stepStartedAt) / 1000))
+    : null;
+  const budgetSec = budgetMs ? Math.floor(budgetMs / 1000) : null;
+  const budgetRatio = budgetSec ? elapsed / budgetSec : 0;
+  const timerColor =
+    budgetRatio > 0.95
+      ? "text-red-500"
+      : budgetRatio > 0.8
+      ? "text-amber-500"
+      : "text-neutral-400";
+
   // Deduplicate steps for display: show last 5 unique steps
   const displaySteps = completedSteps.slice(-5);
 
   return (
     <div className="space-y-2">
+      {/* Connection lost */}
+      {!heartbeatAlive && (
+        <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            Соединение с сервером потеряно — ответ может не прийти. Повторите
+            запрос.
+          </span>
+        </div>
+      )}
+
       {/* Timeout warning */}
       {timeoutWarning && (
         <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -160,6 +194,15 @@ export function StreamingStatus({
                 {currentToolName}
               </span>
             )}
+            {currentStep !== null && (
+              <span className="text-xs text-neutral-400">
+                Шаг {currentStep}
+                {maxSteps ? ` из ≤${maxSteps}` : ""}
+                {stepElapsed !== null && stepElapsed >= 5
+                  ? ` · на шаге ${formatTime(stepElapsed)}`
+                  : ""}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -171,8 +214,9 @@ export function StreamingStatus({
                 : "fill-red-400 text-red-400"
             }`}
           />
-          <span className="tabular-nums text-xs text-neutral-400">
+          <span className={`tabular-nums text-xs ${timerColor}`}>
             {formatTime(elapsed)}
+            {budgetSec ? ` / ${formatTime(budgetSec)}` : ""}
           </span>
           {showCancel && (
             <button

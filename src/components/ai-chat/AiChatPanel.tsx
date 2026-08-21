@@ -118,6 +118,14 @@ export function AiChatPanel() {
     setLastHeartbeat,
     timeoutWarning,
     setTimeoutWarning,
+    budgetMs,
+    setBudgetMs,
+    maxSteps,
+    setMaxSteps,
+    currentStep,
+    setCurrentStep,
+    stepStartedAt,
+    setStepStartedAt,
     activeConversationId,
     setActiveConversationId,
     showConversationList,
@@ -142,8 +150,12 @@ export function AiChatPanel() {
     setStreamingStartedAt(null);
     setLastHeartbeat(null);
     setTimeoutWarning(null);
+    setBudgetMs(null);
+    setMaxSteps(null);
+    setCurrentStep(null);
+    setStepStartedAt(null);
     abortControllerRef.current = null;
-  }, [setStreaming, setStreamingPhase, setCurrentToolName, setStreamingStartedAt, setLastHeartbeat, setTimeoutWarning]);
+  }, [setStreaming, setStreamingPhase, setCurrentToolName, setStreamingStartedAt, setLastHeartbeat, setTimeoutWarning, setBudgetMs, setMaxSteps, setCurrentStep, setStepStartedAt]);
 
   const handleCancel = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -268,6 +280,15 @@ export function AiChatPanel() {
                       content: `⚠️ ${data.message || "Неизвестная ошибка"}`,
                       timestamp: new Date().toISOString(),
                     });
+                  } else if (event === "meta") {
+                    // Run metadata: budget once at start, step_start per step.
+                    if (data.type === "budget") {
+                      setBudgetMs(data.totalMs);
+                      setMaxSteps(data.maxSteps);
+                    } else if (data.type === "step_start") {
+                      setCurrentStep(data.step);
+                      setStepStartedAt(Date.now());
+                    }
                   } else if (event === "heartbeat") {
                     setLastHeartbeat(data.ts);
                   } else if (event === "warning") {
@@ -325,6 +346,10 @@ export function AiChatPanel() {
       addCompletedStep,
       setLastHeartbeat,
       setTimeoutWarning,
+      setBudgetMs,
+      setMaxSteps,
+      setCurrentStep,
+      setStepStartedAt,
     ]
   );
 
@@ -406,6 +431,10 @@ export function AiChatPanel() {
             {isStreaming && (
               <StreamingStatus
                 phase={streamingPhase}
+                budgetMs={budgetMs}
+                maxSteps={maxSteps}
+                currentStep={currentStep}
+                stepStartedAt={stepStartedAt}
                 currentToolName={currentToolName}
                 startedAt={streamingStartedAt}
                 completedSteps={completedSteps}

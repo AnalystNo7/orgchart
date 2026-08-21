@@ -131,6 +131,9 @@ export async function POST(req: NextRequest) {
         onProgress: (toolName, step) => {
           send("progress", { tool: toolName, step });
         },
+        onMeta: (meta) => {
+          send("meta", meta);
+        },
         onToolCall: (info) => {
           toolCalls.push(info);
           send("tool_call", {

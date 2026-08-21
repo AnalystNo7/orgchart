@@ -63,6 +63,17 @@ interface AiChatState {
   timeoutWarning: string | null;
   setTimeoutWarning: (msg: string | null) => void;
 
+  // Live run metadata from the server's "meta" SSE events: the client cannot
+  // know the time budget or the current step on its own.
+  budgetMs: number | null;
+  setBudgetMs: (ms: number | null) => void;
+  maxSteps: number | null;
+  setMaxSteps: (n: number | null) => void;
+  currentStep: number | null;
+  setCurrentStep: (n: number | null) => void;
+  stepStartedAt: number | null;
+  setStepStartedAt: (ts: number | null) => void;
+
   activeConversationId: string | null;
   setActiveConversationId: (id: string | null) => void;
 
@@ -119,6 +130,15 @@ export const useAiChatStore = create<AiChatState>((set) => ({
 
   timeoutWarning: null,
   setTimeoutWarning: (timeoutWarning) => set({ timeoutWarning }),
+
+  budgetMs: null,
+  setBudgetMs: (budgetMs) => set({ budgetMs }),
+  maxSteps: null,
+  setMaxSteps: (maxSteps) => set({ maxSteps }),
+  currentStep: null,
+  setCurrentStep: (currentStep) => set({ currentStep }),
+  stepStartedAt: null,
+  setStepStartedAt: (stepStartedAt) => set({ stepStartedAt }),
 
   activeConversationId: null,
   setActiveConversationId: (activeConversationId) =>
