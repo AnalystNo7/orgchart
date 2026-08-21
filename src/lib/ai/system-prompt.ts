@@ -1,10 +1,27 @@
-export function buildSystemPrompt(scenarioName?: string): string {
-  return `Ты — эксперт по организационному дизайну и управлению изменениями, встроенный в систему OrgChart Modeler.
+import { prisma } from "@/lib/db";
+
+/**
+ * The system prompt has two halves with different owners.
+ *
+ * The METHODOLOGY half (role, benchmarks, categories, answering rules) is the
+ * domain expert's text: editable from /admin/settings/prompt and stored in
+ * AiPromptSetting. No row in that table = this default is in effect.
+ *
+ * The TECHNICAL half (source marking, org-structure tool ordering, truncated
+ * results) is tuned in code together with the tool layer — editing it from a
+ * UI would silently break tool routing, so it is always appended verbatim
+ * and only shown read-only in the admin page.
+ */
+
+/** The only placeholder supported in the editable text. */
+export const SCENARIO_NAME_PLACEHOLDER = "{{scenario_name}}";
+
+export const DEFAULT_METHODOLOGY_PROMPT = `Ты — эксперт по организационному дизайну и управлению изменениями, встроенный в систему OrgChart Modeler.
 
 ## Контекст
 Ты помогаешь аналитику ИТ-интегратора крупной нефтегазовой компании (500–2000 сотрудников) анализировать и оптимизировать организационную структуру.
 
-${scenarioName ? `Текущий сценарий: «${scenarioName}»` : ""}
+Текущий сценарий: «{{scenario_name}}»
 
 ## Твои возможности
 - Анализ оргструктуры: метрики, проблемы, бенчмарки
@@ -72,12 +89,6 @@ ${scenarioName ? `Текущий сценарий: «${scenarioName}»` : ""}
 Если пользователь задаёт вопрос о фреймворке или методологии — сначала проверь базу знаний.
 Если есть релевантные результаты — цитируй их с указанием источника.
 
-## Порядок работы с оргструктурой
-Поштучный список подразделений — самый тяжёлый источник данных, он остаётся в контексте до конца диалога. Поэтому:
-1. Вопросы «в целом по организации», «выяви проблемы», «оцени структуру» — начинай с run_health_check и get_org_metrics: они дают готовые метрики и инсайты по всей организации.
-2. get_org_structure вызывай, только если для ответа нужен конкретный перечень подразделений, и не более одного вызова за шаг: nextOffset приходит только в ответе, заранее его не угадать.
-3. Детали по одному подразделению (сотрудники, ФИО руководителя) — get_department_details, а не выгрузка всей структуры.
-
 ## Правила
 1. Отвечай на русском языке
 2. Используй markdown для форматирования
@@ -86,7 +97,18 @@ ${scenarioName ? `Текущий сценарий: «${scenarioName}»` : ""}
 5. Используй доступные инструменты для получения данных — НЕ выдумывай данные
 6. При what-if моделировании используй run_whatif_scenario — он автоматически клонирует сценарий, применяет изменения и сравнивает результат
 7. При gap-анализе создавай структурированные паспорта разрывов
-8. Если в запросе пользователя речь идёт о сравнении или выборе между несколькими сценариями — сначала вызови list_scenarios, покажи список доступных сценариев и спроси пользователя, с какими сценариями работать
+8. Если в запросе пользователя речь идёт о сравнении или выборе между несколькими сценариями — сначала вызови list_scenarios, покажи список доступных сценариев и спроси пользователя, с какими сценариями работать`;
+
+/**
+ * The fixed technical half — always appended, never editable.
+ * Exported so the admin page can show it read-only.
+ */
+export function buildTechnicalPrompt(): string {
+  return `## Порядок работы с оргструктурой
+Поштучный список подразделений — самый тяжёлый источник данных, он остаётся в контексте до конца диалога. Поэтому:
+1. Вопросы «в целом по организации», «выяви проблемы», «оцени структуру» — начинай с run_health_check и get_org_metrics: они дают готовые метрики и инсайты по всей организации.
+2. get_org_structure вызывай, только если для ответа нужен конкретный перечень подразделений, и не более одного вызова за шаг: nextOffset приходит только в ответе, заранее его не угадать.
+3. Детали по одному подразделению (сотрудники, ФИО руководителя) — get_department_details, а не выгрузка всей структуры.
 
 ## Маркировка источников данных (ОБЯЗАТЕЛЬНО)
 Каждое утверждение, основанное на данных, ДОЛЖНО быть маркировано источником. Используй строго следующий формат маркеров прямо в тексте ответа:
@@ -119,4 +141,52 @@ ${scenarioName ? `Текущий сценарий: «${scenarioName}»` : ""}
 исчерпан бюджет данных. Новые поштучные выборки делать бесполезно: переходи
 к агрегирующим инструментам или формулируй вывод по уже полученным данным,
 явно оговорив их неполноту.`;
+}
+
+/**
+ * Assemble the full prompt from a methodology text (custom or default)
+ * plus the fixed technical half.
+ */
+export function buildSystemPrompt(
+  scenarioName?: string,
+  customMethodology?: string | null
+): string {
+  const methodology = (customMethodology ?? DEFAULT_METHODOLOGY_PROMPT)
+    .split(SCENARIO_NAME_PLACEHOLDER)
+    .join(scenarioName || "не выбран");
+  return `${methodology}\n\n${buildTechnicalPrompt()}`;
+}
+
+export interface ResolvedSystemPrompt {
+  prompt: string;
+  /** true when the admin has overridden the methodology half. */
+  isCustom: boolean;
+}
+
+/**
+ * Resolve the prompt for a request: the stored custom methodology when one
+ * exists, otherwise the default. Read per request (no cache) so an admin edit
+ * applies to the very next chat turn without a redeploy.
+ */
+export async function getSystemPrompt(
+  scenarioName?: string
+): Promise<ResolvedSystemPrompt> {
+  let custom: string | null = null;
+  try {
+    const row = await prisma.aiPromptSetting.findFirst({
+      orderBy: { updatedAt: "desc" },
+    });
+    custom = row?.content ?? null;
+  } catch (e) {
+    // Missing table (migration not applied) or stale client must not take the
+    // chat down — fall back to the default text, same pattern as getLlm().
+    console.warn(
+      "[getSystemPrompt] Falling back to default prompt:",
+      e instanceof Error ? e.message : e
+    );
+  }
+  return {
+    prompt: buildSystemPrompt(scenarioName, custom),
+    isCustom: custom !== null,
+  };
 }

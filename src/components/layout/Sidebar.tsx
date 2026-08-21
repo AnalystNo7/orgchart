@@ -24,7 +24,7 @@ const navItems = [
 
 const adminLinks = [
   { href: "/admin/users", label: "Пользователи", icon: Users },
-  { href: "/admin/llm", label: "Настройки LLM", icon: Settings },
+  { href: "/admin/settings", label: "Настройки", icon: Settings },
 ];
 
 export function Sidebar() {

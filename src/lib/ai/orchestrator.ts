@@ -1,7 +1,7 @@
 import { generateText, stepCountIs } from "ai";
 import { getLlm } from "./provider";
 import { buildTools, createToolRunStats, type ToolRunStats } from "./tools";
-import { buildSystemPrompt } from "./system-prompt";
+import { getSystemPrompt } from "./system-prompt";
 import { AI_LOOP_SAFETY_MS, AI_ROUTE_MAX_DURATION_SEC } from "./limits";
 
 export interface ChatMessage {
@@ -44,7 +44,8 @@ export async function runChat(
   scenarioName: string,
   callbacks: StreamCallbacks
 ): Promise<void> {
-  const systemPrompt = buildSystemPrompt(scenarioName);
+  const { prompt: systemPrompt, isCustom: promptIsCustom } =
+    await getSystemPrompt(scenarioName);
   const allToolCalls: ToolCallInfo[] = [];
 
   const onToolProgress = (toolName: string, step: string) => {
@@ -82,7 +83,8 @@ export async function runChat(
       ` · temperature=${settings.temperature ?? "по умолчанию"}` +
       ` · timeout ${sec(timeoutMs)}s` +
       ` · tool-cap ${settings.toolResultMaxBytes ?? "по умолчанию"}` +
-      ` · инструментов ${Object.keys(tools).length}`
+      ` · инструментов ${Object.keys(tools).length}` +
+      ` · промпт ${promptIsCustom ? "изменён" : "стандартный"}`
   );
 
   // Step timing: the gaps between steps are the model's own latency, which
