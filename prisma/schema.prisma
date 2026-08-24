@@ -724,19 +724,24 @@ model AIRecommendation {
 // --- LLM connection presets (admin-managed, /admin/llm) ---
 
 model LlmSetting {
-  id                 String   @id @default(uuid())
-  name               String
-  provider           String // "openai_compatible" | "anthropic" | "openai" | "google"
-  baseUrl            String? // required for openai_compatible (enforced in zod)
-  apiKey             String // plaintext by explicit user decision; never returned by API (mask only)
-  model              String
-  temperature        Float? // null = provider default
-  maxOutputTokens    Int? // null = no cap
-  timeoutSec         Int      @default(300)
-  toolResultMaxBytes Int? // null = дефолт 60000; лимит одного результата инструмента (байты UTF-8)
-  isActive           Boolean  @default(false) // "only one active" enforced by activate endpoint transaction
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  name                  String
+  provider              String // "openai_compatible" | "anthropic" | "openai" | "google"
+  baseUrl               String? // required for openai_compatible (enforced in zod)
+  apiKey                String // plaintext by explicit user decision; never returned by API (mask only)
+  model                 String
+  temperature           Float? // null = provider default
+  maxOutputTokens       Int? // null = no cap
+  timeoutSec            Int      @default(300)
+  toolResultMaxBytes    Int? // null = дефолт 60000; лимит одного результата инструмента (байты UTF-8)
+  // Лимиты прогона; null = дефолт из src/lib/ai/limits.ts
+  maxSteps              Int? // null = AI_MAX_STEPS (30)
+  stepTimeoutSec        Int? // null = AI_STEP_TIMEOUT_MS (600 с)
+  chunkTimeoutSec       Int? // null = AI_CHUNK_TIMEOUT_MS (120 с)
+  runContextBudgetBytes Int? // null = AI_RUN_CONTEXT_BUDGET_BYTES (120000)
+  isActive              Boolean  @default(false) // "only one active" enforced by activate endpoint transaction
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 // --- Editable AI system prompt (admin-managed, /admin/settings/prompt) ---

@@ -23,6 +23,10 @@ interface LlmSettingRow {
   maxOutputTokens: number | null;
   timeoutSec: number;
   toolResultMaxBytes: number | null;
+  maxSteps: number | null;
+  stepTimeoutSec: number | null;
+  chunkTimeoutSec: number | null;
+  runContextBudgetBytes: number | null;
   isActive: boolean;
   keyMask: string;
   createdAt: string;
@@ -38,6 +42,11 @@ function summaryLine(s: LlmSettingRow): string {
   parts.push(`таймаут ${s.timeoutSec} с`);
   if (s.toolResultMaxBytes != null)
     parts.push(`tool-лимит ${s.toolResultMaxBytes} Б`);
+  if (s.maxSteps != null) parts.push(`шагов ≤${s.maxSteps}`);
+  if (s.stepTimeoutSec != null) parts.push(`шаг ${s.stepTimeoutSec} с`);
+  if (s.chunkTimeoutSec != null) parts.push(`тишина ${s.chunkTimeoutSec} с`);
+  if (s.runContextBudgetBytes != null)
+    parts.push(`контекст ${s.runContextBudgetBytes} Б`);
   return parts.join(" · ");
 }
 
@@ -62,6 +71,11 @@ export default function AdminLlmPage() {
             temperature: editing.temperature,
             maxOutputTokens: editing.maxOutputTokens,
             timeoutSec: editing.timeoutSec,
+            toolResultMaxBytes: editing.toolResultMaxBytes,
+            maxSteps: editing.maxSteps,
+            stepTimeoutSec: editing.stepTimeoutSec,
+            chunkTimeoutSec: editing.chunkTimeoutSec,
+            runContextBudgetBytes: editing.runContextBudgetBytes,
           }
         : undefined,
     [editing]

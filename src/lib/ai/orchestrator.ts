@@ -4,6 +4,7 @@ import { buildTools, createToolRunStats, type ToolRunStats } from "./tools";
 import { getSystemPrompt } from "./system-prompt";
 import {
   AI_CHUNK_TIMEOUT_MS,
+  AI_RUN_CONTEXT_BUDGET_BYTES,
   AI_DEFAULT_TOTAL_TIMEOUT_MS,
   AI_LOOP_SAFETY_MS,
   AI_MAX_STEPS,
@@ -70,12 +71,18 @@ export async function runChat(
 
   // Resolve the LLM first: the tool-result cap comes from the active preset.
   const { model, settings, info } = await getLlm();
+  // Per-preset run limits; the limits.ts constants are the defaults.
+  const maxSteps = settings.maxSteps ?? AI_MAX_STEPS;
+  const chunkMs = settings.chunkTimeoutMs ?? AI_CHUNK_TIMEOUT_MS;
+  const contextBudgetBytes =
+    settings.runContextBudgetBytes ?? AI_RUN_CONTEXT_BUDGET_BYTES;
   const toolStats = createToolRunStats();
   const tools = buildTools(
     scenarioId,
     onToolProgress,
     settings.toolResultMaxBytes,
     toolStats,
+    contextBudgetBytes,
   );
 
   // Total budget: the preset's timeoutSec, or a generous default. The clamp
@@ -95,7 +102,7 @@ export async function runChat(
       );
     }
   }
-  const stepMs = Math.min(AI_STEP_TIMEOUT_MS, totalMs);
+  const stepMs = Math.min(settings.stepTimeoutMs ?? AI_STEP_TIMEOUT_MS, totalMs);
 
   // Who is actually answering and under what caps. maxOutputTokens is nullable
   // in the preset, and an absent cap is a different thing from an unknown one —
@@ -105,8 +112,9 @@ export async function runChat(
       ` · ${info.provider} · ${info.model}` +
       ` · maxOutputTokens=${settings.maxOutputTokens ?? "НЕ ЗАДАН"}` +
       ` · temperature=${settings.temperature ?? "по умолчанию"}` +
-      ` · timeout total ${sec(totalMs)}s / step ${sec(stepMs)}s / chunk ${sec(AI_CHUNK_TIMEOUT_MS)}s${vercelClamped ? " (Vercel clamp)" : ""}` +
+      ` · timeout total ${sec(totalMs)}s / step ${sec(stepMs)}s / chunk ${sec(chunkMs)}s${vercelClamped ? " (Vercel clamp)" : ""}` +
       ` · tool-cap ${settings.toolResultMaxBytes ?? "по умолчанию"}` +
+      ` · шагов ≤${maxSteps} · контекст ≤${contextBudgetBytes}B` +
       ` · инструментов ${Object.keys(tools).length}` +
       ` · промпт ${promptIsCustom ? "изменён" : "стандартный"}`,
   );
@@ -157,7 +165,7 @@ export async function runChat(
     lastActivityAt = Date.now();
 
     try {
-      callbacks.onMeta({ type: "budget", totalMs, maxSteps: AI_MAX_STEPS });
+      callbacks.onMeta({ type: "budget", totalMs, maxSteps });
       callbacks.onStatus("llm_thinking");
 
       const result = streamText({
@@ -167,7 +175,7 @@ export async function runChat(
         timeout: {
           totalMs,
           stepMs,
-          chunkMs: AI_CHUNK_TIMEOUT_MS,
+          chunkMs,
         },
         system: systemPrompt,
         messages: messages.map((m) => ({
@@ -175,7 +183,7 @@ export async function runChat(
           content: m.content,
         })),
         tools,
-        stopWhen: stepCountIs(AI_MAX_STEPS),
+        stopWhen: stepCountIs(maxSteps),
         onError: ({ error }) => {
           lastStreamError = error;
           console.error(
@@ -276,7 +284,7 @@ export async function runChat(
           `[AI_INCOMPLETE] finish: ${finishReason} → оформлен как обрыв` +
             ` (тишина ${sec(silenceMs)}s)`,
         );
-        callbacks.onError(new Error(finishMessage(finishReason, silenceMs)), {
+        callbacks.onError(new Error(finishMessage(finishReason, silenceMs, chunkMs, maxSteps)), {
           text: partialText,
           toolNames: allToolCalls.map((t) => t.name),
           steps: stepNo,
@@ -419,13 +427,18 @@ function logRunSummary(
 }
 
 /** Human-readable reason for a stream that ended without a clean "stop". */
-function finishMessage(reason: string, silenceMs: number): string {
+function finishMessage(
+  reason: string,
+  silenceMs: number,
+  chunkMs: number,
+  maxSteps: number,
+): string {
   switch (reason) {
     case "other":
     case "unknown":
       // A stall (silence ≈ chunk timeout) is the provider dropping the
       // stream — raising the budget would not help; say so.
-      if (silenceMs >= AI_CHUNK_TIMEOUT_MS - 5_000) {
+      if (silenceMs >= chunkMs - 5_000) {
         return (
           `Поток данных от провайдера прервался (тишина ${Math.round(silenceMs / 1000)} с) — ` +
           "обрыв на стороне шлюза. Повторите запрос."
@@ -435,7 +448,7 @@ function finishMessage(reason: string, silenceMs: number): string {
     case "length":
       return "Достигнут лимит токенов ответа (maxOutputTokens) — увеличьте его в Настройки → LLM.";
     case "tool-calls":
-      return "Достигнут предел шагов анализа (30). Сузьте запрос или разбейте его на части.";
+      return `Достигнут предел шагов анализа (${maxSteps}). Сузьте запрос или разбейте его на части.`;
     case "error":
       return "Провайдер прервал генерацию.";
     default:

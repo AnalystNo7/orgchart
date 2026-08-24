@@ -92,6 +92,14 @@ export interface LlmGenerationSettings {
   timeoutMs?: number;
   /** Cap for a single tool result in UTF-8 bytes (provider block limit) */
   toolResultMaxBytes?: number;
+  /** undefined = AI_MAX_STEPS */
+  maxSteps?: number;
+  /** undefined = AI_STEP_TIMEOUT_MS */
+  stepTimeoutMs?: number;
+  /** undefined = AI_CHUNK_TIMEOUT_MS */
+  chunkTimeoutMs?: number;
+  /** undefined = AI_RUN_CONTEXT_BUDGET_BYTES */
+  runContextBudgetBytes?: number;
 }
 
 /** Which configuration actually answered — for the [AI_RUN] log line. */
@@ -154,6 +162,10 @@ export async function getLlm(): Promise<LlmRuntime> {
       maxOutputTokens: preset.maxOutputTokens ?? undefined,
       timeoutMs: preset.timeoutSec * 1000,
       toolResultMaxBytes: preset.toolResultMaxBytes ?? undefined,
+      maxSteps: preset.maxSteps ?? undefined,
+      stepTimeoutMs: preset.stepTimeoutSec != null ? preset.stepTimeoutSec * 1000 : undefined,
+      chunkTimeoutMs: preset.chunkTimeoutSec != null ? preset.chunkTimeoutSec * 1000 : undefined,
+      runContextBudgetBytes: preset.runContextBudgetBytes ?? undefined,
     },
     info: {
       source: "preset",

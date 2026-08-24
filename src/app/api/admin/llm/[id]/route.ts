@@ -28,7 +28,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Настройка не найдена" }, { status: 404 });
     }
 
-    const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec, toolResultMaxBytes } =
+    const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec, toolResultMaxBytes, maxSteps, stepTimeoutSec, chunkTimeoutSec, runContextBudgetBytes } =
       parsed.data;
 
     const setting = await prisma.llmSetting.update({
@@ -42,6 +42,10 @@ export async function PATCH(
         maxOutputTokens: maxOutputTokens ?? null,
         timeoutSec,
         toolResultMaxBytes: toolResultMaxBytes ?? null,
+        maxSteps: maxSteps ?? null,
+        stepTimeoutSec: stepTimeoutSec ?? null,
+        chunkTimeoutSec: chunkTimeoutSec ?? null,
+        runContextBudgetBytes: runContextBudgetBytes ?? null,
         // Empty/missing key = keep the stored one
         ...(apiKey ? { apiKey } : {}),
       },

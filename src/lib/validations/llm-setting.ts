@@ -44,6 +44,34 @@ const baseFields = {
     .min(30, "Таймаут — минимум 30 секунд")
     .max(3600, "Таймаут — максимум 3600 секунд")
     .default(300),
+  maxSteps: z
+    .number()
+    .int()
+    .min(1, "Шагов — минимум 1")
+    .max(100, "Шагов — максимум 100")
+    .nullable()
+    .optional(),
+  stepTimeoutSec: z
+    .number()
+    .int()
+    .min(30, "Таймаут шага — минимум 30 секунд")
+    .max(3600, "Таймаут шага — максимум 3600 секунд")
+    .nullable()
+    .optional(),
+  chunkTimeoutSec: z
+    .number()
+    .int()
+    .min(15, "Таймаут тишины — минимум 15 секунд")
+    .max(600, "Таймаут тишины — максимум 600 секунд")
+    .nullable()
+    .optional(),
+  runContextBudgetBytes: z
+    .number()
+    .int()
+    .min(20000, "Бюджет контекста — минимум 20000 байт")
+    .max(2000000, "Бюджет контекста — максимум 2000000 байт")
+    .nullable()
+    .optional(),
   toolResultMaxBytes: z
     .number()
     .int()

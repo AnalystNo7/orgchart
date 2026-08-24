@@ -38,6 +38,10 @@ export interface LlmSettingPayload {
   maxOutputTokens: number | null;
   timeoutSec: number;
   toolResultMaxBytes: number | null;
+  maxSteps: number | null;
+  stepTimeoutSec: number | null;
+  chunkTimeoutSec: number | null;
+  runContextBudgetBytes: number | null;
 }
 
 interface FormValues {
@@ -51,6 +55,10 @@ interface FormValues {
   maxOutputTokens: string;
   timeoutSec: string;
   toolResultMaxBytes: string;
+  maxSteps: string;
+  stepTimeoutSec: string;
+  chunkTimeoutSec: string;
+  runContextBudgetBytes: string;
 }
 
 interface LlmSettingFormProps {
@@ -76,6 +84,10 @@ const EMPTY: FormValues = {
   maxOutputTokens: "16384",
   timeoutSec: "300",
   toolResultMaxBytes: "60000",
+  maxSteps: "",
+  stepTimeoutSec: "",
+  chunkTimeoutSec: "",
+  runContextBudgetBytes: "",
 };
 
 function toFormValues(d?: LlmSettingFormProps["defaultValues"]): FormValues {
@@ -92,6 +104,11 @@ function toFormValues(d?: LlmSettingFormProps["defaultValues"]): FormValues {
     timeoutSec: d.timeoutSec != null ? String(d.timeoutSec) : "300",
     toolResultMaxBytes:
       d.toolResultMaxBytes != null ? String(d.toolResultMaxBytes) : "60000",
+    maxSteps: d.maxSteps != null ? String(d.maxSteps) : "",
+    stepTimeoutSec: d.stepTimeoutSec != null ? String(d.stepTimeoutSec) : "",
+    chunkTimeoutSec: d.chunkTimeoutSec != null ? String(d.chunkTimeoutSec) : "",
+    runContextBudgetBytes:
+      d.runContextBudgetBytes != null ? String(d.runContextBudgetBytes) : "",
   };
 }
 
@@ -114,7 +131,16 @@ function toPayload(v: FormValues): LlmSettingPayload {
       v.toolResultMaxBytes.trim() === ""
         ? null
         : Math.round(parseNum(v.toolResultMaxBytes)),
+    maxSteps: optInt(v.maxSteps),
+    stepTimeoutSec: optInt(v.stepTimeoutSec),
+    chunkTimeoutSec: optInt(v.chunkTimeoutSec),
+    runContextBudgetBytes: optInt(v.runContextBudgetBytes),
   };
+}
+
+/** Пустое поле = null = системный дефолт из limits.ts. */
+function optInt(s: string): number | null {
+  return s.trim() === "" ? null : Math.round(parseNum(s));
 }
 
 export function LlmSettingForm({
@@ -413,6 +439,104 @@ export function LlmSettingForm({
               отдаются постранично с подсказкой модели.
             </p>
             {fieldError(errors.toolResultMaxBytes?.message)}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="llm-maxsteps">Макс. шагов анализа</Label>
+              <Input
+                id="llm-maxsteps"
+                type="number"
+                min="1"
+                max="100"
+                {...register("maxSteps", {
+                  validate: (v) => {
+                    if (v.trim() === "") return true;
+                    const n = parseNum(v);
+                    return (
+                      (!isNaN(n) && n >= 1 && n <= 100) ||
+                      "Шагов — число от 1 до 100"
+                    );
+                  },
+                })}
+                placeholder="30"
+              />
+              <p className="text-xs text-neutral-500">Пусто = 30</p>
+              {fieldError(errors.maxSteps?.message)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="llm-steptimeout">Таймаут одного шага, сек</Label>
+              <Input
+                id="llm-steptimeout"
+                type="number"
+                min="30"
+                max="3600"
+                {...register("stepTimeoutSec", {
+                  validate: (v) => {
+                    if (v.trim() === "") return true;
+                    const n = parseNum(v);
+                    return (
+                      (!isNaN(n) && n >= 30 && n <= 3600) ||
+                      "Таймаут шага — число от 30 до 3600 секунд"
+                    );
+                  },
+                })}
+                placeholder="600"
+              />
+              <p className="text-xs text-neutral-500">
+                Пусто = 600. Один вызов модели (reasoning может думать минутами)
+              </p>
+              {fieldError(errors.stepTimeoutSec?.message)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="llm-chunktimeout">Таймаут тишины стрима, сек</Label>
+              <Input
+                id="llm-chunktimeout"
+                type="number"
+                min="15"
+                max="600"
+                {...register("chunkTimeoutSec", {
+                  validate: (v) => {
+                    if (v.trim() === "") return true;
+                    const n = parseNum(v);
+                    return (
+                      (!isNaN(n) && n >= 15 && n <= 600) ||
+                      "Таймаут тишины — число от 15 до 600 секунд"
+                    );
+                  },
+                })}
+                placeholder="120"
+              />
+              <p className="text-xs text-neutral-500">
+                Пусто = 120. Пауза без данных от провайдера = обрыв соединения
+              </p>
+              {fieldError(errors.chunkTimeoutSec?.message)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="llm-ctxbudget">Бюджет контекста, байт</Label>
+              <Input
+                id="llm-ctxbudget"
+                type="number"
+                min="20000"
+                max="2000000"
+                {...register("runContextBudgetBytes", {
+                  validate: (v) => {
+                    if (v.trim() === "") return true;
+                    const n = parseNum(v);
+                    return (
+                      (!isNaN(n) && n >= 20000 && n <= 2000000) ||
+                      "Бюджет контекста — число от 20000 до 2000000 байт"
+                    );
+                  },
+                })}
+                placeholder="120000"
+              />
+              <p className="text-xs text-neutral-500">
+                Пусто = 120000. Суммарный объём результатов инструментов за
+                один ответ
+              </p>
+              {fieldError(errors.runContextBudgetBytes?.message)}
+            </div>
           </div>
 
           {testResult && (
