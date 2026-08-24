@@ -8,6 +8,7 @@ import {
   type ToolCallInfo,
 } from "@/lib/ai/orchestrator";
 import { processLocalQuery } from "@/lib/ai/local-query";
+import { toolLabel } from "@/lib/ai/tool-labels";
 
 // Binds ONLY on Vercel (locally there is no platform limit; runChat clamps
 // the loop budget under it only when process.env.VERCEL is set). Next reads
@@ -309,7 +310,7 @@ async function saveConversation(params: {
 
 /** Honest note appended to an aborted turn, listing what did get collected. */
 function buildAbortNote(partial: PartialRun): string {
-  const collected = [...new Set(partial.toolNames)];
+  const collected = [...new Set(partial.toolNames)].map(toolLabel);
   const lines = [
     `\n\n---\n⏱ **Ответ не доведён до конца** — превышен лимит времени` +
       (partial.steps > 0 ? ` после ${partial.steps} шаг(ов)` : ""),

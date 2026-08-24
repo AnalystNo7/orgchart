@@ -2,6 +2,7 @@ import { streamText, stepCountIs } from "ai";
 import { getLlm } from "./provider";
 import { buildTools, createToolRunStats, type ToolRunStats } from "./tools";
 import { getSystemPrompt } from "./system-prompt";
+import { createToolNameFilter } from "./tool-labels";
 import {
   AI_CHUNK_TIMEOUT_MS,
   AI_RUN_CONTEXT_BUDGET_BYTES,
@@ -255,12 +256,23 @@ export async function runChat(
 
       // Drive the stream: deltas reach the user the moment the model emits them,
       // and whatever is on screen at an abort is exactly what partialText holds.
+      // The filter rewrites internal tool names into Russian labels — a name
+      // may be split across delta boundaries, hence push/flush.
+      const nameFilter = createToolNameFilter();
       for await (const delta of result.textStream) {
         if (delta) {
           lastActivityAt = Date.now();
-          partialText += delta;
-          callbacks.onText(delta);
+          const out = nameFilter.push(delta);
+          if (out) {
+            partialText += out;
+            callbacks.onText(out);
+          }
         }
+      }
+      const filterRest = nameFilter.flush();
+      if (filterRest) {
+        partialText += filterRest;
+        callbacks.onText(filterRest);
       }
 
       const finishReason = await result.finishReason;
