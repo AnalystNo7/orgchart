@@ -405,6 +405,21 @@ async function compareScenarios(
   );
 }
 
+/**
+ * «Название (из: Родитель)» — производный сценарий обязан называть базу:
+ * имя задаёт LLM свободным текстом и само по себе связи не несёт.
+ * Каскад «(из: (из: …))» при клоне клона не наращиваем.
+ */
+function buildDerivedScenarioName(newName: string, parentName: string): string {
+  const parentBase = parentName.split(" (из:")[0].trim();
+  // Уже есть любая отсылка «(из: …)» или упоминание базы — не дублируем.
+  if (newName.includes("(из:")) return newName;
+  if (newName.toLowerCase().includes(parentBase.toLowerCase())) return newName;
+  const truncated =
+    parentBase.length > 40 ? parentBase.slice(0, 39) + "…" : parentBase;
+  return `${newName} (из: ${truncated})`;
+}
+
 async function cloneScenario(
   scenarioId: string,
   newName: string
@@ -420,7 +435,7 @@ async function cloneScenario(
 
   const newScenario = await prisma.scenario.create({
     data: {
-      name: newName,
+      name: buildDerivedScenarioName(newName, original.name),
       description: `Клон сценария «${original.name}»`,
       status: "DRAFT",
       createdFromId: scenarioId,
@@ -753,6 +768,9 @@ async function listScenarios(): Promise<string> {
       name: true,
       status: true,
       isBaseline: true,
+      // The parent link: lets the model see what a derived scenario is based
+      // on even when its name lacks the reference (pre-existing scenarios).
+      createdFrom: { select: { name: true } },
       _count: { select: { departments: true, employees: true } },
     },
     orderBy: { createdAt: "desc" },

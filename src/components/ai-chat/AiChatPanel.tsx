@@ -15,6 +15,7 @@ interface ScenarioItem {
   name: string;
   isBaseline: boolean;
   status: string;
+  createdFrom: { id: string; name: string } | null;
 }
 
 const statusDotColor: Record<string, string> = {
@@ -82,6 +83,13 @@ function ScenarioBadge({
               <span className="flex-1 truncate">
                 {s.isBaseline ? "\u2605 " : ""}
                 {s.name}
+                {/* Pre-existing derived scenarios lack the reference in the
+                    name; new clones carry it, so skip to avoid duplication. */}
+                {s.createdFrom && !s.name.includes("(из:") && (
+                  <span className="block truncate text-xs text-neutral-400">
+                    из: {s.createdFrom.name}
+                  </span>
+                )}
               </span>
               {s.id === scenarioId && (
                 <Check className="h-3.5 w-3.5 text-purple-600" />
