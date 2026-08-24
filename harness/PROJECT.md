@@ -51,7 +51,9 @@ docs/
   IMPLEMENTATION-STATUS.md  # статус: «8 спринтов завершены»
   LIMITATIONS.md            # известные ограничения (P&L не учитывает дженерики/вакансии)
   1_1.xlsx                  # демо-выгрузка оргданных для импорта (бинарь, ~2 МБ)
-harness/               # эта карта, DECISIONS.md, LESSONS.md, templates/{BRIEF,PLAN}.md
+harness/               # эта карта, DECISIONS.md, LESSONS.md, REQUIREMENTS.md (реестр требований
+                       #   по Вигерсу; обновляется только по команде «обнови требования»),
+                       #   templates/{BRIEF,PLAN,REQUIREMENTS}.md
 tasks/                 # рабочие папки задач (tasks/<задача>/BRIEF.md, PLAN.md)
 ```
 
