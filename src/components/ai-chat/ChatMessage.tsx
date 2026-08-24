@@ -54,22 +54,22 @@ function parseSourceMarkers(text: string): SourceRef[] {
 }
 
 /**
- * Replace source markers in markdown with styled inline badges
+ * Убрать маркеры источников из текста ответа.
+ *
+ * Сами источники показываются списком в подвале сообщения (parseSourceMarkers),
+ * а внутри текста они только мешают читать анализ. Чистка идёт на уровне
+ * отображения, поэтому ранее сохранённые диалоги тоже открываются чистыми.
  */
-function replaceMarkersWithBadges(text: string): string {
-  return text.replace(
-    /【(OSINT|KB|LLM)(?::?\s*([^】]*))?】/g,
-    (_match, type: string, detail?: string) => {
-      const label = detail?.trim() || type;
-      // Use HTML spans that ReactMarkdown will pass through
-      if (type === "OSINT") {
-        return `<source-badge data-type="OSINT" data-label="${label}"></source-badge>`;
-      } else if (type === "KB") {
-        return `<source-badge data-type="KB" data-label="${label}"></source-badge>`;
-      } else {
-        return `<source-badge data-type="LLM" data-label="${label}"></source-badge>`;
-      }
-    }
+function stripSourceMarkers(text: string): string {
+  return (
+    text
+      .replace(/【(?:OSINT|KB|LLM)(?::?\s*[^】]*)?】/g, "")
+      // Маркер обычно стоит перед знаком препинания или в конце строки —
+      // после удаления остаётся висячий пробел.
+      .replace(/[ \t]+([.,;:!?)»])/g, "$1")
+      .replace(/([(«])[ \t]+/g, "$1")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/[ \t]+$/gm, "")
   );
 }
 
@@ -89,7 +89,7 @@ export function ChatMessage({ message }: { message: AiMessage }) {
   const isUser = message.role === "user";
   const sources = !isUser ? parseSourceMarkers(message.content) : [];
   const processedContent = !isUser
-    ? replaceMarkersWithBadges(message.content)
+    ? stripSourceMarkers(message.content)
     : message.content;
 
   return (
@@ -122,18 +122,7 @@ export function ChatMessage({ message }: { message: AiMessage }) {
           </div>
         )}
         <div className="prose prose-sm max-w-none prose-headings:text-sm prose-headings:font-semibold prose-p:my-1 prose-ul:my-1 prose-li:my-0">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              // Render source-badge custom elements
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              ...({ "source-badge": ({ node, ...props }: any) => {
-                const type = props["data-type"] || node?.properties?.dataType || "LLM";
-                const label = props["data-label"] || node?.properties?.dataLabel || type;
-                return <SourceBadge type={type} label={label} />;
-              }} as any),
-            }}
-          >
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {processedContent}
           </ReactMarkdown>
         </div>

@@ -38,13 +38,13 @@ export function getBenchmarks(query: BenchmarkQuery): AnyBenchmark[] {
 export function listAvailableMetrics(): Array<{ category: BenchmarkCategory; metric: string; description: string }> {
   return [
     { category: "org_design", metric: "span_of_control", description: "Норма управляемости (подчинённых на руководителя)" },
-    { category: "org_design", metric: "overhead_ratio", description: "Доля АУП от общего FTE (%)" },
+    { category: "org_design", metric: "overhead_ratio", description: "Доля административно-управленческого персонала (АУП) от общего FTE, %" },
     { category: "org_design", metric: "hierarchy_depth", description: "Глубина иерархии (уровней)" },
     { category: "org_design", metric: "revenue_dept_share", description: "Доля FTE в зарабатывающих подразделениях (%)" },
     { category: "org_design", metric: "manager_to_staff", description: "Соотношение руководителей к сотрудникам" },
     { category: "financial", metric: "revenue_per_fte", description: "Выручка на 1 FTE (руб/год)" },
     { category: "financial", metric: "gross_margin", description: "Валовая маржинальность (%)" },
-    { category: "financial", metric: "utilization_rate", description: "Утилизация ПП (%)" },
+    { category: "financial", metric: "utilization_rate", description: "Утилизация производственного персонала (ПП), %" },
     { category: "financial", metric: "cost_per_employee", description: "Полная стоимость сотрудника (руб/год)" },
     { category: "financial", metric: "sga_ratio", description: "Доля SGA от выручки (%)" },
     { category: "financial", metric: "ebitda_margin", description: "EBITDA маржинальность (%)" },

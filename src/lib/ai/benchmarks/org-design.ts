@@ -71,7 +71,7 @@ export const orgDesignBenchmarks: OrgDesignBenchmark[] = [
     min: 15, max: 25, optimal: 20,
     unit: "%",
     source: "Deloitte HC Trends",
-    description: "Доля АУП от общего FTE для средних IT-компаний",
+    description: "Доля административно-управленческого персонала (АУП) от общего FTE для средних IT-компаний",
   },
   {
     metric: "overhead_ratio",
@@ -147,7 +147,7 @@ export const orgDesignBenchmarks: OrgDesignBenchmark[] = [
     min: 45, max: 65, optimal: 55,
     unit: "% FTE",
     source: "Deloitte HC Trends",
-    description: "Крупные интеграторы увеличивают долю ПП за счёт масштаба",
+    description: "Крупные интеграторы увеличивают долю производственного персонала (ПП) за счёт масштаба",
   },
 
   // Manager-to-staff ratio

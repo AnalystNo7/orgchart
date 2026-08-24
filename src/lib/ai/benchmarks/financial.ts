@@ -82,7 +82,7 @@ export const financialBenchmarks: FinancialBenchmark[] = [
     min: 65, max: 85, optimal: 75,
     unit: "%",
     source: "Gartner IT Key Metrics",
-    description: "Процент оплачиваемого времени ПП от общего рабочего времени",
+    description: "Процент оплачиваемого времени производственного персонала (ПП) от общего рабочего времени",
   },
   {
     metric: "utilization_rate",
