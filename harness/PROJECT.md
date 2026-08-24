@@ -54,6 +54,10 @@ docs/
 harness/               # эта карта, DECISIONS.md, LESSONS.md, REQUIREMENTS.md (реестр требований
                        #   по Вигерсу; обновляется только по команде «обнови требования»),
                        #   templates/{BRIEF,PLAN,REQUIREMENTS}.md
+scripts/
+  requirements-docx/   # сборка harness/REQUIREMENTS.md в .docx по корпоративному образцу:
+                       #   build.mjs (без зависимостей) + template/ (донор оформления:
+                       #   стили, нумерация, 3 колонтитула, тема). Готовый .docx в git не хранится
 tasks/                 # рабочие папки задач (tasks/<задача>/BRIEF.md, PLAN.md)
 ```
 
