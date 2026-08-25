@@ -19,7 +19,9 @@ OHI-индекс, AI-ассистент с 33 инструментами и RAG-
 - **AI**: Vercel AI SDK (`ai` ^6) + `@ai-sdk/anthropic|openai|google` — мультипровайдер: активный пресет из БД (`LlmSetting`, /admin/llm) или env-fallback `AI_PROVIDER`/`AI_MODEL` (дефолт anthropic / claude-sonnet-4); RAG-эмбеддинги — **Voyage AI** `voyage-3` (1024 dim, raw fetch, `VOYAGE_API_KEY`)
 - UI: **Tailwind 4** + shadcn/ui (Radix, lucide), **@xyflow/react 12** + **dagre** (граф-канвасы), **zustand 5**, **@tanstack/react-table 8**, **react-hook-form 7** + **zod 4**, react-markdown
 - Файлы: **xlsx** (импорт/экспорт Excel), **pdf-parse** / **mammoth** (PDF/DOCX для базы знаний; `serverExternalPackages`)
-- Инфраструктура: Docker multi-stage (node:20-alpine, CMD = `prisma migrate deploy && node server.js`), `docker-compose.yml` (Dokploy) + `docker-compose.prod.yml` (Traefik/letsencrypt)
+- Инфраструктура: Docker multi-stage (node:20-alpine, CMD = `prisma migrate deploy && node server.js`), `.dockerignore` режет контекст; `docker-compose.yml` (локально) + `docker-compose.prod.yml` (прод: healthcheck БД и приложения, `depends_on: service_healthy`, порт `${APP_PORT:-3001}:3000`; блок Traefik/letsencrypt закомментирован — включается при переходе на домен)
+- Прод-стенд: Dokploy на **109.68.215.148**, приложение — `http://109.68.215.148:3001` (HTTP без TLS, решение заказчика), ветка деплоя **dev-mvp4**, Compose Path `./docker-compose.prod.yml`, БД в том же compose (volume `pgdata`). Проба готовности — `GET /api/health` (открыта в middleware). Порядок и подводные камни — `docs/DEPLOY-GUIDE.md`
+- Шрифты — локальные woff2 в `public/fonts` (Inter + PT Sans Narrow, latin+cyrillic), подключены через `@font-face` в `globals.css`: сборке не нужен доступ к Google Fonts
 
 ## Структура
 ```
@@ -100,7 +102,7 @@ npm run dev                        # http://localhost:3000
 npm run lint                       # eslint (flat config)
 npx tsc --noEmit                   # ручная проверка типов — билд её НЕ делает (ignoreBuildErrors)
 
-docker compose up --build          # полный стек; порт ${APP_PORT:-3001}; prod-вариант — docker-compose.prod.yml (Traefik)
+docker compose up --build          # полный стек; порт ${APP_PORT:-3001}; прод — docker-compose.prod.yml
 ```
 Тестов нет: 0 файлов `*.test/*.spec`, нет тест-раннера, нет скрипта `test`.
 

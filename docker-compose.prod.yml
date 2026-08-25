@@ -4,36 +4,63 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: orgchart
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-orgchart}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD обязателен}
       POSTGRES_DB: orgchart
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orgchart -d orgchart"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     networks:
       - dokploy-network
 
   app:
     build: .
     restart: unless-stopped
+    # Приложение публикуется напрямую по IP сервера: http://<IP>:${APP_PORT}
+    # 3000 на хосте занят панелью Dokploy, поэтому наружу по умолчанию 3001.
+    ports:
+      - "${APP_PORT:-3001}:3000"
     environment:
-      DATABASE_URL: "postgresql://orgchart:${DB_PASSWORD:-orgchart}@db:5432/orgchart"
-      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET}"
-      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
+      DATABASE_URL: "postgresql://orgchart:${DB_PASSWORD}@db:5432/orgchart"
+      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET:?NEXTAUTH_SECRET обязателен}"
+      # Должен точно совпадать с адресом, по которому открывают приложение,
+      # включая порт: http://109.68.215.148:3001
+      NEXTAUTH_URL: "${NEXTAUTH_URL:?NEXTAUTH_URL обязателен}"
+      # Ключи LLM: основной путь — пресет в /admin/settings/llm (хранится в БД).
+      # Переменные ниже работают как запасной вариант, если пресета нет.
       AI_PROVIDER: "${AI_PROVIDER:-anthropic}"
       AI_MODEL: "${AI_MODEL:-claude-sonnet-4-20250514}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       GOOGLE_GENERATIVE_AI_API_KEY: "${GOOGLE_GENERATIVE_AI_API_KEY:-}"
+      # Нужен только базе знаний (эмбеддинги Voyage AI)
       VOYAGE_API_KEY: "${VOYAGE_API_KEY:-}"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     networks:
       - dokploy-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.orgchart.rule=Host(`${APP_DOMAIN:-localhost}`)"
-      - "traefik.http.routers.orgchart.entrypoints=websecure"
-      - "traefik.http.routers.orgchart.tls.certresolver=letsencrypt"
-      - "traefik.http.services.orgchart.loadbalancer.server.port=3000"
+
+    # --- Переход на домен с HTTPS ---
+    # Когда появится домен: направить на сервер A-запись, раскомментировать блок
+    # ниже, задать APP_DOMAIN в Environment, поменять NEXTAUTH_URL на https://<домен>
+    # и убрать секцию ports выше (иначе приложение останется доступно и по IP без TLS).
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.orgchart.rule=Host(`${APP_DOMAIN}`)"
+    #   - "traefik.http.routers.orgchart.entrypoints=websecure"
+    #   - "traefik.http.routers.orgchart.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.orgchart.loadbalancer.server.port=3000"
 
 volumes:
   pgdata:

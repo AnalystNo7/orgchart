@@ -12,9 +12,10 @@ export const config = {
      * Match all routes except:
      * - /login
      * - /api/auth (next-auth endpoints)
+     * - /api/health (проба готовности для healthcheck и мониторинга)
      * - /_next (Next.js internals)
      * - /favicon.ico, /icons, etc.
      */
-    "/((?!login|api/auth|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|api/auth|api/health|_next/static|_next/image|favicon.ico).*)",
   ],
 };

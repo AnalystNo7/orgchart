@@ -1,0 +1,20 @@
+# Сборочный контекст: всё лишнее сюда не уезжает
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+npm-debug.log*
+*.log
+
+# Рабочие материалы, в образе не нужны
+tasks
+harness
+docs
+scripts
+README.md
+CLAUDE.md
+docker-compose*.yml
+Dockerfile
+.dockerignore

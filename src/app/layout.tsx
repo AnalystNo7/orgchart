@@ -1,21 +1,6 @@
 import type { Metadata } from "next";
-import { Inter, PT_Sans_Narrow } from "next/font/google";
 import "./globals.css";
 import { ClientLayout } from "./client-layout";
-
-const inter = Inter({
-  subsets: ["latin", "cyrillic"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const ptSansNarrow = PT_Sans_Narrow({
-  subsets: ["latin", "cyrillic"],
-  weight: ["400", "700"],
-  variable: "--font-pt-sans-narrow",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "OrgChart Modeler",
@@ -28,7 +13,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`${inter.variable} ${ptSansNarrow.variable}`} suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning>
+      <head>
+        {/* Шрифты — локальные файлы из public/fonts (@font-face в globals.css),
+            чтобы сборка не зависела от доступа к Google Fonts.
+            Предзагружаем подмножества, нужные на первом экране. */}
+        <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/inter-cyrillic.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/ptsansnarrow-700-cyrillic.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+      </head>
       <body className="antialiased" suppressHydrationWarning>
         <ClientLayout>{children}</ClientLayout>
       </body>
