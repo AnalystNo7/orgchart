@@ -325,7 +325,7 @@ export default function GapAnalysisPage() {
           <button
             onClick={runComparison}
             disabled={!asIsId || !toBeId || generating}
-            className="inline-flex items-center gap-1.5 rounded-md border border-purple-300 bg-white px-4 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-50 disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-400"
+            className="inline-flex items-center gap-1.5 rounded-md border border-ai/40 bg-white px-4 py-1.5 text-sm font-medium text-ai hover:bg-ai-bg disabled:border-line-strong disabled:bg-ink-50 disabled:text-ink-400"
           >
             <Search className="h-4 w-4" />
             Сравнить
@@ -338,7 +338,7 @@ export default function GapAnalysisPage() {
             <button
               onClick={generateGapPassports}
               disabled={!asIsId || !toBeId || generating}
-              className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:bg-neutral-300"
+              className="inline-flex items-center gap-1.5 rounded-md bg-ai px-4 py-1.5 text-sm font-medium text-white hover:bg-ai-600 disabled:bg-ink-300"
             >
               <Sparkles className="h-4 w-4" />
               Создать паспорта разрывов
@@ -347,7 +347,7 @@ export default function GapAnalysisPage() {
             <>
               <button
                 disabled
-                className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-1.5 text-sm font-medium text-white"
+                className="inline-flex items-center gap-1.5 rounded-md bg-ai px-4 py-1.5 text-sm font-medium text-white"
               >
                 <Loader2 className="h-4 w-4 animate-spin" />
                 AI генерирует паспорта...

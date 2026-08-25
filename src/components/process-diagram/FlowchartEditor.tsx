@@ -286,8 +286,8 @@ export function FlowchartEditor({ processId, diagramId, onDiagramCreated }: Flow
             <button onClick={() => addNode("decision")} className="rounded px-2 py-1 text-xs font-medium hover:bg-amber-50 text-amber-700" title="Условие">
               <span className="inline-block h-3 w-3 rotate-45 bg-amber-500 mr-1" />Decision
             </button>
-            <button onClick={() => addNode("event")} className="rounded px-2 py-1 text-xs font-medium hover:bg-purple-50 text-purple-700" title="Событие">
-              <span className="inline-block h-3 w-3 rounded-full border-2 border-purple-500 mr-1" />Event
+            <button onClick={() => addNode("event")} className="rounded px-2 py-1 text-xs font-medium hover:bg-sky-soft text-brand-800" title="Событие">
+              <span className="inline-block h-3 w-3 rounded-full border-2 border-brand-800 mr-1" />Event
             </button>
             <button onClick={() => addNode("end")} className="rounded px-2 py-1 text-xs font-medium hover:bg-red-50 text-red-700" title="Конец">
               <span className="inline-block h-3 w-3 rounded-full bg-red-500 mr-1" />End

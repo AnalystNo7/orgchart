@@ -72,7 +72,7 @@ const STAGE_LABELS: Record<string, string> = {
 const STAGE_COLORS: Record<string, string> = {
   LEAD: "bg-neutral-100 text-neutral-600",
   QUALIFICATION: "bg-blue-100 text-blue-700",
-  PROPOSAL: "bg-purple-100 text-purple-700",
+  PROPOSAL: "bg-sky-soft text-brand-800",
   NEGOTIATION: "bg-amber-100 text-amber-700",
   WON: "bg-green-100 text-green-700",
   LOST: "bg-red-100 text-red-700",

@@ -49,7 +49,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_COLORS: Record<string, string> = {
   HARD: "bg-blue-100 text-blue-700",
   SOFT: "bg-green-100 text-green-700",
-  LEADERSHIP: "bg-purple-100 text-purple-700",
+  LEADERSHIP: "bg-[#FFE7D8] text-accent-orange-700",
 };
 
 const LEVEL_COLORS: Record<number, string> = {

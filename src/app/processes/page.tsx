@@ -41,7 +41,7 @@ const LEVEL_LABELS: Record<string, string> = {
 };
 
 const LEVEL_COLORS: Record<string, string> = {
-  MACRO: "bg-purple-100 text-purple-700",
+  MACRO: "bg-[#FFE7D8] text-accent-orange-700",
   PROCESS: "bg-blue-100 text-blue-700",
   SUBPROCESS: "bg-neutral-100 text-neutral-600",
 };

@@ -23,7 +23,7 @@ const PHASE_CONFIG: Record<
   connecting: {
     label: "Подключение к AI...",
     icon: Plug,
-    color: "text-neutral-500",
+    color: "text-ink-500",
   },
   llm_thinking: {
     label: "AI обрабатывает запрос...",
@@ -43,7 +43,7 @@ const PHASE_CONFIG: Record<
   llm_analyzing: {
     label: "AI анализирует результаты...",
     icon: BarChart3,
-    color: "text-indigo-600",
+    color: "text-ai",
   },
   streaming: {
     label: "Генерация ответа...",
@@ -53,7 +53,7 @@ const PHASE_CONFIG: Record<
   local_search: {
     label: "Локальный поиск (без LLM)...",
     icon: BarChart3,
-    color: "text-blue-600",
+    color: "text-brand",
   },
   retry_wait: {
     label: "Провайдер занят — жду свободный слот...",

@@ -271,7 +271,7 @@ export default function FinancePage() {
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
                 title="Скачать .md"
               >
-                <BrainCircuit className="h-4 w-4 text-purple-600" />
+                <BrainCircuit className="h-4 w-4 text-ai" />
                 Экспорт для AI-анализа
               </button>
             </div>
@@ -285,7 +285,7 @@ export default function FinancePage() {
             <KpiCard icon={<TrendingUp className="h-5 w-5 text-green-600" />} label="Выручка" value={fmt(s.totalRevenue)} />
             <KpiCard icon={<TrendingDown className="h-5 w-5 text-red-600" />} label="Затраты" value={fmt(s.totalCost)} />
             <KpiCard icon={<span className="text-blue-600 font-bold text-lg">₽</span>} label="P&L" value={fmt(s.totalPnl)} sub={`Маржа ${s.margin}%`} positive={s.totalPnl >= 0} />
-            <KpiCard icon={<Users className="h-5 w-5 text-purple-600" />} label="Утилизация ПП" value={`${s.utilization}%`} sub={`${s.ppUtilized}/${s.ppTotal} ПП`} />
+            <KpiCard icon={<Users className="h-5 w-5 text-brand-800" />} label="Утилизация ПП" value={`${s.utilization}%`} sub={`${s.ppUtilized}/${s.ppTotal} ПП`} />
           </div>
 
           {/* Unit economics */}

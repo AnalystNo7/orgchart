@@ -245,7 +245,7 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3 text-neutral-600">{user.email}</td>
                 <td className="px-4 py-3">
                   {user.isAdmin ? (
-                    <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-[#FFE7D8] text-accent-orange-700">
                       Админ
                     </span>
                   ) : (

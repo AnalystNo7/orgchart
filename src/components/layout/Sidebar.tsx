@@ -138,7 +138,7 @@ export function Sidebar() {
             itemBase,
             collapsed && "justify-center px-0 py-2.5",
             isAiOpen
-              ? "bg-white text-[var(--ai-purple)]"
+              ? "bg-white text-ai"
               : "text-white/[0.88] hover:bg-white/10 hover:text-white"
           )}
         >

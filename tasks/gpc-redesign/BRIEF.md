@@ -34,8 +34,8 @@ README со спецификацией, tokens/shell/components/pages.css, JSX-�
 - [ ] Примитивы (button, input, select, table, badge, dialog, tabs, checkbox, switch,
       tooltip, dropdown/context-menu, separator, scroll-area) используют токены,
       литералов neutral-* в них не остаётся
-- [ ] Фиолетовый AI-акцент выведен в переменные --ai-purple / --ai-purple-bg
-      и используется из одного места
+- [ ] Акцент AI-ассистента — голубой (--ai / --ai-bright / --ai-bg), задаётся
+      из одного места; фиолетового и indigo в src/ не осталось (grep пуст)
 - [ ] На дашборде цвета блоков подразделений визуально идентичны прежним
 - [ ] `npx tsc --noEmit` — не больше 14 pre-existing ошибок; `npm run lint` чистый
 

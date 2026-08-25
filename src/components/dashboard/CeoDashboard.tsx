@@ -274,7 +274,7 @@ export function CeoDashboard() {
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
         <SummaryCard icon={<Users className="h-5 w-5 text-blue-600" />} label="Сотрудники" value={data.summary.employees} sub={`${data.summary.totalFte} FTE`} />
-        <SummaryCard icon={<Building2 className="h-5 w-5 text-purple-600" />} label="Подразделения" value={data.summary.departments} />
+        <SummaryCard icon={<Building2 className="h-5 w-5 text-brand-800" />} label="Подразделения" value={data.summary.departments} />
         <SummaryCard icon={<Network className="h-5 w-5 text-orange-600" />} label="Процессы" value={data.summary.processes} />
         <SummaryCard icon={<Target className="h-5 w-5 text-green-600" />} label="Цели" value={data.summary.goals} />
       </div>

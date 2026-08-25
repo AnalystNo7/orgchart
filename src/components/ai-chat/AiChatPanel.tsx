@@ -492,7 +492,7 @@ export function AiChatPanel() {
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || isStreaming}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ai text-white transition-colors hover:bg-[var(--ai-purple-600)] disabled:bg-ink-200 disabled:text-ink-400"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ai text-white transition-colors hover:bg-ai-600 disabled:bg-ink-200 disabled:text-ink-400"
             >
               <Send className="h-4 w-4" />
             </button>

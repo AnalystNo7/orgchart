@@ -68,8 +68,8 @@ interface EmployeeOption {
 const PERSPECTIVES: { type: GoalType; label: string; color: string; bgColor: string; icon: string }[] = [
   { type: "BSC_FINANCIAL", label: "Финансы", color: "text-green-700", bgColor: "bg-green-50 border-green-200", icon: "💰" },
   { type: "BSC_CLIENT", label: "Клиенты", color: "text-blue-700", bgColor: "bg-blue-50 border-blue-200", icon: "👥" },
-  { type: "BSC_PROCESS", label: "Процессы", color: "text-orange-700", bgColor: "bg-orange-50 border-orange-200", icon: "⚙️" },
-  { type: "BSC_LEARNING", label: "Обучение и рост", color: "text-purple-700", bgColor: "bg-purple-50 border-purple-200", icon: "📚" },
+  { type: "BSC_PROCESS", label: "Процессы", color: "text-accent-orange-700", bgColor: "bg-[#FFE7D8] border-[#FFCFAA]", icon: "⚙️" },
+  { type: "BSC_LEARNING", label: "Обучение и рост", color: "text-[#B7780A]", bgColor: "bg-warn-bg border-[#F2DFAE]", icon: "📚" },
 ];
 
 const TYPE_LABELS: Record<string, string> = {
@@ -83,9 +83,9 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   BSC_FINANCIAL: "bg-green-100 text-green-700",
   BSC_CLIENT: "bg-blue-100 text-blue-700",
-  BSC_PROCESS: "bg-orange-100 text-orange-700",
-  BSC_LEARNING: "bg-purple-100 text-purple-700",
-  OKR: "bg-indigo-100 text-indigo-700",
+  BSC_PROCESS: "bg-[#FFE7D8] text-accent-orange-700",
+  BSC_LEARNING: "bg-warn-bg text-[#B7780A]",
+  OKR: "bg-ink-100 text-ink-600",
 };
 
 const STATUS_LABELS: Record<string, string> = {

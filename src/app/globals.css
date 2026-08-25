@@ -48,10 +48,11 @@
   --info: #0079C2;
   --info-bg: #D7F0FA;
 
-  /* AI-ассистент — отдельная семантика «ИИ» рядом с брендовыми синим и оранжевым */
-  --ai-purple: #5A2EBA;
-  --ai-purple-600: #4A25A0;
-  --ai-purple-bg: #EEE6FB;
+  /* AI-ассистент — голубая ветвь фирменной палитры (отдельная семантика «ИИ») */
+  --ai: #0A76AD;          /* текст, кнопки, границы — контраст 4.99 на белом */
+  --ai-600: #085E8A;      /* hover */
+  --ai-bright: #27AFF5;   /* = --gpc-cyan: яркая заливка, иконки, точки-акценты */
+  --ai-bg: #E4F6FE;       /* фон пилюль и мягких плашек */
 
   /* Page */
   --background: #FFFFFF;
@@ -130,8 +131,10 @@
   --color-warn-bg: var(--warn-bg);
   --color-err: var(--err);
   --color-err-bg: var(--err-bg);
-  --color-ai: var(--ai-purple);
-  --color-ai-bg: var(--ai-purple-bg);
+  --color-ai: var(--ai);
+  --color-ai-600: var(--ai-600);
+  --color-ai-bright: var(--ai-bright);
+  --color-ai-bg: var(--ai-bg);
 
   --radius-xs: var(--r-xs);
   --radius-sm: var(--r-sm);

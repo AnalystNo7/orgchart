@@ -49,10 +49,10 @@ export function DecisionNode({ data }: NodeProps) {
 
 export function EventNode({ data }: NodeProps) {
   return (
-    <div className="flex h-10 w-24 items-center justify-center rounded-full border-2 border-purple-400 bg-purple-50">
-      <Handle type="target" position={Position.Top} className="!bg-purple-500" />
+    <div className="flex h-10 w-24 items-center justify-center rounded-full border-2 border-brand-800 bg-sky-soft">
+      <Handle type="target" position={Position.Top} className="!bg-brand-800" />
       <NodeLabel label={(data as { label: string }).label} />
-      <Handle type="source" position={Position.Bottom} className="!bg-purple-500" />
+      <Handle type="source" position={Position.Bottom} className="!bg-brand-800" />
     </div>
   );
 }

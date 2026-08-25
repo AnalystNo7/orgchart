@@ -53,7 +53,7 @@ interface DeptOption {
 
 const LEVEL_LABELS: Record<string, string> = { MACRO: "Макропроцесс", PROCESS: "Процесс", SUBPROCESS: "Подпроцесс" };
 const STATUS_LABELS: Record<string, string> = { ACTIVE: "Активный", PLANNED: "Планируемый", DEPRECATED: "Устаревший" };
-const LEVEL_COLORS: Record<string, string> = { MACRO: "bg-purple-100 text-purple-700", PROCESS: "bg-blue-100 text-blue-700", SUBPROCESS: "bg-neutral-100 text-neutral-600" };
+const LEVEL_COLORS: Record<string, string> = { MACRO: "bg-[#FFE7D8] text-accent-orange-700", PROCESS: "bg-blue-100 text-blue-700", SUBPROCESS: "bg-neutral-100 text-neutral-600" };
 const STATUS_COLORS: Record<string, string> = { ACTIVE: "bg-green-100 text-green-700", PLANNED: "bg-amber-100 text-amber-700", DEPRECATED: "bg-red-100 text-red-700" };
 
 type TabId = "info" | "raci" | "diagram";

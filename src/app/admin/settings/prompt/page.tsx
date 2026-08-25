@@ -115,7 +115,7 @@ export default function AdminPromptPage() {
             onChange={(e) => setText(e.target.value)}
             spellCheck={false}
             rows={22}
-            className="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-300"
+            className="w-full resize-y rounded-md border border-line-strong bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-ai focus:outline-none focus:ring-[3px] focus:ring-ai/20"
           />
 
           <p className="text-xs text-neutral-500">
