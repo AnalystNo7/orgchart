@@ -62,8 +62,11 @@ export async function runChat(
   scenarioName: string,
   callbacks: StreamCallbacks,
 ): Promise<void> {
-  const { prompt: systemPrompt, isCustom: promptIsCustom } =
-    await getSystemPrompt(scenarioName);
+  const {
+    prompt: systemPrompt,
+    isCustom: promptIsCustom,
+    kbDocs,
+  } = await getSystemPrompt(scenarioName);
   const allToolCalls: ToolCallInfo[] = [];
 
   const onToolProgress = (toolName: string, step: string) => {
@@ -117,7 +120,8 @@ export async function runChat(
       ` · tool-cap ${settings.toolResultMaxBytes ?? "по умолчанию"}` +
       ` · шагов ≤${maxSteps} · контекст ≤${contextBudgetBytes}B` +
       ` · инструментов ${Object.keys(tools).length}` +
-      ` · промпт ${promptIsCustom ? "изменён" : "стандартный"}`,
+      ` · промпт ${promptIsCustom ? "изменён" : "стандартный"}` +
+      ` · документы БЗ: ${kbDocs.count > 0 ? `${kbDocs.count} (${(kbDocs.bytes / 1024).toFixed(1)} КБ)` : "нет"}`,
   );
 
   // Step timing: the gaps between steps are the model's own latency, which

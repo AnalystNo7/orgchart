@@ -14,13 +14,21 @@ export async function GET() {
       category: true,
       origin: true,
       sourceFile: true,
+      includeInPrompt: true,
+      content: true,
       createdAt: true,
       _count: { select: { chunks: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ documents });
+  // Полный текст в списке не нужен — только его вес для счётчика бюджета.
+  return NextResponse.json({
+    documents: documents.map(({ content, ...doc }) => ({
+      ...doc,
+      contentBytes: Buffer.byteLength(content, "utf8"),
+    })),
+  });
 }
 
 // POST — upload and ingest a document

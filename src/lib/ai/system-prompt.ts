@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { AI_KB_PROMPT_BUDGET_BYTES } from "./limits";
 
 /**
  * The system prompt has two halves with different owners.
@@ -147,24 +148,49 @@ export function buildTechnicalPrompt(): string {
 явно оговорив их неполноту.`;
 }
 
-/**
- * Assemble the full prompt from a methodology text (custom or default)
- * plus the fixed technical half.
- */
-export function buildSystemPrompt(
-  scenarioName?: string,
-  customMethodology?: string | null
-): string {
-  const methodology = (customMethodology ?? DEFAULT_METHODOLOGY_PROMPT)
-    .split(SCENARIO_NAME_PLACEHOLDER)
-    .join(scenarioName || "не выбран");
-  return `${methodology}\n\n${buildTechnicalPrompt()}`;
-}
-
 export interface ResolvedSystemPrompt {
   prompt: string;
   /** true when the admin has overridden the methodology half. */
   isCustom: boolean;
+  /** Документы базы знаний, включённые флажком в промпт. */
+  kbDocs: { count: number; bytes: number };
+}
+
+/**
+ * Блок включённых документов. Не влезающий в бюджет документ пропускается
+ * ЦЕЛИКОМ (обрезка посередине дала бы модели пол-документа без предупреждения);
+ * заголовок блока сам инструктирует модель о маркерах 【KB: …】.
+ */
+function buildKbDocsBlock(
+  docs: Array<{ title: string; content: string }>
+): { block: string; count: number; bytes: number } {
+  if (docs.length === 0) return { block: "", count: 0, bytes: 0 };
+
+  const header =
+    "## Активные документы базы знаний\n" +
+    "Пользователь включил эти документы в контекст. Опирайся на них как на " +
+    "методику; при цитировании ставь маркер 【KB: Название документа】.\n";
+  const parts: string[] = [];
+  let bytes = Buffer.byteLength(header, "utf8");
+  let count = 0;
+
+  for (const doc of docs) {
+    const section = `\n### Документ: «${doc.title}»\n${doc.content.trim()}\n`;
+    const sectionBytes = Buffer.byteLength(section, "utf8");
+    if (bytes + sectionBytes > AI_KB_PROMPT_BUDGET_BYTES) {
+      console.warn(
+        `[AI_KB] документ «${doc.title}» пропущен: бюджет промпта исчерпан ` +
+          `(занято ${bytes} из ${AI_KB_PROMPT_BUDGET_BYTES} Б, документ ${sectionBytes} Б)`
+      );
+      continue;
+    }
+    parts.push(section);
+    bytes += sectionBytes;
+    count += 1;
+  }
+
+  if (count === 0) return { block: "", count: 0, bytes: 0 };
+  return { block: `${header}${parts.join("")}`, count, bytes };
 }
 
 /**
@@ -176,6 +202,7 @@ export async function getSystemPrompt(
   scenarioName?: string
 ): Promise<ResolvedSystemPrompt> {
   let custom: string | null = null;
+  let kbDocs: Array<{ title: string; content: string }> = [];
   try {
     const row = await prisma.aiPromptSetting.findFirst({
       orderBy: { updatedAt: "desc" },
@@ -189,8 +216,31 @@ export async function getSystemPrompt(
       e instanceof Error ? e.message : e
     );
   }
+  try {
+    kbDocs = await prisma.knowledgeDocument.findMany({
+      where: { includeInPrompt: true },
+      select: { title: true, content: true },
+      orderBy: { createdAt: "asc" },
+    });
+  } catch (e) {
+    console.warn(
+      "[getSystemPrompt] KB docs unavailable, prompt without documents:",
+      e instanceof Error ? e.message : e
+    );
+  }
+
+  const kb = buildKbDocsBlock(kbDocs);
+  const methodology = (custom ?? DEFAULT_METHODOLOGY_PROMPT)
+    .split(SCENARIO_NAME_PLACEHOLDER)
+    .join(scenarioName || "не выбран");
+  const prompt =
+    methodology +
+    (kb.block ? `\n\n${kb.block}` : "") +
+    `\n\n${buildTechnicalPrompt()}`;
+
   return {
-    prompt: buildSystemPrompt(scenarioName, custom),
+    prompt,
     isCustom: custom !== null,
+    kbDocs: { count: kb.count, bytes: kb.bytes },
   };
 }

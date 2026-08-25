@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookOpenCheck, Upload, Trash2, Loader2, FileText, Search } from "lucide-react";
+import { BookOpenCheck, Upload, Trash2, Loader2, FileText, Search, Eye } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface KnowledgeDoc {
   id: string;
@@ -9,9 +16,16 @@ interface KnowledgeDoc {
   category: string;
   origin: string;
   sourceFile: string | null;
+  includeInPrompt: boolean;
+  contentBytes: number;
   createdAt: string;
   _count: { chunks: number };
 }
+
+// Держать синхронно с AI_KB_PROMPT_BUDGET_BYTES (src/lib/ai/limits.ts) —
+// клиентский счётчик, сервер проверяет бюджет сам при включении.
+const KB_PROMPT_BUDGET_BYTES = 45_000;
+const kb = (n: number) => (n / 1024).toFixed(1);
 
 interface SearchResult {
   chunkId: string;
@@ -42,6 +56,10 @@ export default function KnowledgePage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
+  const [viewDoc, setViewDoc] = useState<KnowledgeDoc | null>(null);
+  const [viewContent, setViewContent] = useState<string | null>(null);
 
   // Upload form
   const [title, setTitle] = useState("");
@@ -102,6 +120,37 @@ export default function KnowledgePage() {
       setUploadError("Ошибка сети при загрузке");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleTogglePrompt(doc: KnowledgeDoc, value: boolean) {
+    setToggling(doc.id);
+    setToggleError(null);
+    const res = await fetch(`/api/knowledge/${doc.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ includeInPrompt: value }),
+    });
+    setToggling(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setToggleError(data?.error || `Не удалось изменить (HTTP ${res.status})`);
+      return;
+    }
+    setDocuments((docs) =>
+      docs.map((d) => (d.id === doc.id ? { ...d, includeInPrompt: value } : d))
+    );
+  }
+
+  async function handleView(doc: KnowledgeDoc) {
+    setViewDoc(doc);
+    setViewContent(null);
+    const res = await fetch(`/api/knowledge/${doc.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      setViewContent(data.document?.content ?? "");
+    } else {
+      setViewContent("Не удалось загрузить текст документа.");
     }
   }
 
@@ -275,6 +324,39 @@ export default function KnowledgePage() {
         <h2 className="mb-3 text-sm font-semibold">
           Документы ({documents.length})
         </h2>
+
+        {(() => {
+          const enabled = documents.filter((d) => d.includeInPrompt);
+          const usedBytes = enabled.reduce((s, d) => s + d.contentBytes, 0);
+          const ratio = Math.min(1, usedBytes / KB_PROMPT_BUDGET_BYTES);
+          const barColor =
+            ratio > 0.95 ? "bg-red-500" : ratio > 0.8 ? "bg-amber-400" : "bg-green-500";
+          return (
+            <div className="mb-3 rounded-lg border bg-white px-4 py-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-neutral-600">
+                  Постоянно в промпте: {enabled.length}{" "}
+                  {enabled.length === 1 ? "документ" : "документа(ов)"} ·{" "}
+                  {kb(usedBytes)} КБ из {kb(KB_PROMPT_BUDGET_BYTES)} КБ
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded bg-neutral-100">
+                <div
+                  className={`h-full rounded ${barColor}`}
+                  style={{ width: `${Math.round(ratio * 100)}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-neutral-400">
+                Включённые документы попадают в каждый AI-запрос целиком и расходуют
+                контекст. Точечный поиск по базе знаний работает для всех документов
+                независимо от флажка.
+              </p>
+              {toggleError && (
+                <p className="mt-1.5 text-[11px] text-red-600">{toggleError}</p>
+              )}
+            </div>
+          );
+        })()}
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-neutral-400" />
@@ -303,6 +385,24 @@ export default function KnowledgePage() {
                     <span>{new Date(doc.createdAt).toLocaleDateString("ru-RU")}</span>
                   </div>
                 </div>
+                <div
+                  className="flex flex-shrink-0 items-center gap-1.5"
+                  title="Включить полный текст документа в системный промпт каждого AI-запроса"
+                >
+                  <span className="text-[11px] text-neutral-400">В промпте</span>
+                  <Switch
+                    checked={doc.includeInPrompt}
+                    disabled={toggling === doc.id}
+                    onCheckedChange={(v) => handleTogglePrompt(doc, v)}
+                  />
+                </div>
+                <button
+                  onClick={() => handleView(doc)}
+                  className="flex-shrink-0 rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                  title="Просмотр текста документа"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
                 <button
                   onClick={() => handleDelete(doc.id)}
                   disabled={deleting === doc.id}
@@ -320,6 +420,49 @@ export default function KnowledgePage() {
           </div>
         )}
       </div>
+
+      {/* Просмотр извлечённого текста — ровно то, что видит модель.
+          Оригинальный файл (PDF/DOCX) не хранится. */}
+      <Dialog open={viewDoc !== null} onOpenChange={(open) => !open && setViewDoc(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="pr-8">{viewDoc?.title}</DialogTitle>
+          </DialogHeader>
+          {viewDoc && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+              <span className="rounded bg-neutral-100 px-1.5 py-0.5">
+                {CATEGORY_LABELS[viewDoc.category] || viewDoc.category}
+              </span>
+              {viewDoc.sourceFile && <span>{viewDoc.sourceFile}</span>}
+              <span>{viewDoc._count.chunks} чанков</span>
+              <span>{kb(viewDoc.contentBytes)} КБ</span>
+              <span>
+                {new Date(viewDoc.createdAt).toLocaleDateString("ru-RU")}
+              </span>
+              {viewDoc.includeInPrompt && (
+                <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-700">
+                  в промпте
+                </span>
+              )}
+            </div>
+          )}
+          <div className="max-h-[60vh] overflow-auto rounded border bg-neutral-50 p-3">
+            {viewContent === null ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-neutral-400" />
+              </div>
+            ) : (
+              <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-neutral-700">
+                {viewContent}
+              </pre>
+            )}
+          </div>
+          <p className="text-[11px] text-neutral-400">
+            Показан извлечённый текст — именно его видит AI-ассистент. Исходный
+            файл в системе не хранится.
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

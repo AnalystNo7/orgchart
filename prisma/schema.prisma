@@ -513,16 +513,20 @@ model ProcessStepLink {
 }
 
 model KnowledgeDocument {
-  id         String            @id @default(uuid())
-  category   KnowledgeCategory
-  origin     KnowledgeOrigin   @default(MANUAL)
-  title      String
-  sourceFile String?
-  content    String
-  metadata   Json?
-  chunks     KnowledgeChunk[]
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  id              String            @id @default(uuid())
+  category        KnowledgeCategory
+  origin          KnowledgeOrigin   @default(MANUAL)
+  title           String
+  sourceFile      String?
+  content         String
+  metadata        Json?
+  // Полный текст документа подставляется в системный промпт каждого
+  // AI-запроса (бюджет AI_KB_PROMPT_BUDGET_BYTES); RAG-поиск от флага
+  // не зависит и работает для всех документов.
+  includeInPrompt Boolean           @default(false)
+  chunks          KnowledgeChunk[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 }
 
 model KnowledgeChunk {
