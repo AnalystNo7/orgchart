@@ -21,15 +21,18 @@ export async function recalcContractAmount(contractId: string): Promise<void> {
 
   if (!contract || !contract.amountAutoCalc) return;
 
-  const workingHours = getWorkingHours(contract.periodStart, contract.periodEnd);
   let calculatedAmount = 0;
 
+  // Часы — по периоду КАЖДОЙ привязки (обеспечения), не всего договора:
+  // при помесячных привязках прежняя формула умножала часы всего срока
+  // на каждую строку и завышала сумму в число месяцев.
   for (const ec of contract.employees) {
     const tariffRate = ec.employee.tariff?.rate
       ? Number(ec.employee.tariff.rate)
       : null;
     if (tariffRate !== null) {
-      calculatedAmount += tariffRate * Number(ec.fte) * workingHours;
+      calculatedAmount +=
+        tariffRate * Number(ec.fte) * getWorkingHours(ec.periodStart, ec.periodEnd);
     }
   }
 

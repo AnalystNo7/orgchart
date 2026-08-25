@@ -13,7 +13,7 @@ export type PnlMode = "forecast" | "plan" | "combined";
  * - "fte":      Contract revenue is split between all departments proportionally
  *               to the FTE their employees contribute via EmployeeContract links.
  * - "transfer": Resource/service departments "sell" FTE to earning ones at an
- *               internal transfer price = Tariff.rate × FTE × workingHours × overlap.
+ *               internal transfer price = Tariff.rate × FTE-часы обеспечения в окне.
  *               The Contract.amount field is ignored in this mode.
  */
 export type PnlAllocationMode = "earning" | "fte" | "transfer";
@@ -101,28 +101,20 @@ type DepartmentWithEmployees = Prisma.DepartmentGetPayload<{
 }>;
 
 /**
- * Calculate date overlap fraction between two ranges.
- * Returns 0-1 representing what fraction of the contract period overlaps with the calc period.
+ * Рабочие часы пересечения периода привязки (обеспечения) с окном расчёта.
+ * 0 при пустом пересечении. Мера вклада привязки — «FTE-часы»: fte × эти часы;
+ * так 12 помесячных строк по 0.5 FTE весят столько же, сколько одна годовая.
  */
-function getOverlapFraction(
-  contractStart: Date,
-  contractEnd: Date,
-  periodStart: Date,
-  periodEnd: Date
+function linkWindowHours(
+  start: Date,
+  end: Date,
+  winStart: Date,
+  winEnd: Date
 ): number {
-  const overlapStart = contractStart > periodStart ? contractStart : periodStart;
-  const overlapEnd = contractEnd < periodEnd ? contractEnd : periodEnd;
-
-  if (overlapStart > overlapEnd) return 0;
-
-  const contractDays = Math.max(
-    1,
-    Math.floor((contractEnd.getTime() - contractStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
-  );
-  const overlapDays =
-    Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-
-  return overlapDays / contractDays;
+  const s = start > winStart ? start : winStart;
+  const e = end < winEnd ? end : winEnd;
+  if (s > e) return 0;
+  return getWorkingHours(s, e);
 }
 
 /**
@@ -218,8 +210,7 @@ function computeTransferAllocations(
   departments: DepartmentWithEmployees[],
   mode: PnlMode,
   periodStart: Date,
-  periodEnd: Date,
-  workingHours: number
+  periodEnd: Date
 ): TransferCtxMaps {
   const ctx = emptyTransferCtx();
 
@@ -237,7 +228,8 @@ function computeTransferAllocations(
     shetilType: string;
     employeeId: string;
     fullName: string;
-    ecFte: number;
+    /** FTE-часы привязок сотрудника, попавшие в отчётное окно. */
+    winFH: number;
     tariffRate: number | null;
   };
   type ContractGroup = {
@@ -245,6 +237,9 @@ function computeTransferAllocations(
     participants: Participant[];
   };
   const contractGroups = new Map<string, ContractGroup>();
+
+  // FTE-часы за весь срок обеспечения — знаменатель признания суммы.
+  const lifeFHByContract = new Map<string, number>();
 
   for (const dept of departments) {
     const info = deptInfo.get(dept.id)!;
@@ -254,59 +249,76 @@ function computeTransferAllocations(
         if (!isContractIncludedInMode(contract.status, mode)) continue;
         if (contract.type !== "REVENUE") continue;
 
-        const ecFte = toNumber(ec.fte);
-        if (ecFte === 0) continue;
+        const fte = toNumber(ec.fte);
+        if (fte === 0) continue;
+
+        lifeFHByContract.set(
+          contract.id,
+          (lifeFHByContract.get(contract.id) || 0) +
+            fte * getWorkingHours(ec.periodStart, ec.periodEnd)
+        );
+
+        const winFH =
+          fte * linkWindowHours(ec.periodStart, ec.periodEnd, periodStart, periodEnd);
+        if (winFH === 0) continue;
 
         let group = contractGroups.get(contract.id);
         if (!group) {
           group = { contract, participants: [] };
           contractGroups.set(contract.id, group);
         }
-        group.participants.push({
-          deptId: dept.id,
-          deptName: info.name,
-          shetilType: info.shetilType,
-          employeeId: emp.id,
-          fullName: emp.fullName,
-          ecFte,
-          tariffRate: emp.tariff ? toNumber(emp.tariff.rate) : null,
-        });
+        // Помесячные строки одного сотрудника сливаются в одного участника —
+        // иначе внутренняя продажа умножалась бы на число строк.
+        const existing = group.participants.find(
+          (pp) => pp.deptId === dept.id && pp.employeeId === emp.id
+        );
+        if (existing) {
+          existing.winFH += winFH;
+        } else {
+          group.participants.push({
+            deptId: dept.id,
+            deptName: info.name,
+            shetilType: info.shetilType,
+            employeeId: emp.id,
+            fullName: emp.fullName,
+            winFH,
+            tariffRate: emp.tariff ? toNumber(emp.tariff.rate) : null,
+          });
+        }
       }
     }
   }
 
   // Now process each contract independently.
-  for (const { contract, participants } of contractGroups.values()) {
+  for (const [contractId, { contract, participants }] of contractGroups) {
     const amountRaw =
       contract.status === "CONCLUDED"
         ? toNumber(contract.amount)
         : toNumber(contract.expectedAmount);
     if (amountRaw === 0) continue;
 
-    const overlapFraction = getOverlapFraction(
-      contract.periodStart,
-      contract.periodEnd,
-      periodStart,
-      periodEnd
-    );
-    const effectiveOverlap =
-      contract.status === "PLANNED" && !contract.periodStart ? 1 : overlapFraction;
-    if (effectiveOverlap === 0) continue;
+    // Признанная в окне сумма: доля FTE-часов обеспечения, попавших в окно,
+    // от FTE-часов всего срока. Даты договора время больше не задают.
+    const lifeFH = lifeFHByContract.get(contractId) || 0;
+    if (lifeFH === 0) continue;
+    const winFH = participants.reduce((sum, p) => sum + p.winFH, 0);
+    if (winFH === 0) continue;
+    const recognizedFraction = winFH / lifeFH;
 
-    const contractAmount = amountRaw * effectiveOverlap;
+    const contractAmount = amountRaw * recognizedFraction;
 
     // Partition participants into REVENUE vs non-REVENUE buckets. Aggregate
-    // per-department FTE for the REVENUE side.
+    // per-department window FTE-hours for the REVENUE side.
     const revenueByDept = new Map<string, { fte: number; name: string }>();
     let contractRevenueFTE = 0;
     let contractTotalFTE = 0;
     for (const p of participants) {
-      contractTotalFTE += p.ecFte;
+      contractTotalFTE += p.winFH;
       if (p.shetilType === "REVENUE") {
-        contractRevenueFTE += p.ecFte;
+        contractRevenueFTE += p.winFH;
         const existing = revenueByDept.get(p.deptId);
-        if (existing) existing.fte += p.ecFte;
-        else revenueByDept.set(p.deptId, { fte: p.ecFte, name: p.deptName });
+        if (existing) existing.fte += p.winFH;
+        else revenueByDept.set(p.deptId, { fte: p.winFH, name: p.deptName });
       }
     }
 
@@ -316,8 +328,8 @@ function computeTransferAllocations(
       const perDept = new Map<string, { fte: number; name: string }>();
       for (const p of participants) {
         const existing = perDept.get(p.deptId);
-        if (existing) existing.fte += p.ecFte;
-        else perDept.set(p.deptId, { fte: p.ecFte, name: p.deptName });
+        if (existing) existing.fte += p.winFH;
+        else perDept.set(p.deptId, { fte: p.winFH, name: p.deptName });
       }
       for (const [deptId, { fte }] of perDept) {
         const share = fte / contractTotalFTE;
@@ -331,7 +343,7 @@ function computeTransferAllocations(
           contractName: contract.name,
           status: contract.status,
           totalAmount: amountRaw,
-          periodOverlapFraction: Math.round(effectiveOverlap * 10000) / 10000,
+          periodOverlapFraction: Math.round(recognizedFraction * 10000) / 10000,
           departmentFteFraction: Math.round(share * 10000) / 10000,
           allocatedRevenue: Math.round(externalRevenue * 100) / 100,
         });
@@ -356,7 +368,7 @@ function computeTransferAllocations(
         contractName: contract.name,
         status: contract.status,
         totalAmount: amountRaw,
-        periodOverlapFraction: Math.round(effectiveOverlap * 10000) / 10000,
+        periodOverlapFraction: Math.round(recognizedFraction * 10000) / 10000,
         departmentFteFraction: Math.round(share * 10000) / 10000,
         allocatedRevenue: Math.round(externalRevenue * 100) / 100,
       });
@@ -380,7 +392,9 @@ function computeTransferAllocations(
         continue;
       }
 
-      const tp = p.tariffRate * p.ecFte * workingHours * effectiveOverlap;
+      // Часы уже обрезаны периодами привязок — умножение на часы всего
+      // отчётного периода на каждую помесячную строку (завышение до ×12) ушло.
+      const tp = p.tariffRate * p.winFH;
       if (tp === 0) continue;
 
       // Seller (non-revenue department) receives internal revenue.
@@ -459,14 +473,26 @@ export async function calculatePnl(
   // 2. Working hours for the period
   const workingHours = getWorkingHours(periodStart, periodEnd);
 
-  // 3. Build a map of total FTE per contract (across all departments).
-  //    Used by earning/fte branches in the per-department loop.
-  const contractTotalFte = new Map<string, number>();
+  // 3. FTE-часы по договорам (по ВСЕМ привязкам всех подразделений):
+  //    lifeFH — за весь срок обеспечения (знаменатель распределения суммы),
+  //    winFH  — попавшие в отчётное окно (числитель признания выручки).
+  const contractLifeFH = new Map<string, number>();
+  const contractWinFH = new Map<string, number>();
   for (const dept of departments) {
     for (const emp of dept.employees) {
       for (const ec of emp.contracts) {
-        const current = contractTotalFte.get(ec.contractId) || 0;
-        contractTotalFte.set(ec.contractId, current + toNumber(ec.fte));
+        const fte = toNumber(ec.fte);
+        if (fte === 0) continue;
+        contractLifeFH.set(
+          ec.contractId,
+          (contractLifeFH.get(ec.contractId) || 0) +
+            fte * getWorkingHours(ec.periodStart, ec.periodEnd)
+        );
+        contractWinFH.set(
+          ec.contractId,
+          (contractWinFH.get(ec.contractId) || 0) +
+            fte * linkWindowHours(ec.periodStart, ec.periodEnd, periodStart, periodEnd)
+        );
       }
     }
   }
@@ -475,7 +501,7 @@ export async function calculatePnl(
   //     revenue/cost can depend on other departments on the same contract.
   const transferCtx =
     allocationMode === "transfer"
-      ? computeTransferAllocations(departments, mode, periodStart, periodEnd, workingHours)
+      ? computeTransferAllocations(departments, mode, periodStart, periodEnd)
       : null;
 
   // 4. Calculate P&L per department
@@ -540,12 +566,13 @@ export async function calculatePnl(
         allocationMode === "earning" ? isEarning : true;
 
       if (runRevenueAllocation) {
-        // Collect contracts through employees
+        // Вклад подразделения в договор — FTE-часы его привязок,
+        // попавших в отчётное окно (периоды ОБЕСПЕЧЕНИЯ, не даты договора).
         const contractMap = new Map<
           string,
           {
             contract: DepartmentWithEmployees["employees"][number]["contracts"][number]["contract"];
-            departmentFte: number;
+            deptWinFH: number;
           }
         >();
 
@@ -558,21 +585,25 @@ export async function calculatePnl(
             // Only REVENUE contracts
             if (contract.type !== "REVENUE") continue;
 
+            const fte = toNumber(ec.fte);
+            if (fte === 0) continue;
+            const winFH =
+              fte * linkWindowHours(ec.periodStart, ec.periodEnd, periodStart, periodEnd);
+            if (winFH === 0) continue;
+
             const existing = contractMap.get(contract.id);
             if (existing) {
-              existing.departmentFte += toNumber(ec.fte);
+              existing.deptWinFH += winFH;
             } else {
-              contractMap.set(contract.id, {
-                contract,
-                departmentFte: toNumber(ec.fte),
-              });
+              contractMap.set(contract.id, { contract, deptWinFH: winFH });
             }
           }
         }
 
-        for (const [contractId, { contract, departmentFte }] of contractMap) {
-          const totalFte = contractTotalFte.get(contractId) || 1;
-          const fteFraction = departmentFte / totalFte;
+        for (const [contractId, { contract, deptWinFH }] of contractMap) {
+          const lifeFH = contractLifeFH.get(contractId) || 0;
+          if (lifeFH === 0) continue;
+          const winFH = contractWinFH.get(contractId) || 0;
 
           // Amount based on contract status
           const amount =
@@ -582,21 +613,10 @@ export async function calculatePnl(
 
           if (amount === 0) continue;
 
-          // Period overlap
-          const overlapFraction = getOverlapFraction(
-            contract.periodStart,
-            contract.periodEnd,
-            periodStart,
-            periodEnd
-          );
-
-          // For planned contracts without dates (REV-007), use full amount
-          const effectiveOverlap =
-            contract.status === "PLANNED" && !contract.periodStart ? 1 : overlapFraction;
-
-          if (effectiveOverlap === 0) continue;
-
-          const allocatedRevenue = amount * effectiveOverlap * fteFraction;
+          // Выручка подразделения: сумма договора × доля его FTE-часов в окне
+          // от FTE-часов всего срока обеспечения. Сумма по подразделениям и
+          // всем окнам за срок обеспечения равна ровно amount.
+          const allocatedRevenue = (amount * deptWinFH) / lifeFH;
           totalRevenue += allocatedRevenue;
 
           contractDetails.push({
@@ -604,8 +624,10 @@ export async function calculatePnl(
             contractName: contract.name,
             status: contract.status,
             totalAmount: amount,
-            periodOverlapFraction: Math.round(effectiveOverlap * 10000) / 10000,
-            departmentFteFraction: Math.round(fteFraction * 10000) / 10000,
+            // Доля выручки договора, признанная в отчётном окне (по обеспечению)
+            periodOverlapFraction: Math.round((winFH / lifeFH) * 10000) / 10000,
+            departmentFteFraction:
+              winFH > 0 ? Math.round((deptWinFH / winFH) * 10000) / 10000 : 0,
             allocatedRevenue: Math.round(allocatedRevenue * 100) / 100,
           });
         }
