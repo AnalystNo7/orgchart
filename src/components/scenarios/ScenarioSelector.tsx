@@ -45,14 +45,14 @@ export function ScenarioSelector() {
 
   return (
     <Select value={currentScenarioId ?? undefined} onValueChange={setCurrentScenarioId}>
-      <SelectTrigger className="w-[240px]">
+      <SelectTrigger className="h-9 w-[240px]">
         <SelectValue placeholder="Выберите сценарий" />
       </SelectTrigger>
       <SelectContent>
         {scenarios.map((s) => (
           <SelectItem key={s.id} value={s.id}>
             <div className="flex items-center gap-2">
-              <span className={`inline-block h-2 w-2 rounded-full ${statusDotColor[s.status] ?? "bg-neutral-300"}`} />
+              <span className={`inline-block h-2 w-2 rounded-full ${statusDotColor[s.status] ?? "bg-ink-300"}`} />
               <div className="flex flex-col items-start">
                 <span>
                   {s.isBaseline ? "\u2605 " : ""}
@@ -61,7 +61,7 @@ export function ScenarioSelector() {
                 {/* Pre-existing derived scenarios lack the reference in the
                     name; new clones carry it, so skip to avoid duplication. */}
                 {s.createdFrom && !s.name.includes("(из:") && (
-                  <span className="text-xs text-neutral-400">
+                  <span className="text-xs text-ink-400">
                     из: {s.createdFrom.name}
                   </span>
                 )}

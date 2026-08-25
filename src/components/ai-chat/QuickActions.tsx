@@ -23,7 +23,7 @@ export function QuickActions({ onAction, disabled }: QuickActionsProps) {
           key={a.label}
           onClick={() => onAction(a.prompt)}
           disabled={disabled}
-          className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 transition-colors hover:bg-purple-100 disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-full border border-ai/25 bg-ai-bg px-2.5 py-1 text-xs font-medium text-ai transition-colors hover:bg-ai-bg disabled:opacity-50"
         >
           <Sparkles className="h-3 w-3" />
           {a.label}

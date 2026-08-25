@@ -55,19 +55,19 @@ function ScenarioBadge({
     <div className="relative w-full">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-left text-sm transition-colors hover:bg-purple-100"
+        className="flex w-full items-center gap-2 rounded-lg border border-ai/25 bg-ai-bg px-3 py-2 text-left text-sm transition-colors hover:bg-ai-bg"
       >
-        <FolderOpen className="h-4 w-4 shrink-0 text-purple-500" />
+        <FolderOpen className="h-4 w-4 shrink-0 text-ai/70" />
         <div className="flex-1 truncate">
-          <span className="text-xs text-purple-400">Сценарий:</span>
-          <span className="ml-1 font-medium text-purple-700">
+          <span className="text-xs text-ai/60">Сценарий:</span>
+          <span className="ml-1 font-medium text-ai">
             {current ? current.name : "Не выбран"}
           </span>
         </div>
-        <ChevronDown className={`h-4 w-4 text-purple-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-4 w-4 text-ai/60 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
+        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-auto rounded-lg border border-line-strong bg-white shadow-lg">
           {scenarios.map((s) => (
             <button
               key={s.id}
@@ -75,7 +75,7 @@ function ScenarioBadge({
                 onSelect(s.id);
                 setOpen(false);
               }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-purple-50"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-ai-bg"
             >
               <span
                 className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotColor[s.status] ?? "bg-neutral-300"}`}
@@ -92,7 +92,7 @@ function ScenarioBadge({
                 )}
               </span>
               {s.id === scenarioId && (
-                <Check className="h-3.5 w-3.5 text-purple-600" />
+                <Check className="h-3.5 w-3.5 text-ai" />
               )}
             </button>
           ))}
@@ -391,7 +391,7 @@ export function AiChatPanel() {
       {/* Header */}
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-purple-600" />
+          <Bot className="h-4 w-4 text-ai" />
           <span className="text-sm font-semibold">AI-ассистент</span>
         </div>
         <div className="flex items-center gap-1">
@@ -424,7 +424,7 @@ export function AiChatPanel() {
       <div className="flex-1 overflow-auto px-3 py-3">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <Bot className="mb-3 h-10 w-10 text-purple-200" />
+            <Bot className="mb-3 h-10 w-10 text-ai/25" />
             <p className="text-sm font-medium text-neutral-500">
               AI-ассистент
             </p>
@@ -487,12 +487,12 @@ export function AiChatPanel() {
               disabled={isStreaming}
               placeholder={isStreaming ? "Подождите ответа..." : "Задайте вопрос..."}
               rows={1}
-              className="max-h-24 min-h-[36px] flex-1 resize-none rounded-md border border-neutral-200 px-3 py-2 text-sm focus:border-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-300 disabled:bg-neutral-50 disabled:text-neutral-400 disabled:cursor-not-allowed"
+              className="max-h-24 min-h-[36px] flex-1 resize-none rounded-md border border-line-strong px-3 py-2 text-sm focus:border-ai/50 focus:outline-none focus:ring-1 focus:ring-ai/25 disabled:bg-ink-50 disabled:text-ink-400 disabled:cursor-not-allowed"
             />
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || isStreaming}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-purple-600 text-white transition-colors hover:bg-purple-700 disabled:bg-neutral-200 disabled:text-neutral-400"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ai text-white transition-colors hover:bg-[var(--ai-purple-600)] disabled:bg-ink-200 disabled:text-ink-400"
             >
               <Send className="h-4 w-4" />
             </button>

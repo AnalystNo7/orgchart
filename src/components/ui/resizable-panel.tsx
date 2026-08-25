@@ -74,7 +74,7 @@ export function ResizablePanel({
           onMouseDown={handleMouseDown}
           className="group absolute left-0 top-0 z-10 flex h-full w-2 cursor-col-resize items-center justify-center hover:bg-purple-100/50 active:bg-purple-200/50"
         >
-          <div className="h-8 w-1 rounded-full bg-neutral-300 transition-colors group-hover:bg-purple-400 group-active:bg-purple-500" />
+          <div className="h-8 w-1 rounded-full bg-ink-300 transition-colors group-hover:bg-ai/60 group-active:bg-ai" />
         </div>
       )}
 
@@ -89,7 +89,7 @@ export function ResizablePanel({
           onMouseDown={handleMouseDown}
           className="group absolute right-0 top-0 z-10 flex h-full w-2 cursor-col-resize items-center justify-center hover:bg-purple-100/50 active:bg-purple-200/50"
         >
-          <div className="h-8 w-1 rounded-full bg-neutral-300 transition-colors group-hover:bg-purple-400 group-active:bg-purple-500" />
+          <div className="h-8 w-1 rounded-full bg-ink-300 transition-colors group-hover:bg-ai/60 group-active:bg-ai" />
         </div>
       )}
     </div>

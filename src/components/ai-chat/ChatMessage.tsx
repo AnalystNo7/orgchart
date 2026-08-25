@@ -96,7 +96,7 @@ export function ChatMessage({ message }: { message: AiMessage }) {
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
       <div
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-          isUser ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"
+          isUser ? "bg-blue-100 text-blue-600" : "bg-ai-bg text-ai"
         }`}
       >
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
@@ -129,7 +129,7 @@ export function ChatMessage({ message }: { message: AiMessage }) {
 
         {/* Sources footer */}
         {!isUser && sources.length > 0 && (
-          <div className="mt-2 border-t border-neutral-200 pt-2">
+          <div className="mt-2 border-t border-line-strong pt-2">
             <div className="text-[10px] font-medium text-neutral-400 mb-1">Источники:</div>
             <div className="flex flex-wrap gap-1">
               {sources.map((s, i) => (
@@ -141,7 +141,7 @@ export function ChatMessage({ message }: { message: AiMessage }) {
 
         {/* LLM-only badge when no tools were called and no markers found */}
         {!isUser && sources.length === 0 && !message.content.includes("【") && message.content.length > 0 && (
-          <div className="mt-2 border-t border-neutral-200 pt-2">
+          <div className="mt-2 border-t border-line-strong pt-2">
             <div className="flex items-center gap-1">
               <SourceBadge type="LLM" label="LLM-знания" />
             </div>

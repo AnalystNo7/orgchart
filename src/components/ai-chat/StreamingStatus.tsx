@@ -28,7 +28,7 @@ const PHASE_CONFIG: Record<
   llm_thinking: {
     label: "AI обрабатывает запрос...",
     icon: Brain,
-    color: "text-purple-600",
+    color: "text-ai",
   },
   tool_executing: {
     label: "Выполнение инструмента",

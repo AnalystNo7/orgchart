@@ -15,6 +15,11 @@ function readStoredAllocationMode(): PnlAllocationMode {
     : "fte";
 }
 
+function readStoredSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem("sidebarCollapsed") === "1";
+}
+
 interface OrgChartState {
   currentScenarioId: string | null;
   selectedDepartmentId: string | null;
@@ -24,6 +29,10 @@ interface OrgChartState {
   // View mode
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
+
+  // Свёрнутое левое меню (сохраняется между переходами)
+  sidebarCollapsed: boolean;
+  toggleSidebarCollapsed: () => void;
 
   // P&L Heatmap state
   pnlDisplayMode: PnlDisplayMode;
@@ -135,6 +144,15 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
   },
   pnlDrillDownDeptId: null,
   setPnlDrillDownDeptId: (id) => set({ pnlDrillDownDeptId: id }),
+
+  sidebarCollapsed: readStoredSidebarCollapsed(),
+  toggleSidebarCollapsed: () => {
+    const next = !get().sidebarCollapsed;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebarCollapsed", next ? "1" : "0");
+    }
+    set({ sidebarCollapsed: next });
+  },
 
   metricsMode: "own",
   selectedLevels: [1],

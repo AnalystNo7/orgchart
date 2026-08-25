@@ -1,16 +1,149 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   Дизайн-токены. Палитра, типографика, радиусы и тени — по фирменному стилю
+   (Pantone 300 синий / Pantone 1655 оранжевый). Значения менять только здесь.
+   ========================================================================== */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Primary */
+  --gpc-blue: #0079C2;
+  --gpc-blue-600: #0068A8;
+  --gpc-blue-700: #055791;
+  --gpc-blue-800: #033D62;
+  --gpc-blue-900: #022A45;
+
+  /* Accent */
+  --gpc-orange: #FF6919;
+  --gpc-orange-600: #E85600;
+  --gpc-orange-700: #D65200;
+
+  /* Secondary */
+  --gpc-sky: #D7F0FA;
+  --gpc-sky-deep: #B7E3F5;
+  --gpc-cyan: #27AFF5;
+  --gpc-cyan-light: #47D8FF;
+  --gpc-peach: #FFC198;
+
+  /* Neutrals */
+  --gpc-white: #FFFFFF;
+  --gpc-gray-50: #F7F9FB;
+  --gpc-gray-100: #ECECEC;
+  --gpc-gray-150: #E4E8EC;
+  --gpc-gray-200: #CFD6DD;
+  --gpc-gray-300: #B7C7D1;
+  --gpc-gray-400: #8FA0AD;
+  --gpc-gray-500: #667482;
+  --gpc-gray-600: #4B5864;
+  --gpc-gray-700: #2E3944;
+  --gpc-gray-800: #1A232C;
+  --gpc-black: #0A1017;
+
+  /* Semantic */
+  --ok-green: #1F9D5E;
+  --ok-green-bg: #E3F5EB;
+  --warn: #E89A14;
+  --warn-bg: #FFF2D6;
+  --err: #D43232;
+  --err-bg: #FBE4E4;
+  --info: #0079C2;
+  --info-bg: #D7F0FA;
+
+  /* AI-ассистент — отдельная семантика «ИИ» рядом с брендовыми синим и оранжевым */
+  --ai-purple: #5A2EBA;
+  --ai-purple-600: #4A25A0;
+  --ai-purple-bg: #EEE6FB;
+
+  /* Page */
+  --background: #FFFFFF;
+  --foreground: #1A232C;
+  --page-bg: #F2F5F8;
+  --card-bg: #FFFFFF;
+  --line: #E4E8EC;
+  --line-strong: #CFD6DD;
+
+  /* Type */
+  --font-body: var(--font-inter), 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-headline: var(--font-pt-sans-narrow), 'PT Sans Narrow', 'Oswald', var(--font-inter), sans-serif;
+  --font-mono-stack: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Radii */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+
+  /* Shadows */
+  --sh-card: 0 1px 2px rgba(10,16,23,.04), 0 2px 8px rgba(10,16,23,.04);
+  --sh-pop: 0 8px 32px rgba(10,16,23,.12), 0 2px 8px rgba(10,16,23,.06);
+  --sh-modal: 0 24px 64px rgba(10,16,23,.24);
+
+  /* Layout */
+  --sidebar-w: 232px;
+  --sidebar-w-collapsed: 64px;
+  --header-h: 56px;
+
+  /* Density — зафиксирована компактная (аналитические таблицы) */
+  --row-h: 38px;
+  --card-pad: 16px;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono-stack);
+  --font-head: var(--font-headline);
 
+  /* Бренд */
+  --color-brand: var(--gpc-blue);
+  --color-brand-600: var(--gpc-blue-600);
+  --color-brand-700: var(--gpc-blue-700);
+  --color-brand-800: var(--gpc-blue-800);
+  --color-brand-900: var(--gpc-blue-900);
+  --color-accent-orange: var(--gpc-orange);
+  --color-accent-orange-600: var(--gpc-orange-600);
+  --color-accent-orange-700: var(--gpc-orange-700);
+  --color-sky-soft: var(--gpc-sky);
+  --color-sky-deep: var(--gpc-sky-deep);
+
+  /* Нейтральные */
+  --color-ink-50: var(--gpc-gray-50);
+  --color-ink-100: var(--gpc-gray-100);
+  --color-ink-150: var(--gpc-gray-150);
+  --color-ink-200: var(--gpc-gray-200);
+  --color-ink-300: var(--gpc-gray-300);
+  --color-ink-400: var(--gpc-gray-400);
+  --color-ink-500: var(--gpc-gray-500);
+  --color-ink-600: var(--gpc-gray-600);
+  --color-ink-700: var(--gpc-gray-700);
+  --color-ink-800: var(--gpc-gray-800);
+
+  /* Служебные */
+  --color-page: var(--page-bg);
+  --color-card: var(--card-bg);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ok: var(--ok-green);
+  --color-ok-bg: var(--ok-green-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-err: var(--err);
+  --color-err-bg: var(--err-bg);
+  --color-ai: var(--ai-purple);
+  --color-ai-bg: var(--ai-purple-bg);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+
+  --shadow-card: var(--sh-card);
+  --shadow-pop: var(--sh-pop);
+  --shadow-modal: var(--sh-modal);
+
+  /* Цвета блоков подразделений (ШЕТИЛ) — стандартные, менять запрещено */
   --color-shetil-revenue: #22C55E;
   --color-shetil-resource: #3B82F6;
   --color-shetil-service: #EAB308;
@@ -23,10 +156,34 @@
 }
 
 body {
-  background: var(--background);
+  background: var(--page-bg);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
+
+h1, h2, h3 {
+  font-family: var(--font-headline);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--gpc-gray-800);
+}
+h1 { font-size: 28px; line-height: 1.15; }
+h2 { font-size: 22px; line-height: 1.2; }
+h3 { font-size: 18px; line-height: 1.25; }
+h4 { font-family: var(--font-body); font-size: 15px; font-weight: 600; line-height: 1.3; }
+
+::selection { background: var(--gpc-sky); color: var(--gpc-blue-800); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gpc-gray-200); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--gpc-gray-300); background-clip: content-box; }
+
+/* Числа в таблицах — моноширинные цифры */
+.tabular { font-variant-numeric: tabular-nums; }
 
 .react-flow__node {
   cursor: pointer;
