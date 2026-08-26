@@ -17,7 +17,10 @@ import { useRouter } from "next/navigation";
 import { DepartmentNode, type DepartmentNodeData } from "./DepartmentNode";
 import { ShetilLegend } from "./ShetilLegend";
 import { MetricsToolbar } from "./MetricsToolbar";
+import { Network, Plus, Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { AddDepartmentDialog } from "./AddDepartmentDialog";
+import { ExcelImport } from "@/components/employees/ExcelImport";
 import { DeleteDepartmentDialog } from "./DeleteDepartmentDialog";
 import { AddParentDialog } from "@/components/department-card/AddParentDialog";
 import { useOrgChartStore } from "@/lib/store";
@@ -147,8 +150,13 @@ export function OrgChart() {
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     parentId: string | null;
-    mode: "child" | "sibling";
+    mode: "child" | "sibling" | "root";
   } | null>(null);
+
+  // Пустой сценарий: показываем заглушку только после первой загрузки,
+  // иначе она мигает между сменой сценария и ответом API
+  const [departmentsLoaded, setDepartmentsLoaded] = useState(false);
+  const [showExcelImport, setShowExcelImport] = useState(false);
 
   // Add parent dialog state
   const [addParentDialog, setAddParentDialog] = useState<{
@@ -170,7 +178,10 @@ export function OrgChart() {
     if (!currentScenarioId) return;
     fetch(`/api/departments?scenarioId=${currentScenarioId}`)
       .then((r) => r.json())
-      .then((data: DepartmentAPI[]) => setDepartments(data))
+      .then((data: DepartmentAPI[]) => {
+        setDepartments(data);
+        setDepartmentsLoaded(true);
+      })
       .catch(() => {});
   }, [currentScenarioId]);
 
@@ -182,6 +193,7 @@ export function OrgChart() {
   // Reset stale data when scenario changes (collapse state reset handled by store)
   useEffect(() => {
     setDepartments([]);
+    setDepartmentsLoaded(false);
   }, [currentScenarioId]);
 
   // On first load of a scenario (not yet initialized this session), collapse to L1
@@ -517,8 +529,45 @@ export function OrgChart() {
           <Controls />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         </ReactFlow>
-        <ShetilLegend />
+        {departmentsLoaded && departments.length === 0 ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+            <div className="pointer-events-auto max-w-md rounded-[var(--r-lg)] border border-line bg-white p-8 text-center shadow-card">
+              <Network className="mx-auto mb-4 h-10 w-10 text-ink-300" />
+              <h3 className="mb-1 font-head text-xl">В сценарии пока нет подразделений</h3>
+              <p className="mb-6 text-[13px] text-ink-500">
+                Начните с корневого подразделения и достраивайте структуру кнопками «+»
+                на блоках — или загрузите готовую оргструктуру из Excel.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button
+                  onClick={() =>
+                    setAddDialog({ open: true, parentId: null, mode: "root" })
+                  }
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Создать корневое подразделение
+                </Button>
+                <Button variant="outline" onClick={() => setShowExcelImport(true)}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Импортировать из Excel
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <ShetilLegend />
+        )}
       </div>
+
+      <ExcelImport
+        open={showExcelImport}
+        onClose={() => setShowExcelImport(false)}
+        scenarioId={currentScenarioId}
+        onImportComplete={() => {
+          setShowExcelImport(false);
+          refreshDepartments();
+        }}
+      />
 
       {addDialog && (
         <AddDepartmentDialog
@@ -526,9 +575,11 @@ export function OrgChart() {
           onClose={() => setAddDialog(null)}
           onSubmit={handleAddDepartment}
           title={
-            addDialog.mode === "child"
-              ? "Добавить дочернее подразделение"
-              : "Добавить параллельное подразделение"
+            addDialog.mode === "root"
+              ? "Создать корневое подразделение"
+              : addDialog.mode === "child"
+                ? "Добавить дочернее подразделение"
+                : "Добавить параллельное подразделение"
           }
         />
       )}

@@ -42,6 +42,9 @@ interface Scenario {
   _count: { departments: number; employees: number };
 }
 
+/** Значение селекта «На основе» для создания сценария с нуля. */
+const BLANK_SOURCE = "blank";
+
 const statusLabels: Record<string, string> = {
   DRAFT: "Черновик",
   ACTIVE: "Активный",
@@ -62,7 +65,8 @@ export default function ScenariosPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [sourceId, setSourceId] = useState("");
+  // "blank" — создать сценарий с нуля, без копирования данных
+  const [sourceId, setSourceId] = useState(BLANK_SOURCE);
   const [creating, setCreating] = useState(false);
 
   const fetchScenarios = useCallback(async () => {
@@ -77,7 +81,12 @@ export default function ScenariosPage() {
   async function handleCreate() {
     if (!newName || !sourceId) return;
     setCreating(true);
-    await fetch(`/api/scenarios/${sourceId}/clone`, {
+    // Пустой сценарий — обычное создание; иначе глубокая копия выбранного
+    const url =
+      sourceId === BLANK_SOURCE
+        ? "/api/scenarios"
+        : `/api/scenarios/${sourceId}/clone`;
+    await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName, description: newDescription || undefined }),
@@ -85,6 +94,7 @@ export default function ScenariosPage() {
     setShowCreate(false);
     setNewName("");
     setNewDescription("");
+    setSourceId(BLANK_SOURCE);
     setCreating(false);
     fetchScenarios();
   }
@@ -198,6 +208,11 @@ export default function ScenariosPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-ink-500">
+                {sourceId === BLANK_SOURCE
+                  ? "Сценарий создастся пустым — структуру можно построить на дашборде или загрузить из Excel."
+                  : "Подразделения, сотрудники и связанные данные будут скопированы из выбранного сценария."}
+              </p>
             </div>
             {selected.description && <p className="mt-1">{selected.description}</p>}
             <p className="mt-1">
@@ -272,6 +287,9 @@ export default function ScenariosPage() {
                   <SelectValue placeholder="Выберите сценарий" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={BLANK_SOURCE}>
+                    — Пустой сценарий (с нуля) —
+                  </SelectItem>
                   {scenarios.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.isBaseline ? "\u2605 " : ""}
@@ -280,6 +298,11 @@ export default function ScenariosPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-ink-500">
+                {sourceId === BLANK_SOURCE
+                  ? "Сценарий создастся пустым — структуру можно построить на дашборде или загрузить из Excel."
+                  : "Подразделения, сотрудники и связанные данные будут скопированы из выбранного сценария."}
+              </p>
             </div>
           </div>
           <DialogFooter>
