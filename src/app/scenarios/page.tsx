@@ -86,17 +86,27 @@ export default function ScenariosPage() {
       sourceId === BLANK_SOURCE
         ? "/api/scenarios"
         : `/api/scenarios/${sourceId}/clone`;
-    await fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName, description: newDescription || undefined }),
     });
+    setCreating(false);
+
+    if (!res.ok) {
+      alert("Не удалось создать сценарий");
+      return;
+    }
+
+    const created: { id: string } = await res.json();
     setShowCreate(false);
     setNewName("");
     setNewDescription("");
     setSourceId(BLANK_SOURCE);
-    setCreating(false);
-    fetchScenarios();
+    // Сразу открываем новый сценарий: у пустого видна карточка с действиями,
+    // у клона — скопированная структура
+    setCurrentScenarioId(created.id);
+    router.push("/");
   }
 
   async function handleDelete(id: string) {
