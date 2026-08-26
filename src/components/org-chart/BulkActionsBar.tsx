@@ -25,24 +25,35 @@ export function BulkActionsBar({
   onClear,
 }: BulkActionsBarProps) {
   const [applying, setApplying] = useState<ShetilType | null>(null);
+  // Ошибка последней попытки — показывается прямо в панели (alert браузер
+  // может подавить, а сетевой сбой без catch падал бы молча)
+  const [error, setError] = useState<string | null>(null);
 
   async function applyType(shetilType: ShetilType) {
     setApplying(shetilType);
-    const res = await fetch("/api/departments/bulk-type", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scenarioId, departmentIds: selectedIds, shetilType }),
-    });
-    setApplying(null);
-    if (!res.ok) {
-      alert("Не удалось сменить тип у выбранных подразделений");
-      return;
+    setError(null);
+    try {
+      const res = await fetch("/api/departments/bulk-type", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenarioId, departmentIds: selectedIds, shetilType }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        setError(`Ошибка HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`);
+        return;
+      }
+      onApplied();
+    } catch (e) {
+      setError(`Сбой запроса: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setApplying(null);
     }
-    onApplied();
   }
 
   return (
-    <div className="pointer-events-auto absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-[var(--r-lg)] border border-line bg-white px-4 py-2.5 shadow-pop">
+    <div className="pointer-events-auto absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 flex-col gap-1.5 rounded-[var(--r-lg)] border border-line bg-white px-4 py-2.5 shadow-pop">
+      <div className="flex items-center gap-3">
       <span className="whitespace-nowrap text-[13px] font-semibold text-ink-800">
         Выбрано: {selectedIds.length}
       </span>
@@ -77,6 +88,12 @@ export function BulkActionsBar({
       >
         <X className="h-4 w-4" />
       </button>
+      </div>
+      {error && (
+        <div className="max-w-xl break-words text-[12px] text-err" role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
