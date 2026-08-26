@@ -142,6 +142,52 @@ export function AiChatPanel() {
 
   const { scenarios } = useScenarios();
   const [input, setInput] = useState("");
+
+  // Масштаб текста сообщений (Ctrl+колесо), 70–180%, живёт между сеансами
+  const [chatZoom, setChatZoom] = useState<number>(() => {
+    if (typeof window === "undefined") return 100;
+    try {
+      const raw = Number(localStorage.getItem("aiChatZoom"));
+      return raw >= 70 && raw <= 180 ? raw : 100;
+    } catch {
+      return 100;
+    }
+  });
+  const messagesBoxRef = useRef<HTMLDivElement>(null);
+
+  const applyZoom = useCallback((value: number) => {
+    const clamped = Math.min(180, Math.max(70, value));
+    setChatZoom(clamped);
+    try {
+      localStorage.setItem("aiChatZoom", String(clamped));
+    } catch {
+      // приватный режим — просто не запоминаем
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = messagesBoxRef.current;
+    if (!el) return;
+    // Нативный listener с passive:false — React-овский onWheel пассивный,
+    // и preventDefault в нём не отменил бы зум всей страницы
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      // Шаг по знаку, не по величине: pinch тачпада шлёт мелкие deltaY
+      setChatZoom((prev) => {
+        const next = Math.min(180, Math.max(70, prev + (e.deltaY < 0 ? 10 : -10)));
+        try {
+          localStorage.setItem("aiChatZoom", String(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -393,6 +439,15 @@ export function AiChatPanel() {
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-ai" />
           <span className="text-sm font-semibold">AI-ассистент</span>
+          {chatZoom !== 100 && (
+            <button
+              onClick={() => applyZoom(100)}
+              className="rounded-full bg-ai-bg px-2 py-0.5 text-[11px] font-semibold text-ai transition-colors hover:bg-ai/15"
+              title="Масштаб текста (Ctrl+колесо). Нажмите, чтобы вернуть 100%"
+            >
+              {chatZoom}%
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -421,7 +476,11 @@ export function AiChatPanel() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-auto px-3 py-3">
+      <div
+        ref={messagesBoxRef}
+        className="flex-1 overflow-auto px-3 py-3"
+        style={{ zoom: chatZoom / 100 }}
+      >
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <Bot className="mb-3 h-10 w-10 text-ai/25" />
