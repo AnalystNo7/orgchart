@@ -18,3 +18,9 @@ export const updateDepartmentSchema = z.object({
   headId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().optional(),
 });
+
+export const bulkUpdateTypeSchema = z.object({
+  scenarioId: z.string().uuid(),
+  departmentIds: z.array(z.string().uuid()).min(1).max(500),
+  shetilType: z.enum(["REVENUE", "RESOURCE", "SERVICE", "BACKOFFICE"]),
+});

@@ -45,7 +45,7 @@ export interface DepartmentNodeData {
 
 type DepartmentNodeProps = NodeProps & { data: DepartmentNodeData };
 
-function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
+function DepartmentNodeComponent({ data, selected }: DepartmentNodeProps) {
   const config = SHETIL_CONFIG[data.shetilType];
   const total = data.pp + data.opp + data.aup;
   const isRoot = data.parentId === null;
@@ -63,10 +63,17 @@ function DepartmentNodeComponent({ data }: DepartmentNodeProps) {
       <div
         className={cn(
           "relative rounded-lg border-2 bg-white shadow-sm transition-shadow hover:shadow-md",
-          isRoot && "shadow-md"
+          isRoot && "shadow-md",
+          // Мультивыделение: кольцо снаружи, заливка и рамка ШЕТИЛ не меняются
+          selected && "ring-2 ring-brand ring-offset-2"
         )}
         style={{ borderColor: isRoot ? "#0d3b66" : config.color, width: 200, maxWidth: 200 }}
-        onClick={() => data.onSelectDepartment(data.departmentId)}
+        onClick={(e) => {
+          // Ctrl/Cmd+клик — сбор мультивыделения (обрабатывает ReactFlow),
+          // боковую панель подразделения при этом не открываем
+          if (e.ctrlKey || e.metaKey) return;
+          data.onSelectDepartment(data.departmentId);
+        }}
       >
         <Handle
           type="target"

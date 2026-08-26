@@ -56,6 +56,23 @@ export async function executeUndo(scenarioId: string | null) {
       break;
     }
 
+    case "bulk_update_department_type": {
+      // Undo: вернуть каждому подразделению его прежний тип
+      const previous = (undoPayload.previous ?? []) as Array<{
+        id: string;
+        shetilType: string;
+      }>;
+      for (const item of previous) {
+        await prisma.department
+          .update({
+            where: { id: item.id },
+            data: { shetilType: item.shetilType as never },
+          })
+          .catch(() => {});
+      }
+      break;
+    }
+
     case "delete_department":
     case "delete_department_cascade":
     case "delete_department_reparent": {
@@ -348,6 +365,17 @@ export async function executeRedo(scenarioId: string | null) {
       const deptId = payload.departmentId as string;
       const changes = payload.changes as Prisma.DepartmentUpdateInput;
       await prisma.department.update({ where: { id: deptId }, data: changes });
+      break;
+    }
+
+    case "bulk_update_department_type": {
+      // Redo: снова применить общий тип всем из пачки
+      const ids = (payload.departmentIds ?? []) as string[];
+      const shetilType = payload.shetilType as string;
+      await prisma.department.updateMany({
+        where: { id: { in: ids } },
+        data: { shetilType: shetilType as never },
+      });
       break;
     }
 

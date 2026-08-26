@@ -254,3 +254,11 @@ h4 { font-family: var(--font-body); font-size: 15px; font-weight: 600; line-heig
 .react-flow__node {
   cursor: pointer;
 }
+
+/* Рамочное выделение: прямоугольник группового перетаскивания перехватывал
+   клики по узлам под ним; групповой drag не используется (раскладка — dagre) */
+.react-flow__nodesselection-rect {
+  pointer-events: none !important;
+  background: transparent;
+  border: none;
+}

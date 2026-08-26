@@ -21,6 +21,7 @@ import { Network, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AddDepartmentDialog } from "./AddDepartmentDialog";
 import { ExcelImport } from "@/components/employees/ExcelImport";
+import { BulkActionsBar } from "./BulkActionsBar";
 import { DeleteDepartmentDialog } from "./DeleteDepartmentDialog";
 import { AddParentDialog } from "@/components/department-card/AddParentDialog";
 import { useOrgChartStore } from "@/lib/store";
@@ -158,6 +159,9 @@ export function OrgChart() {
   const [departmentsLoaded, setDepartmentsLoaded] = useState(false);
   const [showExcelImport, setShowExcelImport] = useState(false);
 
+  // Мультивыделение узлов (Ctrl/Cmd+клик, рамка по Shift) — id выделенных
+  const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
+
   // Add parent dialog state
   const [addParentDialog, setAddParentDialog] = useState<{
     open: boolean;
@@ -194,6 +198,7 @@ export function OrgChart() {
   useEffect(() => {
     setDepartments([]);
     setDepartmentsLoaded(false);
+    setMultiSelectedIds([]);
   }, [currentScenarioId]);
 
   // On first load of a scenario (not yet initialized this session), collapse to L1
@@ -274,6 +279,24 @@ export function OrgChart() {
     },
     [setSelectedDepartmentId]
   );
+
+  const onSelectionChange = useCallback(
+    ({ nodes: selectedNodes }: { nodes: Node[] }) => {
+      setMultiSelectedIds(selectedNodes.map((n) => n.id));
+    },
+    []
+  );
+
+  const clearMultiSelection = useCallback(() => {
+    setMultiSelectedIds([]);
+    setNodes((nds) => nds.map((n) => (n.selected ? { ...n, selected: false } : n)));
+  }, [setNodes]);
+
+  const handleBulkApplied = useCallback(() => {
+    clearMultiSelection();
+    refreshDepartments();
+    fetchUndoRedoState();
+  }, [clearMultiSelection, refreshDepartments, fetchUndoRedoState]);
 
   const onToggleVertical = useCallback(
     (id: string) => {
@@ -517,6 +540,9 @@ export function OrgChart() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDoubleClick={onNodeDoubleClick}
+          onSelectionChange={onSelectionChange}
+          multiSelectionKeyCode={["Meta", "Control"]}
+          selectionKeyCode="Shift"
           nodeTypes={nodeTypes}
           fitView
           minZoom={0.1}
@@ -555,7 +581,17 @@ export function OrgChart() {
             </div>
           </div>
         ) : (
-          <ShetilLegend />
+          <>
+            <ShetilLegend />
+            {multiSelectedIds.length >= 2 && currentScenarioId && (
+              <BulkActionsBar
+                scenarioId={currentScenarioId}
+                selectedIds={multiSelectedIds}
+                onApplied={handleBulkApplied}
+                onClear={clearMultiSelection}
+              />
+            )}
+          </>
         )}
       </div>
 
