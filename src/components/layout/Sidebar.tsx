@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { useAiChatStore } from "@/lib/ai-store";
 import { useOrgChartStore } from "@/lib/store";
 import { useSession, signOut } from "next-auth/react";
-import { BrandMark } from "@/components/layout/BrandMark";
 
 const navGroups = [
   {
@@ -84,14 +83,14 @@ export function Sidebar() {
         className="flex items-center gap-2.5 border-b border-white/10 px-4"
         style={{ height: "var(--header-h)", minHeight: "var(--header-h)" }}
       >
-        <Link href="/" className="flex items-center gap-2.5" title="OrgChart Modeler">
-          <BrandMark size={28} />
-          {!collapsed && (
-            <span className="flex flex-col leading-none">
-              <b className="font-head text-[15px] font-bold tracking-[0.02em] text-white">OrgChart</b>
-              <span className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-white/70">Моделер</span>
-            </span>
-          )}
+        <Link
+          href="/"
+          className="flex min-w-0 items-center"
+          title="OrgChart Modeler"
+        >
+          <span className="truncate font-head text-[20px] font-bold leading-none tracking-[0.01em] text-white">
+            {collapsed ? "OC" : "OrgChart Modeler"}
+          </span>
         </Link>
       </div>
 
