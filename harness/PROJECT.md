@@ -55,7 +55,7 @@ docs/
   1_1.xlsx                  # демо-выгрузка оргданных для импорта (бинарь, ~2 МБ)
 harness/               # эта карта, DECISIONS.md, LESSONS.md, REQUIREMENTS.md (реестр требований
                        #   по Вигерсу; обновляется только по команде «обнови требования»),
-                       #   templates/{BRIEF,PLAN,REQUIREMENTS}.md
+                       #   templates/{BRIEF,PLAN,REPORT,REQUIREMENTS}.md
 scripts/
   requirements-docx/   # сборка harness/REQUIREMENTS.md в .docx по корпоративному образцу:
                        #   build.mjs (без зависимостей) + template/ (донор оформления:
