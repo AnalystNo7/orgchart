@@ -9,6 +9,9 @@ interface ResizablePanelProps {
   maxWidth?: number;
   className?: string;
   side?: "left" | "right";
+  /** Развернуть поверх всего окна: ширина и ручка не действуют,
+   *  выставленное перетаскиванием значение сохраняется до возврата. */
+  fullscreen?: boolean;
 }
 
 /**
@@ -22,6 +25,7 @@ export function ResizablePanel({
   maxWidth,
   className = "",
   side = "right",
+  fullscreen = false,
 }: ResizablePanelProps) {
   const [width, setWidth] = useState(defaultWidth);
   const isDragging = useRef(false);
@@ -67,9 +71,12 @@ export function ResizablePanel({
   }, [minWidth, effectiveMaxWidth, side]);
 
   return (
-    <div className={`relative flex ${className}`} style={{ width: `${width}px`, minWidth: `${minWidth}px` }}>
+    <div
+      className={fullscreen ? "fixed inset-0 z-40 flex bg-white" : `relative flex ${className}`}
+      style={fullscreen ? undefined : { width: `${width}px`, minWidth: `${minWidth}px` }}
+    >
       {/* Resize handle — left edge for right-side panels */}
-      {side === "right" && (
+      {!fullscreen && side === "right" && (
         <div
           onMouseDown={handleMouseDown}
           className="group absolute left-0 top-0 z-10 flex h-full w-2 cursor-col-resize items-center justify-center hover:bg-ink-100/60 active:bg-ink-200/60"
@@ -84,7 +91,7 @@ export function ResizablePanel({
       </div>
 
       {/* Resize handle — right edge for left-side panels */}
-      {side === "left" && (
+      {!fullscreen && side === "left" && (
         <div
           onMouseDown={handleMouseDown}
           className="group absolute right-0 top-0 z-10 flex h-full w-2 cursor-col-resize items-center justify-center hover:bg-ink-100/60 active:bg-ink-200/60"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Bot, X, Plus, History, Send, FolderOpen, ChevronDown, Check } from "lucide-react";
+import { Bot, X, Plus, History, Send, FolderOpen, ChevronDown, Check, Maximize2, Minimize2 } from "lucide-react";
 import { useAiChatStore, type AiMessage, type StreamingPhase } from "@/lib/ai-store";
 import { useOrgChartStore } from "@/lib/store";
 import { ChatMessage } from "./ChatMessage";
@@ -9,6 +9,7 @@ import { QuickActions } from "./QuickActions";
 import { ConversationList } from "./ConversationList";
 import { StreamingStatus } from "./StreamingStatus";
 import { ResizablePanel } from "@/components/ui/resizable-panel";
+import { cn } from "@/lib/utils";
 
 interface ScenarioItem {
   id: string;
@@ -154,6 +155,19 @@ export function AiChatPanel() {
     }
   });
   const messagesBoxRef = useRef<HTMLDivElement>(null);
+
+  // Развёрнутый режим — панель поверх всего окна. Не запоминается: после
+  // перезагрузки панель снова колонкой справа
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    if (!isMaximized) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsMaximized(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isMaximized]);
 
   const applyZoom = useCallback((value: number) => {
     const clamped = Math.min(180, Math.max(70, value));
@@ -426,14 +440,24 @@ export function AiChatPanel() {
 
   if (showConversationList) {
     return (
-      <ResizablePanel defaultWidth={384} minWidth={300} className="h-full border-l bg-white">
+      <ResizablePanel
+        defaultWidth={384}
+        minWidth={300}
+        fullscreen={isMaximized}
+        className="h-full border-l bg-white"
+      >
         <ConversationList />
       </ResizablePanel>
     );
   }
 
   return (
-    <ResizablePanel defaultWidth={384} minWidth={300} className="h-full border-l bg-white">
+    <ResizablePanel
+      defaultWidth={384}
+      minWidth={300}
+      fullscreen={isMaximized}
+      className="h-full border-l bg-white"
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-2">
@@ -450,6 +474,13 @@ export function AiChatPanel() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setIsMaximized((v) => !v)}
+            className="rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+            title={isMaximized ? "Свернуть в панель (Esc)" : "Развернуть на весь экран"}
+          >
+            {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
           <button
             onClick={() => {
               clearMessages();
@@ -478,7 +509,11 @@ export function AiChatPanel() {
       {/* Messages */}
       <div
         ref={messagesBoxRef}
-        className="flex-1 overflow-auto px-3 py-3"
+        className={cn(
+          "flex-1 overflow-auto px-3 py-3",
+          // На широком экране длинная строка читается плохо — держим колонку
+          isMaximized && "[&>*]:mx-auto [&>*]:w-full [&>*]:max-w-[900px]"
+        )}
         style={{ zoom: chatZoom / 100 }}
       >
         {messages.length === 0 ? (
@@ -527,11 +562,13 @@ export function AiChatPanel() {
 
       {/* Quick actions (only when empty and scenario selected) */}
       {messages.length === 0 && scenarioId && (
-        <QuickActions onAction={sendMessage} disabled={isStreaming} />
+        <div className={cn(isMaximized && "mx-auto w-full max-w-[900px]")}>
+          <QuickActions onAction={sendMessage} disabled={isStreaming} />
+        </div>
       )}
 
       {/* Input */}
-      <div className="border-t px-3 py-2">
+      <div className={cn("border-t px-3 py-2", isMaximized && "[&>*]:mx-auto [&>*]:w-full [&>*]:max-w-[900px]")}>
         {!scenarioId ? (
           <div className="text-center text-xs text-neutral-400">
             Выберите сценарий выше для начала работы
