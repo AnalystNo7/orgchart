@@ -40,11 +40,13 @@ model Scenario {
   description   String?
   isBaseline    Boolean        @default(false)
   status        ScenarioStatus @default(DRAFT)
+  columnNames   Json?
   createdFromId String?
   createdFrom   Scenario?      @relation("ScenarioParent", fields: [createdFromId], references: [id])
   children      Scenario[]     @relation("ScenarioParent")
   departments   Department[]
   employees     Employee[]
+  actionLogs    ActionLog[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -57,6 +59,7 @@ model Department {
   parent     Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
   children   Department[] @relation("DepartmentTree")
   name       String
+  cfo        String?
   shetilType ShetilType
   headId     String?
   head       Employee?  @relation("DepartmentHead", fields: [headId], references: [id])
@@ -68,6 +71,20 @@ model Department {
 
   @@index([scenarioId])
   @@index([parentId])
+}
+
+model ActionLog {
+  id          String   @id @default(uuid())
+  scenarioId  String
+  scenario    Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  actionType  String
+  payload     Json
+  undoPayload Json
+  undone      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([scenarioId])
+  @@index([scenarioId, createdAt])
 }
 
 model Employee {

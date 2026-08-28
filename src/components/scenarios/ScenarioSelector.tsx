@@ -17,6 +17,12 @@ interface Scenario {
   status: string;
 }
 
+const statusDotColor: Record<string, string> = {
+  DRAFT: "bg-yellow-400",
+  ACTIVE: "bg-green-400",
+  ARCHIVED: "bg-neutral-400",
+};
+
 export function ScenarioSelector() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const { currentScenarioId, setCurrentScenarioId } = useOrgChartStore();
@@ -44,8 +50,11 @@ export function ScenarioSelector() {
       <SelectContent>
         {scenarios.map((s) => (
           <SelectItem key={s.id} value={s.id}>
-            {s.isBaseline ? "\u2605 " : ""}
-            {s.name}
+            <div className="flex items-center gap-2">
+              <span className={`inline-block h-2 w-2 rounded-full ${statusDotColor[s.status] ?? "bg-neutral-300"}`} />
+              {s.isBaseline ? "\u2605 " : ""}
+              {s.name}
+            </div>
           </SelectItem>
         ))}
       </SelectContent>
