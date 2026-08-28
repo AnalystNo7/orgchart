@@ -1,4 +1,5 @@
 import { type NextAuthOptions } from "next-auth";
+import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
@@ -27,10 +28,41 @@ export const authOptions: NextAuthOptions = {
 
         if (!isValid) return null;
 
-        return { id: user.id, email: user.email, name: user.name };
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          isAdmin: user.isAdmin,
+        };
       },
     }),
   ],
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.isAdmin = (user as { isAdmin?: boolean }).isAdmin ?? false;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        (session.user as { isAdmin?: boolean }).isAdmin =
+          token.isAdmin as boolean;
+      }
+      return session;
+    },
+  },
 };
+
+/**
+ * Server-side admin guard for API routes.
+ * Returns the session when the caller is an admin, null otherwise.
+ * Usage: if (!(await requireAdmin())) return 403.
+ */
+export async function requireAdmin() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.isAdmin) return null;
+  return session;
+}

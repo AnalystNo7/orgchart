@@ -2,10 +2,23 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Plus, Minus, ArrowLeftRight, Pencil } from "lucide-react";
+import {
+  Plus,
+  Minus,
+  ArrowLeftRight,
+  Pencil,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { SHETIL_CONFIG } from "@/types";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import type { DiffStatus } from "@/lib/diff";
 import type { ShetilType } from "@prisma/client";
+import { cn } from "@/lib/utils";
 
 export interface DiffNodeData {
   label: string;
@@ -16,6 +29,11 @@ export interface DiffNodeData {
   aup: number;
   diffStatus: DiffStatus;
   changes?: string[];
+  hasChildren: boolean;
+  isExpanded: boolean;
+  departmentId: string;
+  parentId: string | null;
+  onToggleExpand: (id: string) => void;
 }
 
 type DiffNodeProps = NodeProps & { data: DiffNodeData };
@@ -27,7 +45,7 @@ const diffIcons: Record<string, typeof Plus> = {
   moved: ArrowLeftRight,
 };
 
-const diffBorderStyle: Record<string, string> = {
+const diffBorderExtra: Record<string, string> = {
   added: "border-dashed",
   removed: "border-dashed opacity-60",
   modified: "border-dashed",
@@ -37,50 +55,117 @@ const diffBorderStyle: Record<string, string> = {
 
 function DiffNodeComponent({ data }: DiffNodeProps) {
   const config = SHETIL_CONFIG[data.shetilType];
+  const total = data.pp + data.opp + data.aup;
+  const isRoot = data.parentId === null;
   const DiffIcon = diffIcons[data.diffStatus];
 
   return (
     <div
-      className={`relative rounded-lg border-2 bg-white shadow-sm ${diffBorderStyle[data.diffStatus]}`}
-      style={{ borderColor: config.color, minWidth: 160 }}
+      className={cn(
+        "relative rounded-lg border-2 bg-white shadow-sm transition-shadow hover:shadow-md",
+        isRoot && "shadow-md",
+        diffBorderExtra[data.diffStatus]
+      )}
+      style={{ borderColor: isRoot ? "#0d3b66" : config.color, width: 200, maxWidth: 200 }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-neutral-300" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top"
+        className="!bg-neutral-300"
+      />
 
       {/* Diff badge */}
       {data.diffStatus !== "unchanged" && DiffIcon && (
-        <div className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border bg-white shadow-sm">
-          <DiffIcon className="h-3 w-3 text-neutral-700" />
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="absolute -right-2 -top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full border bg-white shadow-sm">
+              <DiffIcon className="h-3 w-3 text-neutral-700" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xs text-xs">
+            {data.changes?.map((c, i) => <div key={i}>{c}</div>) ?? data.diffStatus}
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {/* Header */}
       <div
-        className="rounded-t-md px-2 py-1 text-xs font-medium text-white"
-        style={{ backgroundColor: config.color }}
+        className="rounded-t-md px-3 py-1.5 text-xs font-medium text-white"
+        style={
+          isRoot
+            ? { background: "linear-gradient(135deg, #0a1628 0%, #0d3b66 50%, #1a5276 100%)" }
+            : { backgroundColor: config.color }
+        }
       >
-        <span className="truncate">{data.label}</span>
+        <div className="flex items-center justify-between">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="truncate">{data.label}</span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              {data.label}
+            </TooltipContent>
+          </Tooltip>
+          {data.hasChildren && (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onToggleExpand(data.departmentId);
+              }}
+              className="nopan nodrag ml-1 rounded p-0.5 hover:bg-white/20"
+            >
+              {data.isExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Body */}
-      <div className="px-2 py-1.5 text-xs">
+      <div className="px-3 py-2 text-xs">
         {data.headName && (
-          <div className="mb-0.5 truncate text-neutral-500">{data.headName}</div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="mb-1 truncate text-neutral-600">
+                {data.headName}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs">
+              {data.headName}
+            </TooltipContent>
+          </Tooltip>
         )}
-        <div className="flex gap-1.5 text-neutral-500">
-          <span className="text-green-600">{data.pp}</span>/
-          <span className="text-blue-600">{data.opp}</span>/
-          <span className="text-red-600">{data.aup}</span>
+        <div className="flex gap-2 text-neutral-500">
+          <span>
+            <span className="font-medium text-neutral-900">{data.pp}</span>{" "}
+            ПП
+          </span>
+          <span>
+            <span className="font-medium text-neutral-900">{data.opp}</span>{" "}
+            ОПП
+          </span>
+          <span>
+            <span className="font-medium text-neutral-900">{data.aup}</span>{" "}
+            АУП
+          </span>
         </div>
-        {data.changes && data.changes.length > 0 && (
-          <div className="mt-1 border-t pt-1 text-[10px] text-neutral-400">
-            {data.changes.map((c, i) => (
-              <div key={i}>{c}</div>
-            ))}
-          </div>
+        {total > 0 && (
+          <div className="mt-0.5 text-neutral-400">Всего: {total}</div>
         )}
       </div>
 
-      <Handle type="source" position={Position.Bottom} className="!bg-neutral-300" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className="!bg-neutral-300"
+      />
     </div>
   );
 }

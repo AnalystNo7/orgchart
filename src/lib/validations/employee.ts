@@ -7,6 +7,8 @@ export const createEmployeeSchema = z.object({
   position: z.string().min(1, "Должность обязательна"),
   category: z.enum(["PP", "OPP", "AUP"]),
   fte: z.number().min(0).max(2).optional().default(1.0),
+  costRate: z.number().min(0).nullable().optional(),
+  tariffId: z.string().uuid().nullable().optional(),
 });
 
 export const updateEmployeeSchema = z.object({
@@ -15,4 +17,6 @@ export const updateEmployeeSchema = z.object({
   position: z.string().min(1).optional(),
   category: z.enum(["PP", "OPP", "AUP"]).optional(),
   fte: z.number().min(0).max(2).optional(),
+  costRate: z.number().min(0).nullable().optional(),
+  tariffId: z.string().uuid().nullable().optional(),
 });

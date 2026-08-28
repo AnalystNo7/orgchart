@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Сборка реестра требований (пересобирается scripts/requirements-docx/build.mjs)
+/Требования OrgChart Modeler.docx

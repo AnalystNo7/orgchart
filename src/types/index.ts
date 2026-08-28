@@ -1,6 +1,6 @@
-import type { ShetilType, EmployeeCategory, ScenarioStatus } from "@prisma/client";
+import type { ShetilType, EmployeeCategory, ScenarioStatus, ContractType, ContractStatus, RevenueProvisionStatus } from "@prisma/client";
 
-export type { ShetilType, EmployeeCategory, ScenarioStatus };
+export type { ShetilType, EmployeeCategory, ScenarioStatus, ContractType, ContractStatus, RevenueProvisionStatus };
 
 export const SHETIL_CONFIG: Record<
   ShetilType,
@@ -8,27 +8,27 @@ export const SHETIL_CONFIG: Record<
 > = {
   REVENUE: {
     label: "Зарабатывающее",
-    color: "#22C55E",
-    bg: "bg-green-50",
-    border: "border-green-500",
+    color: "#6DBFB8",
+    bg: "bg-teal-50",
+    border: "border-teal-500",
   },
   RESOURCE: {
     label: "Ресурсный центр",
-    color: "#3B82F6",
-    bg: "bg-blue-50",
-    border: "border-blue-500",
+    color: "#3AAEE0",
+    bg: "bg-sky-50",
+    border: "border-sky-500",
   },
   SERVICE: {
     label: "Сервисное",
-    color: "#EAB308",
-    bg: "bg-yellow-50",
-    border: "border-yellow-500",
+    color: "#F5A000",
+    bg: "bg-amber-50",
+    border: "border-amber-500",
   },
   BACKOFFICE: {
     label: "Бэк-офис",
-    color: "#EF4444",
+    color: "#C62200",
     bg: "bg-red-50",
-    border: "border-red-500",
+    border: "border-red-700",
   },
 };
 
@@ -38,11 +38,47 @@ export const CATEGORY_LABELS: Record<EmployeeCategory, string> = {
   AUP: "АУП",
 };
 
+export const CONTRACT_TYPE_LABELS: Record<ContractType, string> = {
+  REVENUE: "Доходный",
+  EXPENSE: "Расходный",
+};
+
+export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
+  CONCLUDED: "Заключённый",
+  PLANNED: "Планируемый",
+};
+
+export const REVENUE_PROVISION_LABELS: Record<RevenueProvisionStatus, string> = {
+  PROVIDED: "Обеспечен",
+  PLANNED: "Запланирован",
+  NOT_PROVIDED: "Не обеспечен",
+};
+
+export type MetricsMode = "own" | "selected_levels" | "all_descendants";
+
+export const HIERARCHY_SKIP_LEVELS = 0;
+
+export const DEFAULT_LEVEL_NAMES = ["Генеральный директор", "Блок", "Подразделение", "Дочернее подразделение"];
+
+export const DEFAULT_COLUMN_NAMES: Record<string, string> = {
+  cfo: "ЦФО",
+  hierarchy_0: "Генеральный директор",
+  hierarchy_1: "Блок",
+  hierarchy_2: "Подразделение",
+  hierarchy_3: "Дочернее подразделение",
+  hierarchy_path: "Иерархия",
+  position: "Должность",
+  fullName: "ФИО",
+  fte: "FTE",
+  category: "Тип занятости",
+};
+
 export interface DepartmentWithMetrics {
   id: string;
   scenarioId: string;
   parentId: string | null;
   name: string;
+  cfo: string | null;
   shetilType: ShetilType;
   headId: string | null;
   sortOrder: number;

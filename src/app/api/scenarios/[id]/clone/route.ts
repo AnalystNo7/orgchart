@@ -28,6 +28,7 @@ export async function POST(
         description: parsed.data.description,
         status: "DRAFT",
         createdFromId: sourceId,
+        columnNames: source.columnNames ?? undefined,
       },
     });
 
@@ -45,6 +46,7 @@ export async function POST(
         data: {
           scenarioId: newScenario.id,
           name: dept.name,
+          cfo: dept.cfo,
           shetilType: dept.shetilType,
           sortOrder: dept.sortOrder,
           originId: dept.originId ?? dept.id,

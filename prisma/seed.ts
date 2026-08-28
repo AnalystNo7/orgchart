@@ -8,18 +8,37 @@ async function main() {
   const passwordHash = await bcrypt.hash("admin123", 10);
   await prisma.user.upsert({
     where: { email: "admin@orgchart.local" },
-    update: {},
+    update: { isAdmin: true },
     create: {
       email: "admin@orgchart.local",
       passwordHash,
       name: "Администратор",
+      isAdmin: true,
     },
   });
+
+  // Seed tariffs (K-1 through K-6) - global, idempotent - always run
+  const tariffData = [
+    { name: "K-1", rate: 1500, description: "Начальный уровень" },
+    { name: "K-2", rate: 2000, description: "Базовый уровень" },
+    { name: "K-3", rate: 2800, description: "Средний уровень" },
+    { name: "K-4", rate: 3500, description: "Продвинутый уровень" },
+    { name: "K-5", rate: 4500, description: "Экспертный уровень" },
+    { name: "K-6", rate: 6000, description: "Высший уровень" },
+  ];
+  for (const t of tariffData) {
+    await prisma.tariff.upsert({
+      where: { name: t.name },
+      update: {},
+      create: t,
+    });
+  }
+  console.log(`Tariffs seeded: ${tariffData.length}`);
 
   // Check if baseline exists
   const existing = await prisma.scenario.findFirst({ where: { isBaseline: true } });
   if (existing) {
-    console.log("Seed already exists, skipping");
+    console.log("Baseline already exists, skipping org structure");
     return;
   }
 
@@ -201,9 +220,196 @@ async function main() {
     { fullName: "Сергеев А.А.", position: "Рабочий", category: "PP" },
   ]);
 
+  // --- P&L seed data: costRate for employees + contracts ---
+
+  // Set costRate on all employees based on category
+  const costRateByCategory: Record<string, number> = {
+    PP: 2000,
+    OPP: 1800,
+    AUP: 2500,
+  };
+  const allEmps = await prisma.employee.findMany({ where: { scenarioId: sId } });
+  for (const emp of allEmps) {
+    await prisma.employee.update({
+      where: { id: emp.id },
+      data: { costRate: costRateByCategory[emp.category] ?? 2000 },
+    });
+  }
+  console.log(`CostRate set for ${allEmps.length} employees`);
+
+  // Find departments for contract linking
+  const allDepts = await prisma.department.findMany({
+    where: { scenarioId: sId },
+    include: { employees: true },
+  });
+  const deptByName = new Map(allDepts.map((d) => [d.name, d]));
+
+  // Create contracts and link employees
+  async function createContract(
+    name: string,
+    type: "REVENUE" | "EXPENSE",
+    status: "CONCLUDED" | "PLANNED",
+    amount: number,
+    expectedAmount: number | null,
+    periodStart: Date,
+    periodEnd: Date,
+    deptNames: string[], // link all employees from these departments
+    fte: number = 0.5
+  ) {
+    const contract = await prisma.contract.create({
+      data: {
+        name,
+        type,
+        status,
+        amount: status === "CONCLUDED" ? amount : null,
+        expectedAmount: expectedAmount,
+        periodStart,
+        periodEnd,
+      },
+    });
+
+    for (const deptName of deptNames) {
+      const dept = deptByName.get(deptName);
+      if (!dept) continue;
+      for (const emp of dept.employees) {
+        await prisma.employeeContract.create({
+          data: {
+            employeeId: emp.id,
+            contractId: contract.id,
+            revenueStatus: status === "CONCLUDED" ? "PROVIDED" : "PLANNED",
+            fte,
+            periodStart,
+            periodEnd,
+          },
+        });
+      }
+    }
+    return contract;
+  }
+
+  // Concluded contracts (for "forecast" mode)
+  await createContract(
+    "Контракт Альфа-2025",
+    "REVENUE",
+    "CONCLUDED",
+    8000000,
+    null,
+    new Date("2025-01-01"),
+    new Date("2025-12-31"),
+    ["Цех №1", "Участок №1-А"],
+    0.5
+  );
+
+  await createContract(
+    "Контракт Бета-2025",
+    "REVENUE",
+    "CONCLUDED",
+    5000000,
+    null,
+    new Date("2025-03-01"),
+    new Date("2025-09-30"),
+    ["Цех №2", "Участок №2-А"],
+    0.4
+  );
+
+  await createContract(
+    "Контракт Гамма-2025",
+    "REVENUE",
+    "CONCLUDED",
+    3000000,
+    null,
+    new Date("2025-06-01"),
+    new Date("2026-05-31"),
+    ["Цех №1", "Участок №1-Б"],
+    0.3
+  );
+
+  // Planned contracts (for "plan" mode)
+  await createContract(
+    "Контракт Дельта-2026 (план)",
+    "REVENUE",
+    "PLANNED",
+    0,
+    12000000,
+    new Date("2026-01-01"),
+    new Date("2026-12-31"),
+    ["Цех №1", "Участок №1-А", "Участок №1-Б"],
+    0.6
+  );
+
+  await createContract(
+    "Контракт Эпсилон-2026 (план)",
+    "REVENUE",
+    "PLANNED",
+    0,
+    7000000,
+    new Date("2026-04-01"),
+    new Date("2026-12-31"),
+    ["Цех №2", "Участок №2-А"],
+    0.5
+  );
+
+  await createContract(
+    "Контракт Зета-2026 (план)",
+    "REVENUE",
+    "PLANNED",
+    0,
+    4000000,
+    new Date("2026-01-01"),
+    new Date("2026-06-30"),
+    ["Склад готовой продукции"],
+    0.3
+  );
+
+  const totalContracts = await prisma.contract.count();
+  const totalLinks = await prisma.employeeContract.count();
+  console.log(`Contracts seeded: ${totalContracts} contracts, ${totalLinks} employee links`);
+
   const totalDepts = await prisma.department.count({ where: { scenarioId: sId } });
   const totalEmps = await prisma.employee.count({ where: { scenarioId: sId } });
-  console.log(`Seed completed: ${totalDepts} departments, ${totalEmps} employees`);
+  const totalTariffs = await prisma.tariff.count();
+  console.log(`Seed completed: ${totalDepts} departments, ${totalEmps} employees, ${totalTariffs} tariffs`);
+
+  // Seed processes for the baseline scenario
+  const existingProcesses = await prisma.process.count({ where: { scenarioId: scenario.id } });
+  if (existingProcesses === 0) {
+    const processData = [
+      // Macro processes
+      { name: "Управление проектами", level: "MACRO" as const, description: "Полный цикл управления ИТ-проектами", sortOrder: 1 },
+      { name: "Разработка и внедрение", level: "MACRO" as const, description: "Разработка, тестирование и внедрение ИТ-решений", sortOrder: 2 },
+      { name: "Управление персоналом", level: "MACRO" as const, description: "HR-процессы: найм, адаптация, обучение, развитие", sortOrder: 3 },
+      { name: "Финансы и бюджетирование", level: "MACRO" as const, description: "Финансовое планирование, учёт, отчётность", sortOrder: 4 },
+      { name: "Продажи и работа с клиентами", level: "MACRO" as const, description: "Привлечение клиентов, ведение тендеров, account management", sortOrder: 5 },
+    ];
+
+    const macroIds: Record<string, string> = {};
+    for (const p of processData) {
+      const created = await prisma.process.create({
+        data: { scenarioId: scenario.id, ...p },
+      });
+      macroIds[p.name] = created.id;
+    }
+
+    // Child processes
+    const childProcesses = [
+      { name: "Инициация проекта", level: "PROCESS" as const, parentId: macroIds["Управление проектами"], sortOrder: 1 },
+      { name: "Планирование и оценка", level: "PROCESS" as const, parentId: macroIds["Управление проектами"], sortOrder: 2 },
+      { name: "Мониторинг и контроль", level: "PROCESS" as const, parentId: macroIds["Управление проектами"], sortOrder: 3 },
+      { name: "Анализ требований", level: "PROCESS" as const, parentId: macroIds["Разработка и внедрение"], sortOrder: 1 },
+      { name: "Разработка", level: "PROCESS" as const, parentId: macroIds["Разработка и внедрение"], sortOrder: 2 },
+      { name: "Тестирование", level: "PROCESS" as const, parentId: macroIds["Разработка и внедрение"], sortOrder: 3 },
+      { name: "Подбор персонала", level: "PROCESS" as const, parentId: macroIds["Управление персоналом"], sortOrder: 1 },
+      { name: "Адаптация и обучение", level: "PROCESS" as const, parentId: macroIds["Управление персоналом"], sortOrder: 2 },
+    ];
+
+    for (const cp of childProcesses) {
+      await prisma.process.create({
+        data: { scenarioId: scenario.id, ...cp },
+      });
+    }
+
+    console.log(`Seed: ${processData.length} macro + ${childProcesses.length} child processes created`);
+  }
 }
 
 main()

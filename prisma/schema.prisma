@@ -26,65 +26,733 @@ enum EmployeeCategory {
   AUP
 }
 
+enum ContractType {
+  REVENUE
+  EXPENSE
+}
+
+enum ContractStatus {
+  CONCLUDED
+  PLANNED
+}
+
+enum RevenueProvisionStatus {
+  PROVIDED
+  PLANNED
+  NOT_PROVIDED
+}
+
+enum ClientStatus {
+  ACTIVE
+  PROSPECT
+  INACTIVE
+}
+
+enum PipelineStage {
+  LEAD
+  QUALIFICATION
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum BudgetType {
+  CAPEX
+  OPEX
+}
+
+enum BudgetStatus {
+  DRAFT
+  APPROVED
+  CLOSED
+}
+
+enum InsightSeverity {
+  CRITICAL
+  WARNING
+  INFO
+  POSITIVE
+}
+
+enum InsightCategory {
+  STRUCTURE
+  FINANCIAL
+  PROCESS
+  COMPETENCY
+  STRATEGY
+  OPERATIONS
+  CUSTOMER
+}
+
+enum GoalType {
+  BSC_FINANCIAL
+  BSC_CLIENT
+  BSC_PROCESS
+  BSC_LEARNING
+  OKR
+}
+
+enum GoalStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  ACHIEVED
+  AT_RISK
+  FAILED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String
   name         String
+  isAdmin      Boolean  @default(false)
   createdAt    DateTime @default(now())
 }
 
 model Scenario {
-  id            String         @id @default(uuid())
-  name          String
-  description   String?
-  isBaseline    Boolean        @default(false)
-  status        ScenarioStatus @default(DRAFT)
-  createdFromId String?
-  createdFrom   Scenario?      @relation("ScenarioParent", fields: [createdFromId], references: [id])
-  children      Scenario[]     @relation("ScenarioParent")
-  departments   Department[]
-  employees     Employee[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id              String           @id @default(uuid())
+  name            String
+  description     String?
+  isBaseline      Boolean          @default(false)
+  status          ScenarioStatus   @default(DRAFT)
+  columnNames     Json?
+  createdFromId   String?
+  createdFrom     Scenario?        @relation("ScenarioParent", fields: [createdFromId], references: [id])
+  children        Scenario[]       @relation("ScenarioParent")
+  departments     Department[]
+  employees       Employee[]
+  actionLogs      ActionLog[]
+  gaps            GapPassport[]
+  aiConversations AiConversation[]
+  processes       Process[]
+  goals           Goal[]
+  pipelineDeals   PipelineDeal[]
+  budgets         Budget[]
+  insights        AIInsight[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model Department {
-  id         String     @id @default(uuid())
-  scenarioId String
-  scenario   Scenario   @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
-  parentId   String?
-  parent     Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
-  children   Department[] @relation("DepartmentTree")
-  name       String
-  shetilType ShetilType
-  headId     String?
-  head       Employee?  @relation("DepartmentHead", fields: [headId], references: [id])
-  sortOrder  Int        @default(0)
-  employees  Employee[] @relation("DepartmentEmployees")
-  originId   String?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id          String               @id @default(uuid())
+  scenarioId  String
+  scenario    Scenario             @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Department?          @relation("DepartmentTree", fields: [parentId], references: [id])
+  children    Department[]         @relation("DepartmentTree")
+  name        String
+  cfo         String?
+  shetilType  ShetilType
+  headId      String?
+  head        Employee?            @relation("DepartmentHead", fields: [headId], references: [id])
+  sortOrder   Int                  @default(0)
+  employees   Employee[]           @relation("DepartmentEmployees")
+  goalLinks   GoalDepartmentLink[]
+  budgetLines BudgetLine[]
+  originId    String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   @@index([scenarioId])
   @@index([parentId])
 }
 
+model ActionLog {
+  id          String    @id @default(uuid())
+  scenarioId  String?
+  scenario    Scenario? @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  actionType  String
+  payload     Json
+  undoPayload Json
+  undone      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@index([scenarioId])
+  @@index([scenarioId, createdAt])
+}
+
 model Employee {
-  id           String           @id @default(uuid())
+  id           String               @id @default(uuid())
   scenarioId   String
-  scenario     Scenario         @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  scenario     Scenario             @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
   departmentId String
-  department   Department       @relation("DepartmentEmployees", fields: [departmentId], references: [id], onDelete: Cascade)
+  department   Department           @relation("DepartmentEmployees", fields: [departmentId], references: [id], onDelete: Cascade)
   fullName     String
   position     String
   category     EmployeeCategory
-  fte          Decimal          @default(1.0)
-  headOf       Department[]     @relation("DepartmentHead")
+  fte          Decimal              @default(1.0)
+  costRate     Decimal?
+  tariffId     String?
+  tariff       Tariff?              @relation(fields: [tariffId], references: [id])
+  headOf       Department[]         @relation("DepartmentHead")
+  contracts    EmployeeContract[]
+  competencies EmployeeCompetency[]
+  ownedGoals   Goal[]               @relation("GoalOwner")
   originId     String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
   @@index([scenarioId])
   @@index([departmentId])
+}
+
+model Tariff {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  rate        Decimal
+  description String?
+  employees   Employee[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Contract {
+  id             String             @id @default(uuid())
+  name           String
+  type           ContractType
+  status         ContractStatus
+  amount         Decimal?
+  expectedAmount Decimal?
+  amountAutoCalc Boolean            @default(false)
+  periodStart    DateTime
+  periodEnd      DateTime
+  description    String?
+  clientId       String?
+  client         Client?            @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  employees      EmployeeContract[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([clientId])
+}
+
+model EmployeeContract {
+  id            String                 @id @default(uuid())
+  employeeId    String
+  employee      Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  contractId    String
+  contract      Contract               @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  revenueStatus RevenueProvisionStatus
+  fte           Decimal
+  periodStart   DateTime
+  periodEnd     DateTime
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@unique([employeeId, contractId, periodStart])
+  @@index([employeeId])
+  @@index([contractId])
+}
+
+// --- AI & Gap Analysis ---
+
+enum GapCategory {
+  STRUCTURE
+  PROCESS
+  RESOURCE
+  COMPETENCY
+  TECHNOLOGY
+}
+
+enum GapPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum GapStatus {
+  IDENTIFIED
+  IN_PROGRESS
+  RESOLVED
+  DEFERRED
+}
+
+model GapPassport {
+  id                    String      @id @default(uuid())
+  scenarioId            String
+  scenario              Scenario    @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  asIsScenarioId        String
+  toBeScenarioId        String
+  category              GapCategory
+  title                 String
+  description           String
+  priority              GapPriority
+  impact                String?
+  affectedDepartmentIds String[]
+  responsibleDeptId     String?
+  estimatedEffort       String?
+  status                GapStatus   @default(IDENTIFIED)
+  aiGenerated           Boolean     @default(false)
+  aiRationale           String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@index([scenarioId])
+}
+
+model AiConversation {
+  id         String   @id @default(uuid())
+  scenarioId String
+  scenario   Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  title      String
+  messages   Json // [{role, content, toolCalls?, timestamp}]
+  context    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([scenarioId])
+}
+
+// --- Knowledge Base / RAG ---
+
+enum KnowledgeCategory {
+  FRAMEWORK
+  BENCHMARK
+  CLIENT_DOC
+}
+
+enum KnowledgeOrigin {
+  BUILTIN
+  MANUAL
+  IMPORTED
+  AI_EXTRACTED
+}
+
+// --- Competencies ---
+
+enum CompetencyCategory {
+  HARD
+  SOFT
+  LEADERSHIP
+}
+
+model Competency {
+  id                   String               @id @default(uuid())
+  name                 String               @unique
+  category             CompetencyCategory
+  description          String?
+  roleCompetencies     RoleCompetency[]
+  employeeCompetencies EmployeeCompetency[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+}
+
+model RoleCompetency {
+  id            String     @id @default(uuid())
+  competencyId  String
+  competency    Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+  position      String
+  requiredLevel Int        @default(3) // 1-5
+  createdAt     DateTime   @default(now())
+
+  @@unique([competencyId, position])
+  @@index([position])
+}
+
+model EmployeeCompetency {
+  id           String     @id @default(uuid())
+  employeeId   String
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  competencyId String
+  competency   Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+  currentLevel Int        @default(1) // 1-5
+  assessedAt   DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([employeeId, competencyId])
+  @@index([employeeId])
+  @@index([competencyId])
+}
+
+// --- Business Processes ---
+
+enum ProcessLevel {
+  MACRO
+  PROCESS
+  SUBPROCESS
+}
+
+enum ProcessStatus {
+  ACTIVE
+  PLANNED
+  DEPRECATED
+}
+
+enum RaciRole {
+  RESPONSIBLE
+  ACCOUNTABLE
+  CONSULTED
+  INFORMED
+}
+
+model Process {
+  id           String               @id @default(uuid())
+  scenarioId   String
+  scenario     Scenario             @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  parentId     String?
+  parent       Process?             @relation("ProcessTree", fields: [parentId], references: [id])
+  children     Process[]            @relation("ProcessTree")
+  name         String
+  description  String?
+  level        ProcessLevel
+  status       ProcessStatus        @default(ACTIVE)
+  ownerDeptId  String?
+  sortOrder    Int                  @default(0)
+  kpis         ProcessKpi[]
+  participants ProcessParticipant[]
+  diagrams     ProcessDiagram[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([scenarioId])
+  @@index([parentId])
+}
+
+model ProcessKpi {
+  id           String   @id @default(uuid())
+  processId    String
+  process      Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  name         String
+  targetValue  String?
+  currentValue String?
+  unit         String?
+  description  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([processId])
+}
+
+model ProcessParticipant {
+  id           String   @id @default(uuid())
+  processId    String
+  process      Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  departmentId String
+  role         RaciRole
+  createdAt    DateTime @default(now())
+
+  @@unique([processId, departmentId, role])
+  @@index([processId])
+  @@index([departmentId])
+}
+
+// --- Process Diagrams & Steps ---
+
+enum DiagramType {
+  FLOWCHART
+  VAD
+  BPMN
+  EPC
+}
+
+enum StepType {
+  START
+  END
+  TASK
+  DECISION
+  EVENT
+  SUBPROCESS
+  GATEWAY
+}
+
+model ProcessDiagram {
+  id        String            @id @default(uuid())
+  processId String
+  process   Process           @relation(fields: [processId], references: [id], onDelete: Cascade)
+  type      DiagramType
+  name      String?
+  layout    Json? // viewport, zoom, etc.
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  steps     ProcessStep[]
+  links     ProcessStepLink[]
+
+  @@index([processId])
+}
+
+model ProcessStep {
+  id          String            @id @default(uuid())
+  diagramId   String
+  diagram     ProcessDiagram    @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  type        StepType
+  label       String
+  description String?
+  positionX   Float             @default(0)
+  positionY   Float             @default(0)
+  width       Float             @default(150)
+  height      Float             @default(50)
+  metadata    Json?
+  sortOrder   Int               @default(0)
+  linksFrom   ProcessStepLink[] @relation("LinkSource")
+  linksTo     ProcessStepLink[] @relation("LinkTarget")
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([diagramId])
+}
+
+model ProcessStepLink {
+  id        String         @id @default(uuid())
+  diagramId String
+  diagram   ProcessDiagram @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  sourceId  String
+  source    ProcessStep    @relation("LinkSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetId  String
+  target    ProcessStep    @relation("LinkTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  label     String?
+  condition String?
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  @@index([diagramId])
+  @@index([sourceId])
+  @@index([targetId])
+}
+
+model KnowledgeDocument {
+  id              String            @id @default(uuid())
+  category        KnowledgeCategory
+  origin          KnowledgeOrigin   @default(MANUAL)
+  title           String
+  sourceFile      String?
+  content         String
+  metadata        Json?
+  // Полный текст документа подставляется в системный промпт каждого
+  // AI-запроса (бюджет AI_KB_PROMPT_BUDGET_BYTES); RAG-поиск от флага
+  // не зависит и работает для всех документов.
+  includeInPrompt Boolean           @default(false)
+  chunks          KnowledgeChunk[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model KnowledgeChunk {
+  id         String            @id @default(uuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String
+  embedding  Json? // number[] — vector 1024 dimensions, stored as JSON
+  chunkIndex Int
+  metadata   Json?
+  createdAt  DateTime          @default(now())
+
+  @@index([documentId])
+}
+
+model PnlCache {
+  id             String   @id @default(uuid())
+  scenarioId     String
+  departmentId   String
+  mode           String // "forecast" | "plan" | "combined"
+  allocationMode String   @default("earning") // "earning" | "fte" | "transfer"
+  periodStart    DateTime
+  periodEnd      DateTime
+  revenue        Decimal  @default(0)
+  cost           Decimal  @default(0)
+  pnl            Decimal  @default(0)
+  details        Json // {employees: [...], contracts: [...]}
+  warnings       Json? // [{employeeId, message}]
+  calculatedAt   DateTime @default(now())
+
+  @@unique([scenarioId, departmentId, mode, allocationMode, periodStart, periodEnd])
+  @@index([scenarioId])
+  @@index([scenarioId, mode])
+}
+
+// --- Strategic Goals (BSC / OKR) ---
+
+model Goal {
+  id          String               @id @default(uuid())
+  scenarioId  String
+  scenario    Scenario             @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Goal?                @relation("GoalTree", fields: [parentId], references: [id])
+  children    Goal[]               @relation("GoalTree")
+  name        String
+  description String?
+  type        GoalType
+  status      GoalStatus           @default(NOT_STARTED)
+  weight      Float                @default(1.0)
+  progress    Float                @default(0)
+  ownerId     String?
+  owner       Employee?            @relation("GoalOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  deadline    DateTime?
+  period      String?
+  sortOrder   Int                  @default(0)
+  kpis        GoalKpi[]
+  departments GoalDepartmentLink[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([scenarioId])
+  @@index([parentId])
+}
+
+model GoalKpi {
+  id           String   @id @default(uuid())
+  goalId       String
+  goal         Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  name         String
+  unit         String
+  targetValue  Float
+  currentValue Float    @default(0)
+  weight       Float    @default(1.0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([goalId])
+}
+
+model GoalDepartmentLink {
+  id           String     @id @default(uuid())
+  goalId       String
+  goal         Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([goalId, departmentId])
+  @@index([goalId])
+  @@index([departmentId])
+}
+
+// --- Clients & Pipeline ---
+
+model Client {
+  id            String         @id @default(uuid())
+  name          String
+  industry      String?
+  contactPerson String?
+  phone         String?
+  email         String?
+  status        ClientStatus   @default(PROSPECT)
+  description   String?
+  contracts     Contract[]
+  deals         PipelineDeal[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model PipelineDeal {
+  id                String        @id @default(uuid())
+  scenarioId        String
+  scenario          Scenario      @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  clientId          String
+  client            Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name              String
+  amount            Float         @default(0)
+  probability       Float         @default(50)
+  stage             PipelineStage @default(LEAD)
+  expectedCloseDate DateTime?
+  description       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([scenarioId])
+  @@index([clientId])
+}
+
+// --- Budgets ---
+
+model Budget {
+  id          String       @id @default(uuid())
+  scenarioId  String
+  scenario    Scenario     @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  name        String
+  type        BudgetType
+  status      BudgetStatus @default(DRAFT)
+  periodStart DateTime
+  periodEnd   DateTime
+  description String?
+  lines       BudgetLine[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([scenarioId])
+}
+
+model BudgetLine {
+  id            String     @id @default(uuid())
+  budgetId      String
+  budget        Budget     @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  departmentId  String
+  department    Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  category      String // "Зарплата", "Аренда", "ПО", "Оборудование", etc.
+  plannedAmount Float      @default(0)
+  actualAmount  Float      @default(0)
+  description   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([budgetId])
+  @@index([departmentId])
+}
+
+// --- Proactive AI Insights ---
+
+model AIInsight {
+  id              String             @id @default(uuid())
+  scenarioId      String
+  scenario        Scenario           @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  category        InsightCategory
+  severity        InsightSeverity
+  title           String
+  description     String
+  metricKey       String? // e.g. "overheadRatio", "utilization"
+  currentValue    Float?
+  benchmarkValue  Float?
+  resolved        Boolean            @default(false)
+  recommendations AIRecommendation[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([scenarioId])
+  @@index([scenarioId, resolved])
+}
+
+model AIRecommendation {
+  id          String    @id @default(uuid())
+  insightId   String
+  insight     AIInsight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  priority    Int       @default(0) // 0 = high, 1 = medium, 2 = low
+  createdAt   DateTime  @default(now())
+
+  @@index([insightId])
+}
+
+// --- LLM connection presets (admin-managed, /admin/llm) ---
+
+model LlmSetting {
+  id                    String   @id @default(uuid())
+  name                  String
+  provider              String // "openai_compatible" | "anthropic" | "openai" | "google"
+  baseUrl               String? // required for openai_compatible (enforced in zod)
+  apiKey                String // plaintext by explicit user decision; never returned by API (mask only)
+  model                 String
+  temperature           Float? // null = provider default
+  maxOutputTokens       Int? // null = no cap
+  timeoutSec            Int      @default(300)
+  toolResultMaxBytes    Int? // null = дефолт 60000; лимит одного результата инструмента (байты UTF-8)
+  // Лимиты прогона; null = дефолт из src/lib/ai/limits.ts
+  maxSteps              Int? // null = AI_MAX_STEPS (30)
+  stepTimeoutSec        Int? // null = AI_STEP_TIMEOUT_MS (600 с)
+  chunkTimeoutSec       Int? // null = AI_CHUNK_TIMEOUT_MS (120 с)
+  runContextBudgetBytes Int? // null = AI_RUN_CONTEXT_BUDGET_BYTES (120000)
+  isActive              Boolean  @default(false) // "only one active" enforced by activate endpoint transaction
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// --- Editable AI system prompt (admin-managed, /admin/settings/prompt) ---
+// No row = the default methodology prompt from code is in effect.
+// A single row (enforced by the API's upsert) holds the custom text.
+model AiPromptSetting {
+  id        String   @id @default(uuid())
+  content   String   @db.Text
+  updatedAt DateTime @updatedAt
 }

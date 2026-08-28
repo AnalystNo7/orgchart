@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createDepartmentSchema } from "@/lib/validations/department";
+import { logAction } from "@/lib/action-logger";
 
 export async function GET(req: NextRequest) {
   const scenarioId = req.nextUrl.searchParams.get("scenarioId");
@@ -18,30 +19,36 @@ export async function GET(req: NextRequest) {
     orderBy: { sortOrder: "asc" },
   });
 
-  // Compute metrics for each department
-  const deptsWithMetrics = await Promise.all(
-    departments.map(async (dept) => {
-      const metrics = await prisma.employee.groupBy({
-        by: ["category"],
-        where: { departmentId: dept.id },
-        _count: true,
-        _sum: { fte: true },
-      });
+  // Single batch query for all department metrics instead of N+1
+  const allMetrics = await prisma.employee.groupBy({
+    by: ["departmentId", "category"],
+    where: { scenarioId },
+    _count: true,
+    _sum: { fte: true },
+  });
 
-      const pp = metrics.find((m) => m.category === "PP")?._count ?? 0;
-      const opp = metrics.find((m) => m.category === "OPP")?._count ?? 0;
-      const aup = metrics.find((m) => m.category === "AUP")?._count ?? 0;
-      const totalFte = metrics.reduce(
-        (sum, m) => sum + (Number(m._sum.fte) || 0),
-        0
-      );
+  // Build per-department metrics map
+  const metricsMap = new Map<
+    string,
+    { pp: number; opp: number; aup: number; totalFte: number }
+  >();
+  departments.forEach((d) => {
+    metricsMap.set(d.id, { pp: 0, opp: 0, aup: 0, totalFte: 0 });
+  });
+  allMetrics.forEach((m) => {
+    const existing = metricsMap.get(m.departmentId);
+    if (!existing) return;
+    const fte = Number(m._sum.fte) || 0;
+    if (m.category === "PP") existing.pp = m._count;
+    else if (m.category === "OPP") existing.opp = m._count;
+    else if (m.category === "AUP") existing.aup = m._count;
+    existing.totalFte += fte;
+  });
 
-      return {
-        ...dept,
-        metrics: { pp, opp, aup, totalFte },
-      };
-    })
-  );
+  const deptsWithMetrics = departments.map((dept) => ({
+    ...dept,
+    metrics: metricsMap.get(dept.id) ?? { pp: 0, opp: 0, aup: 0, totalFte: 0 },
+  }));
 
   return NextResponse.json(deptsWithMetrics);
 }
@@ -59,6 +66,7 @@ export async function POST(req: NextRequest) {
       scenarioId: parsed.data.scenarioId,
       parentId: parsed.data.parentId ?? null,
       name: parsed.data.name,
+      cfo: parsed.data.cfo ?? null,
       shetilType: parsed.data.shetilType,
       headId: parsed.data.headId ?? null,
       sortOrder: parsed.data.sortOrder ?? 0,
@@ -68,6 +76,26 @@ export async function POST(req: NextRequest) {
       _count: { select: { employees: true, children: true } },
     },
   });
+
+  // Log action for undo
+  await logAction(
+    department.scenarioId,
+    "create_department",
+    {
+      department: {
+        id: department.id,
+        scenarioId: department.scenarioId,
+        parentId: department.parentId,
+        name: department.name,
+        cfo: department.cfo,
+        shetilType: department.shetilType,
+        headId: department.headId,
+        sortOrder: department.sortOrder,
+        originId: department.originId,
+      },
+    },
+    { departmentId: department.id }
+  );
 
   return NextResponse.json(department, { status: 201 });
 }

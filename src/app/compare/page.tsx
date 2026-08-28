@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CompareView } from "@/components/compare/CompareView";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 interface Scenario {
   id: string;
@@ -41,6 +42,7 @@ function CompareContent() {
   }, []);
 
   return (
+    <TooltipProvider>
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-4 border-b px-6 py-3">
         <span className="text-sm font-medium">Левый:</span>
@@ -84,6 +86,7 @@ function CompareContent() {
         )}
       </div>
     </div>
+    </TooltipProvider>
   );
 }
 
