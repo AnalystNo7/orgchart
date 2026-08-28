@@ -39,70 +39,6 @@
 | Файлы | xlsx, pdf-parse, mammoth |
 | Инфраструктура | Docker (multi-stage), docker-compose, Dokploy |
 
-## Быстрый старт
-
-```bash
-npm install
-docker compose up -d db      # PostgreSQL на :5432
-```
-
-Создайте `.env` в корне (в репозитории его нет). Используемые переменные:
-
-```
-DATABASE_URL=              # строка подключения к PostgreSQL
-NEXTAUTH_SECRET=           # openssl rand -base64 32
-NEXTAUTH_URL=              # http://localhost:3000
-
-# AI — опционально; основной путь настройки провайдера в интерфейсе (/admin/settings/llm)
-AI_PROVIDER=               # anthropic | openai | google
-AI_MODEL=
-ANTHROPIC_API_KEY=
-OPENAI_API_KEY=
-GOOGLE_GENERATIVE_AI_API_KEY=
-
-VOYAGE_API_KEY=            # нужен только базе знаний (эмбеддинги)
-```
-
-Дальше — схема, демо-данные и запуск:
-
-```bash
-npm run db:generate
-npm run db:migrate
-npm run db:seed              # создаёт администратора, тарифы и демо-сценарий, см. prisma/seed.ts
-npm run dev                  # http://localhost:3000
-```
-
-Учётные данные администратора задаются в `prisma/seed.ts` — смените пароль
-после первого входа.
-
-## Структура репозитория
-
-```
-src/app/          страницы и API-маршруты (App Router)
-src/components/   интерфейс: оргчарт, P&L, AI-чат, справочники, диаграммы
-src/lib/          бизнес-логика: расчёт P&L, AI-оркестратор и инструменты, RAG, диффы
-prisma/           схема, миграции, сид
-docs/             концепция продукта, руководство по деплою, ограничения
-harness/          карта проекта, журналы решений и уроков, реестр требований, шаблоны
-scripts/          сборка реестра требований в DOCX
-```
-
-## Проверки
-
-```bash
-npm run lint
-npx tsc --noEmit    # проверять вручную: сборка не останавливается на ошибках типов
-```
-
-Автотестов пока нет.
-
-## Деплой
-
-Docker + Dokploy на VPS: приложение и PostgreSQL поднимаются одним
-`docker-compose.prod.yml`, миграции применяются при старте контейнера.
-Пошаговый порядок, переменные окружения и типичные ошибки —
-в [docs/DEPLOY-GUIDE.md](docs/DEPLOY-GUIDE.md).
-
 ## Документация
 
 | Документ | О чём |
@@ -112,6 +48,7 @@ Docker + Dokploy на VPS: приложение и PostgreSQL поднимают
 | [harness/LESSONS.md](harness/LESSONS.md) | Журнал уроков — ошибки и неочевидности |
 | [harness/REQUIREMENTS.md](harness/REQUIREMENTS.md) | Реестр требований (методология Вигерса) |
 | [docs/CONCEPT-DIGITAL-TWIN.md](docs/CONCEPT-DIGITAL-TWIN.md) | Концепция продукта |
+| [docs/DEPLOY-GUIDE.md](docs/DEPLOY-GUIDE.md) | Разворачивание на сервере |
 | [docs/LIMITATIONS.md](docs/LIMITATIONS.md) | Известные ограничения расчётов |
 | [CLAUDE.md](CLAUDE.md) | Правила работы над проектом |
 
