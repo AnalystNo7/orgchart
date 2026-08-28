@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OrgChart Modeler
 
-## Getting Started
+> В этой ветке — ранняя версия MVP. Актуальный код и документация —
+> в ветке [`dev-mvp4`](https://github.com/AnalystNo7/orgchart/tree/dev-mvp4);
+> ссылки на документы ниже ведут туда.
 
-First, run the development server:
+Платформа моделирования и анализа организационной структуры — «цифровой двойник
+организации». Позволяет держать в одном месте оргструктуру с типизацией
+подразделений, людей с их загрузкой и тарифами, договоры с помесячными привязками
+исполнителей — и на этих данных считать P&L по подразделениям, сравнивать
+сценарии «как есть / как будет» и задавать вопросы AI-ассистенту, который видит
+модель целиком.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Целевая аудитория — аналитик и руководство ИТ-интегратора на 500–2000 сотрудников.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Возможности
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Оргструктура** — дерево подразделений с типизацией по ШЕТИЛ (зарабатывающие,
+  ресурсные, сервисные, бэк-офис), метрики ПП/ОПП/АУП и FTE на каждом уровне
+- **Сценарии** — as-is / to-be, клонирование, построчный diff изменений,
+  создание с нуля и наполнение из Excel
+- **P&L по подразделениям** — три режима аллокации выручки (только зарабатывающим,
+  по FTE, трансфертное ценообразование); мера вклада — FTE-часы периода
+  обеспечения, поэтому помесячные привязки и длинные периоды дают один результат
+- **Процессы** — реестр, матрица RACI, диаграммы flowchart и VAD
+- **Компетенции** — матрица, целевые уровни, gap-анализ с паспортами разрывов
+- **Стратегия** — цели BSC и OKR с прогрессом
+- **Клиенты и pipeline**, бюджеты, OHI-индекс организационного здоровья
+- **AI-ассистент** — 33 инструмента поверх модели, база знаний с загрузкой
+  PDF/DOCX/MD, отраслевые бенчмарки, what-if сценарии
+- **Импорт/экспорт Excel** — оргструктура с сотрудниками и справочные данные
+  (тарифы, договоры, помесячные периоды загрузки)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Стек
 
-## Learn More
+| Слой | Технологии |
+|---|---|
+| Приложение | Next.js 16 (App Router, `output: standalone`), React 19, TypeScript 5 |
+| Данные | Prisma 6 + PostgreSQL |
+| Авторизация | NextAuth 4 (credentials + JWT) |
+| AI | Vercel AI SDK — Anthropic / OpenAI / Google / OpenAI-совместимые шлюзы; эмбеддинги Voyage AI |
+| Интерфейс | Tailwind 4, shadcn/ui (Radix, lucide), @xyflow/react + dagre, zustand, TanStack Table |
+| Файлы | xlsx, pdf-parse, mammoth |
+| Инфраструктура | Docker (multi-stage), docker-compose, Dokploy |
 
-To learn more about Next.js, take a look at the following resources:
+## Документация
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Документ | О чём |
+|---|---|
+| [harness/PROJECT.md](https://github.com/AnalystNo7/orgchart/blob/dev-mvp4/harness/PROJECT.md) | Карта проекта: модули, точки входа, известные проблемы |
+| [harness/DECISIONS.md](https://github.com/AnalystNo7/orgchart/blob/dev-mvp4/harness/DECISIONS.md) | Журнал принятых решений с причинами |
+| [harness/LESSONS.md](https://github.com/AnalystNo7/orgchart/blob/dev-mvp4/harness/LESSONS.md) | Журнал уроков — ошибки и неочевидности |
+| [harness/REQUIREMENTS.md](https://github.com/AnalystNo7/orgchart/blob/dev-mvp4/harness/REQUIREMENTS.md) | Реестр требований (методология Вигерса) |
+| [docs/CONCEPT-DIGITAL-TWIN.md](https://github.com/AnalystNo7/orgchart/blob/dev-mvp4/docs/CONCEPT-DIGITAL-TWIN.md) | Концепция продукта |
+| [docs/DEPLOY-GUIDE.md](https://github.com/AnalystNo7/orgchart/blob/dev-mvp4/docs/DEPLOY-GUIDE.md) | Разворачивание на сервере |
+| [docs/LIMITATIONS.md](https://github.com/AnalystNo7/orgchart/blob/dev-mvp4/docs/LIMITATIONS.md) | Известные ограничения расчётов |
+| [CLAUDE.md](https://github.com/AnalystNo7/orgchart/blob/dev-mvp4/CLAUDE.md) | Правила работы над проектом |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Статус
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MVP в активной разработке. Основная ветка — `dev-mvp4`.
