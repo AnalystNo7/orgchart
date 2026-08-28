@@ -1,36 +1,120 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OrgChart Modeler
 
-## Getting Started
+Платформа моделирования и анализа организационной структуры — «цифровой двойник
+организации». Позволяет держать в одном месте оргструктуру с типизацией
+подразделений, людей с их загрузкой и тарифами, договоры с помесячными привязками
+исполнителей — и на этих данных считать P&L по подразделениям, сравнивать
+сценарии «как есть / как будет» и задавать вопросы AI-ассистенту, который видит
+модель целиком.
 
-First, run the development server:
+Целевая аудитория — аналитик и руководство ИТ-интегратора на 500–2000 сотрудников.
+
+## Возможности
+
+- **Оргструктура** — дерево подразделений с типизацией по ШЕТИЛ (зарабатывающие,
+  ресурсные, сервисные, бэк-офис), метрики ПП/ОПП/АУП и FTE на каждом уровне
+- **Сценарии** — as-is / to-be, клонирование, построчный diff изменений,
+  создание с нуля и наполнение из Excel
+- **P&L по подразделениям** — три режима аллокации выручки (только зарабатывающим,
+  по FTE, трансфертное ценообразование); мера вклада — FTE-часы периода
+  обеспечения, поэтому помесячные привязки и длинные периоды дают один результат
+- **Процессы** — реестр, матрица RACI, диаграммы flowchart и VAD
+- **Компетенции** — матрица, целевые уровни, gap-анализ с паспортами разрывов
+- **Стратегия** — цели BSC и OKR с прогрессом
+- **Клиенты и pipeline**, бюджеты, OHI-индекс организационного здоровья
+- **AI-ассистент** — 33 инструмента поверх модели, база знаний с загрузкой
+  PDF/DOCX/MD, отраслевые бенчмарки, what-if сценарии
+- **Импорт/экспорт Excel** — оргструктура с сотрудниками и справочные данные
+  (тарифы, договоры, помесячные периоды загрузки)
+
+## Стек
+
+| Слой | Технологии |
+|---|---|
+| Приложение | Next.js 16 (App Router, `output: standalone`), React 19, TypeScript 5 |
+| Данные | Prisma 6 + PostgreSQL |
+| Авторизация | NextAuth 4 (credentials + JWT) |
+| AI | Vercel AI SDK — Anthropic / OpenAI / Google / OpenAI-совместимые шлюзы; эмбеддинги Voyage AI |
+| Интерфейс | Tailwind 4, shadcn/ui (Radix, lucide), @xyflow/react + dagre, zustand, TanStack Table |
+| Файлы | xlsx, pdf-parse, mammoth |
+| Инфраструктура | Docker (multi-stage), docker-compose, Dokploy |
+
+## Быстрый старт
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+docker compose up -d db      # PostgreSQL на :5432
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Создайте `.env` в корне (в репозитории его нет). Используемые переменные:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+DATABASE_URL=              # строка подключения к PostgreSQL
+NEXTAUTH_SECRET=           # openssl rand -base64 32
+NEXTAUTH_URL=              # http://localhost:3000
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# AI — опционально; основной путь настройки провайдера в интерфейсе (/admin/settings/llm)
+AI_PROVIDER=               # anthropic | openai | google
+AI_MODEL=
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+GOOGLE_GENERATIVE_AI_API_KEY=
 
-## Learn More
+VOYAGE_API_KEY=            # нужен только базе знаний (эмбеддинги)
+```
 
-To learn more about Next.js, take a look at the following resources:
+Дальше — схема, демо-данные и запуск:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run db:generate
+npm run db:migrate
+npm run db:seed              # создаёт администратора, тарифы и демо-сценарий, см. prisma/seed.ts
+npm run dev                  # http://localhost:3000
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Учётные данные администратора задаются в `prisma/seed.ts` — смените пароль
+после первого входа.
 
-## Deploy on Vercel
+## Структура репозитория
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+src/app/          страницы и API-маршруты (App Router)
+src/components/   интерфейс: оргчарт, P&L, AI-чат, справочники, диаграммы
+src/lib/          бизнес-логика: расчёт P&L, AI-оркестратор и инструменты, RAG, диффы
+prisma/           схема, миграции, сид
+docs/             концепция продукта, руководство по деплою, ограничения
+harness/          карта проекта, журналы решений и уроков, реестр требований, шаблоны
+scripts/          сборка реестра требований в DOCX
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Проверки
+
+```bash
+npm run lint
+npx tsc --noEmit    # проверять вручную: сборка не останавливается на ошибках типов
+```
+
+Автотестов пока нет.
+
+## Деплой
+
+Docker + Dokploy на VPS: приложение и PostgreSQL поднимаются одним
+`docker-compose.prod.yml`, миграции применяются при старте контейнера.
+Пошаговый порядок, переменные окружения и типичные ошибки —
+в [docs/DEPLOY-GUIDE.md](docs/DEPLOY-GUIDE.md).
+
+## Документация
+
+| Документ | О чём |
+|---|---|
+| [harness/PROJECT.md](harness/PROJECT.md) | Карта проекта: модули, точки входа, известные проблемы |
+| [harness/DECISIONS.md](harness/DECISIONS.md) | Журнал принятых решений с причинами |
+| [harness/LESSONS.md](harness/LESSONS.md) | Журнал уроков — ошибки и неочевидности |
+| [harness/REQUIREMENTS.md](harness/REQUIREMENTS.md) | Реестр требований (методология Вигерса) |
+| [docs/CONCEPT-DIGITAL-TWIN.md](docs/CONCEPT-DIGITAL-TWIN.md) | Концепция продукта |
+| [docs/LIMITATIONS.md](docs/LIMITATIONS.md) | Известные ограничения расчётов |
+| [CLAUDE.md](CLAUDE.md) | Правила работы над проектом |
+
+## Статус
+
+MVP в активной разработке. Основная ветка — `dev-mvp4`.
