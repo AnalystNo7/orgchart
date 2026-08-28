@@ -26,6 +26,22 @@ enum EmployeeCategory {
   AUP
 }
 
+enum ContractType {
+  REVENUE
+  EXPENSE
+}
+
+enum ContractStatus {
+  CONCLUDED
+  PLANNED
+}
+
+enum RevenueProvisionStatus {
+  PROVIDED
+  PLANNED
+  NOT_PROVIDED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -40,13 +56,17 @@ model Scenario {
   description   String?
   isBaseline    Boolean        @default(false)
   status        ScenarioStatus @default(DRAFT)
+  columnNames   Json?
   createdFromId String?
   createdFrom   Scenario?      @relation("ScenarioParent", fields: [createdFromId], references: [id])
   children      Scenario[]     @relation("ScenarioParent")
   departments   Department[]
   employees     Employee[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  actionLogs      ActionLog[]
+  gaps            GapPassport[]
+  aiConversations AiConversation[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
 model Department {
@@ -57,6 +77,7 @@ model Department {
   parent     Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
   children   Department[] @relation("DepartmentTree")
   name       String
+  cfo        String?
   shetilType ShetilType
   headId     String?
   head       Employee?  @relation("DepartmentHead", fields: [headId], references: [id])
@@ -70,6 +91,20 @@ model Department {
   @@index([parentId])
 }
 
+model ActionLog {
+  id          String   @id @default(uuid())
+  scenarioId  String?
+  scenario    Scenario? @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  actionType  String
+  payload     Json
+  undoPayload Json
+  undone      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([scenarioId])
+  @@index([scenarioId, createdAt])
+}
+
 model Employee {
   id           String           @id @default(uuid())
   scenarioId   String
@@ -80,11 +115,138 @@ model Employee {
   position     String
   category     EmployeeCategory
   fte          Decimal          @default(1.0)
+  costRate     Decimal?
+  tariffId     String?
+  tariff       Tariff?          @relation(fields: [tariffId], references: [id])
   headOf       Department[]     @relation("DepartmentHead")
+  contracts    EmployeeContract[]
   originId     String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   @@index([scenarioId])
   @@index([departmentId])
+}
+
+model Tariff {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  rate        Decimal
+  description String?
+  employees   Employee[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Contract {
+  id              String         @id @default(uuid())
+  name            String
+  type            ContractType
+  status          ContractStatus
+  amount          Decimal?
+  expectedAmount  Decimal?
+  amountAutoCalc  Boolean        @default(false)
+  periodStart     DateTime
+  periodEnd       DateTime
+  description     String?
+  employees       EmployeeContract[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model EmployeeContract {
+  id            String                 @id @default(uuid())
+  employeeId    String
+  employee      Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  contractId    String
+  contract      Contract               @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  revenueStatus RevenueProvisionStatus
+  fte           Decimal
+  periodStart   DateTime
+  periodEnd     DateTime
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@unique([employeeId, contractId])
+  @@index([employeeId])
+  @@index([contractId])
+}
+
+// --- AI & Gap Analysis ---
+
+enum GapCategory {
+  STRUCTURE
+  PROCESS
+  RESOURCE
+  COMPETENCY
+  TECHNOLOGY
+}
+
+enum GapPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum GapStatus {
+  IDENTIFIED
+  IN_PROGRESS
+  RESOLVED
+  DEFERRED
+}
+
+model GapPassport {
+  id                    String      @id @default(uuid())
+  scenarioId            String
+  scenario              Scenario    @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  asIsScenarioId        String
+  toBeScenarioId        String
+  category              GapCategory
+  title                 String
+  description           String
+  priority              GapPriority
+  impact                String?
+  affectedDepartmentIds String[]
+  responsibleDeptId     String?
+  estimatedEffort       String?
+  status                GapStatus   @default(IDENTIFIED)
+  aiGenerated           Boolean     @default(false)
+  aiRationale           String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@index([scenarioId])
+}
+
+model AiConversation {
+  id         String   @id @default(uuid())
+  scenarioId String
+  scenario   Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  title      String
+  messages   Json     // [{role, content, toolCalls?, timestamp}]
+  context    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([scenarioId])
+}
+
+model PnlCache {
+  id            String   @id @default(uuid())
+  scenarioId    String
+  departmentId  String
+  mode          String   // "forecast" | "plan" | "combined"
+  periodStart   DateTime
+  periodEnd     DateTime
+  revenue       Decimal  @default(0)
+  cost          Decimal  @default(0)
+  pnl           Decimal  @default(0)
+  details       Json     // {employees: [...], contracts: [...]}
+  warnings      Json?    // [{employeeId, message}]
+  calculatedAt  DateTime @default(now())
+
+  @@unique([scenarioId, departmentId, mode, periodStart, periodEnd])
+  @@index([scenarioId])
+  @@index([scenarioId, mode])
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { updateScenarioSchema } from "@/lib/validations/scenario";
 
@@ -34,9 +35,15 @@ export async function PUT(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const { columnNames, ...rest } = parsed.data;
+  const data: Prisma.ScenarioUpdateInput = { ...rest };
+  if (columnNames !== undefined) {
+    data.columnNames = columnNames === null ? Prisma.JsonNull : columnNames;
+  }
+
   const scenario = await prisma.scenario.update({
     where: { id },
-    data: parsed.data,
+    data,
   });
 
   return NextResponse.json(scenario);
