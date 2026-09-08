@@ -510,9 +510,10 @@ export function AiChatPanel() {
       <div
         ref={messagesBoxRef}
         className={cn(
-          "flex-1 overflow-auto px-3 py-3",
-          // На широком экране длинная строка читается плохо — держим колонку
-          isMaximized && "[&>*]:mx-auto [&>*]:w-full [&>*]:max-w-[900px]"
+          "flex-1 overflow-auto py-3",
+          // В развёрнутом режиме контент от края до края с полями:
+          // ответы ассистента — таблицы и отчёты, им нужна ширина
+          isMaximized ? "px-8" : "px-3"
         )}
         style={{ zoom: chatZoom / 100 }}
       >
@@ -538,7 +539,7 @@ export function AiChatPanel() {
         ) : (
           <div className="space-y-4">
             {messages.map((msg, i) => (
-              <ChatMessage key={i} message={msg} />
+              <ChatMessage key={i} message={msg} wide={isMaximized} />
             ))}
             {isStreaming && (
               <StreamingStatus
@@ -562,13 +563,13 @@ export function AiChatPanel() {
 
       {/* Quick actions (only when empty and scenario selected) */}
       {messages.length === 0 && scenarioId && (
-        <div className={cn(isMaximized && "mx-auto w-full max-w-[900px]")}>
+        <div className={cn(isMaximized && "px-5")}>
           <QuickActions onAction={sendMessage} disabled={isStreaming} />
         </div>
       )}
 
       {/* Input */}
-      <div className={cn("border-t px-3 py-2", isMaximized && "[&>*]:mx-auto [&>*]:w-full [&>*]:max-w-[900px]")}>
+      <div className={cn("border-t py-2", isMaximized ? "px-8" : "px-3")}>
         {!scenarioId ? (
           <div className="text-center text-xs text-neutral-400">
             Выберите сценарий выше для начала работы

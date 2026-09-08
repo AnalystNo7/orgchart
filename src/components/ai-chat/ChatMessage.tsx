@@ -85,7 +85,9 @@ function SourceBadge({ type, label }: { type: string; label: string }) {
   );
 }
 
-export function ChatMessage({ message }: { message: AiMessage }) {
+/** wide — развёрнутый режим панели: ответы ассистента занимают всю ширину,
+ *  вопросы пользователя остаются компактными. */
+export function ChatMessage({ message, wide = false }: { message: AiMessage; wide?: boolean }) {
   const isUser = message.role === "user";
   const sources = !isUser ? parseSourceMarkers(message.content) : [];
   const processedContent = !isUser
@@ -102,7 +104,9 @@ export function ChatMessage({ message }: { message: AiMessage }) {
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
       </div>
       <div
-        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+        className={`rounded-lg px-3 py-2 text-sm ${
+          wide && !isUser ? "w-full max-w-none" : "max-w-[85%]"
+        } ${
           isUser
             ? "bg-blue-50 text-neutral-900"
             : "bg-neutral-50 text-neutral-900"
