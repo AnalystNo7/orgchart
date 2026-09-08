@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronsDownUp, ChevronsUpDown, ChevronDown, Undo2, Redo2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface MetricsToolbarProps {
   onExpandAll: () => void;
@@ -33,6 +34,7 @@ export function MetricsToolbar({
     canUndo,
     canRedo,
     undoRedoLoading,
+    undoRedoNotice,
     undo,
     redo,
   } = useOrgChartStore();
@@ -59,6 +61,18 @@ export function MetricsToolbar({
         >
           <Redo2 className="h-4 w-4" />
         </Button>
+        {undoRedoNotice && (
+          <span
+            role={undoRedoNotice.kind === "error" ? "alert" : "status"}
+            title={undoRedoNotice.text}
+            className={cn(
+              "ml-1 max-w-md truncate text-[12px]",
+              undoRedoNotice.kind === "error" ? "text-err" : "text-ink-500"
+            )}
+          >
+            {undoRedoNotice.text}
+          </span>
+        )}
       </div>
 
       <span className="text-sm font-medium text-neutral-700">

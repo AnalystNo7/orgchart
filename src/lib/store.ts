@@ -1,5 +1,14 @@
 import { create } from "zustand";
 import type { MetricsMode } from "@/types";
+import { actionLabel } from "@/lib/action-labels";
+
+export interface UndoRedoNotice {
+  kind: "ok" | "error";
+  text: string;
+}
+
+// Строка «Отменено: …» гаснет сама; один таймер на стор.
+let noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
 export type ViewMode = "orgchart" | "pnl-heatmap" | "ceo-dashboard";
 export type PnlDisplayMode = "plan" | "forecast" | "combined";
@@ -86,6 +95,9 @@ interface OrgChartState {
   canUndo: boolean;
   canRedo: boolean;
   undoRedoLoading: boolean;
+  // Результат последней отмены/повтора для строки рядом с кнопками
+  undoRedoNotice: UndoRedoNotice | null;
+  setUndoRedoNotice: (notice: UndoRedoNotice | null) => void;
   setUndoRedoState: (canUndo: boolean, canRedo: boolean) => void;
   fetchUndoRedoState: () => Promise<void>;
   undo: () => Promise<boolean>;
@@ -231,6 +243,17 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
   canUndo: false,
   canRedo: false,
   undoRedoLoading: false,
+  undoRedoNotice: null,
+  setUndoRedoNotice: (notice) => {
+    if (noticeTimer) clearTimeout(noticeTimer);
+    set({ undoRedoNotice: notice });
+    if (notice) {
+      noticeTimer = setTimeout(
+        () => set({ undoRedoNotice: null }),
+        notice.kind === "error" ? 7000 : 4000
+      );
+    }
+  },
   setUndoRedoState: (canUndo, canRedo) => set({ canUndo, canRedo }),
 
   fetchUndoRedoState: async () => {
@@ -259,14 +282,28 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
         `/api/actions/undo?scenarioId=${currentScenarioId}`,
         { method: "POST" }
       );
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         // Refresh the chart and undo/redo state
         get().triggerRefresh();
         await get().fetchUndoRedoState();
+        // Стек общий на сценарий: сказать, что именно отменено — на схеме
+        // это может быть не видно (правка в справочнике).
+        get().setUndoRedoNotice({
+          kind: "ok",
+          text: `Отменено: ${actionLabel(data.actionType)}`,
+        });
         return true;
       }
+      // 404 «Нечего отменять» значит, что кнопки устарели — обновить их.
+      get().setUndoRedoNotice({
+        kind: "error",
+        text: data.error || "Не удалось отменить действие",
+      });
+      await get().fetchUndoRedoState();
       return false;
     } catch {
+      get().setUndoRedoNotice({ kind: "error", text: "Нет связи с сервером" });
       return false;
     } finally {
       set({ undoRedoLoading: false });
@@ -282,13 +319,24 @@ export const useOrgChartStore = create<OrgChartState>((set, get) => ({
         `/api/actions/redo?scenarioId=${currentScenarioId}`,
         { method: "POST" }
       );
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         get().triggerRefresh();
         await get().fetchUndoRedoState();
+        get().setUndoRedoNotice({
+          kind: "ok",
+          text: `Повторено: ${actionLabel(data.actionType)}`,
+        });
         return true;
       }
+      get().setUndoRedoNotice({
+        kind: "error",
+        text: data.error || "Не удалось повторить действие",
+      });
+      await get().fetchUndoRedoState();
       return false;
     } catch {
+      get().setUndoRedoNotice({ kind: "error", text: "Нет связи с сервером" });
       return false;
     } finally {
       set({ undoRedoLoading: false });

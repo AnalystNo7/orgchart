@@ -4,6 +4,49 @@ import type { Prisma } from "@prisma/client";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any;
 
+/** Отмена невозможна по состоянию данных — не сбой, а осознанный отказ. */
+export class UndoRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UndoRefusedError";
+  }
+}
+
+/**
+ * Предохранитель перед удалением подразделения при отмене.
+ *
+ * Связь parent→children не каскадная: удаление родителя обнуляет parentId
+ * у детей, и они становятся новыми корнями (воспроизведено 2026-09-08 —
+ * второй корень в сценарии). Сотрудники же удаляются каскадом. Если под
+ * подразделением что-то появилось после логируемого действия (AI-инструмент,
+ * импорт — они журнал не пишут), отмену отклоняем с понятной причиной.
+ */
+async function assertNoDependents(
+  deptId: string,
+  what: string,
+  exceptChildId?: string
+) {
+  const dept = await prisma.department.findUnique({
+    where: { id: deptId },
+    select: {
+      name: true,
+      _count: { select: { employees: true } },
+      children: { select: { id: true } },
+    },
+  });
+  if (!dept) return; // уже нет — отменять нечего
+  const children = dept.children.filter((c) => c.id !== exceptChildId).length;
+  const parts: string[] = [];
+  if (children) parts.push(`дочерних подразделений: ${children}`);
+  if (dept._count.employees) parts.push(`сотрудников: ${dept._count.employees}`);
+  if (parts.length) {
+    throw new UndoRefusedError(
+      `Нельзя ${what} «${dept.name}»: в нём есть ${parts.join(", ")}. ` +
+        "Сначала перенесите или удалите их."
+    );
+  }
+}
+
 export async function logAction(
   scenarioId: string | null,
   actionType: string,
@@ -41,6 +84,7 @@ export async function executeUndo(scenarioId: string | null) {
     case "create_department": {
       // Undo: delete the created department
       const deptId = undoPayload.departmentId as string;
+      await assertNoDependents(deptId, "отменить создание");
       await prisma.department
         .update({ where: { id: deptId }, data: { headId: null } })
         .catch(() => {});
@@ -187,6 +231,9 @@ export async function executeUndo(scenarioId: string | null) {
       const newParentId = undoPayload.newParentId as string;
       const childId = undoPayload.childId as string;
       const originalParentId = undoPayload.originalParentId as string | null;
+      // Проверить до любых изменений: у нового родителя не должно быть
+      // ничего, кроме того самого ребёнка
+      await assertNoDependents(newParentId, "отменить добавление родителя", childId);
       // Restore original parentId
       await prisma.department.update({
         where: { id: childId },

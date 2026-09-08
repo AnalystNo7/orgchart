@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { executeRedo } from "@/lib/action-logger";
+import { executeRedo, UndoRefusedError } from "@/lib/action-logger";
 
 export async function POST(req: NextRequest) {
   const scenarioId = req.nextUrl.searchParams.get("scenarioId");
@@ -14,6 +14,9 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ success: true, actionType: action.actionType });
   } catch (e) {
+    if (e instanceof UndoRefusedError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
     console.error("Redo failed:", e);
     return NextResponse.json(
       { error: "Не удалось повторить действие" },

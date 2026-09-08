@@ -189,10 +189,18 @@ export function OrgChart() {
       .catch(() => {});
   }, [currentScenarioId]);
 
-  useEffect(() => {
+  // После собственных действий дашборда обновлять и данные, и состояние
+  // кнопок undo/redo — иначе кнопки показывают состояние на момент открытия
+  // страницы (воспроизведено 2026-09-08: «Отменить» серая, «Повторить»
+  // активна и отвечает 404).
+  const refreshAll = useCallback(() => {
     refreshDepartments();
     fetchUndoRedoState();
-  }, [refreshDepartments, fetchUndoRedoState, refreshCounter]);
+  }, [refreshDepartments, fetchUndoRedoState]);
+
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll, refreshCounter]);
 
   // Reset stale data when scenario changes (collapse state reset handled by store)
   useEffect(() => {
@@ -390,9 +398,9 @@ export function OrgChart() {
         const data = await res.json();
         alert(data.error);
       }
-      refreshDepartments();
+      refreshAll();
     },
-    [deleteDialog, selectedDepartmentId, setSelectedDepartmentId, refreshDepartments]
+    [deleteDialog, selectedDepartmentId, setSelectedDepartmentId, refreshAll]
   );
 
   async function handleAddDepartment(data: {
@@ -413,7 +421,7 @@ export function OrgChart() {
     });
 
     setAddDialog(null);
-    refreshDepartments();
+    refreshAll();
   }
 
   // Build visible nodes/edges from departments and collapsed state
@@ -601,7 +609,7 @@ export function OrgChart() {
         scenarioId={currentScenarioId}
         onImportComplete={() => {
           setShowExcelImport(false);
-          refreshDepartments();
+          refreshAll();
         }}
       />
 
@@ -639,7 +647,7 @@ export function OrgChart() {
           scenarioId={currentScenarioId}
           onComplete={() => {
             setAddParentDialog(null);
-            refreshDepartments();
+            refreshAll();
           }}
         />
       )}
