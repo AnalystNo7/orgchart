@@ -111,6 +111,7 @@ export function AiChatPanel() {
     messages,
     addMessage,
     appendToLastAssistant,
+    appendReasoningToLastAssistant,
     clearMessages,
     isStreaming,
     setStreaming,
@@ -260,6 +261,7 @@ export function AiChatPanel() {
         const allMessages = [...messages, userMsg].map((m) => ({
           role: m.role,
           content: m.content,
+          ...(m.reasoning ? { reasoning: m.reasoning } : {}),
         }));
 
         const res = await fetch("/api/ai/chat", {
@@ -324,6 +326,13 @@ export function AiChatPanel() {
                   const data = JSON.parse(dataStr);
                   if (event === "text") {
                     appendToLastAssistant(data.text);
+                  } else if (event === "reasoning") {
+                    // Размышления идут до текста ответа: сервер не шлёт для
+                    // них status, фаза выставляется здесь.
+                    if (useAiChatStore.getState().streamingPhase !== "reasoning") {
+                      setStreamingPhase("reasoning");
+                    }
+                    appendReasoningToLastAssistant(data.text);
                   } else if (event === "tool_call") {
                     toolCalls.push({ name: data.name, input: data.input });
                   } else if (event === "conversation_id") {
@@ -414,6 +423,7 @@ export function AiChatPanel() {
       activeConversationId,
       addMessage,
       appendToLastAssistant,
+      appendReasoningToLastAssistant,
       setStreaming,
       setStreamingPhase,
       setCurrentToolName,

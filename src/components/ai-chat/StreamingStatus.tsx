@@ -30,6 +30,11 @@ const PHASE_CONFIG: Record<
     icon: Brain,
     color: "text-ai",
   },
+  reasoning: {
+    label: "Модель рассуждает...",
+    icon: Brain,
+    color: "text-ai",
+  },
   tool_executing: {
     label: "Выполнение инструмента",
     icon: Wrench,

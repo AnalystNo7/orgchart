@@ -3,6 +3,7 @@ import { create } from "zustand";
 export type StreamingPhase =
   | "connecting"
   | "llm_thinking"
+  | "reasoning"
   | "tool_executing"
   | "tool_completed"
   | "llm_analyzing"
@@ -21,6 +22,8 @@ export interface CompletedStep {
 export interface AiMessage {
   role: "user" | "assistant";
   content: string;
+  /** Ход рассуждений модели (`<think>`), отдельно от текста ответа. */
+  reasoning?: string;
   toolCalls?: Array<{ name: string; input: Record<string, unknown> }>;
   timestamp: string;
 }
@@ -42,6 +45,7 @@ interface AiChatState {
   setMessages: (msgs: AiMessage[]) => void;
   addMessage: (msg: AiMessage) => void;
   appendToLastAssistant: (text: string) => void;
+  appendReasoningToLastAssistant: (text: string) => void;
   clearMessages: () => void;
 
   isStreaming: boolean;
@@ -104,6 +108,22 @@ export const useAiChatStore = create<AiChatState>((set) => ({
         msgs.push({
           role: "assistant",
           content: text,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      return { messages: msgs };
+    }),
+  appendReasoningToLastAssistant: (text) =>
+    set((s) => {
+      const msgs = [...s.messages];
+      const last = msgs[msgs.length - 1];
+      if (last?.role === "assistant") {
+        msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? "") + text };
+      } else {
+        msgs.push({
+          role: "assistant",
+          content: "",
+          reasoning: text,
           timestamp: new Date().toISOString(),
         });
       }
