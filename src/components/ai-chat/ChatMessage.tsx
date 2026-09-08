@@ -73,6 +73,30 @@ function stripSourceMarkers(text: string): string {
   );
 }
 
+/**
+ * Заменить служебные теги размышлений на читаемый маркер.
+ *
+ * Часть шлюзов (Gonka/MiniMax) отдаёт ход рассуждений прямо в тексте ответа,
+ * открывая блок тегом `<think>`. Закрывающий тег приходит не всегда, поэтому
+ * прятать по нему текст нельзя — заменяем только сами теги, границы текста
+ * не трогаем: при любом поведении шлюза ответ остаётся виден целиком.
+ * Замена идёт на уровне отображения, поэтому ранее сохранённые диалоги
+ * тоже открываются без тегов.
+ */
+function replaceThinkTags(text: string): string {
+  return (
+    text
+      .replace(/<think(?:ing)?>/gi, "\n\n💭 **Размышляю…**\n\n")
+      .replace(/<\/think(?:ing)?>/gi, "\n\n---\n\n")
+      // Во время стрима тег приходит по частям: не показывать «<thi» в хвосте,
+      // пока не пришёл остаток.
+      .replace(/<\/?t(?:h(?:i(?:n(?:k(?:i(?:n(?:g)?)?)?)?)?)?)?$/i, "")
+      // Замена могла добавить пустую строку там, где она уже была.
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/^\n+/, "")
+  );
+}
+
 function SourceBadge({ type, label }: { type: string; label: string }) {
   const style = SOURCE_STYLES[type] || SOURCE_STYLES.LLM;
   return (
@@ -91,7 +115,7 @@ export function ChatMessage({ message, wide = false }: { message: AiMessage; wid
   const isUser = message.role === "user";
   const sources = !isUser ? parseSourceMarkers(message.content) : [];
   const processedContent = !isUser
-    ? stripSourceMarkers(message.content)
+    ? replaceThinkTags(stripSourceMarkers(message.content))
     : message.content;
 
   return (
