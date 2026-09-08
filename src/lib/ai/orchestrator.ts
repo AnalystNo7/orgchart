@@ -3,7 +3,6 @@ import { getLlm } from "./provider";
 import { buildTools, createToolRunStats, type ToolRunStats } from "./tools";
 import { getSystemPrompt } from "./system-prompt";
 import { createToolNameFilter } from "./tool-labels";
-import { createThinkFilter } from "./think-filter";
 import {
   AI_CHUNK_TIMEOUT_MS,
   AI_RUN_CONTEXT_BUDGET_BYTES,
@@ -27,12 +26,10 @@ export interface ToolCallInfo {
 
 export interface StreamCallbacks {
   onText: (text: string) => void;
-  /** Дельта размышлений модели (содержимое `<think>…</think>`), отдельно от ответа. */
-  onReasoning: (text: string) => void;
   onToolCall: (info: ToolCallInfo) => void;
   onStatus: (phase: string, detail?: string) => void;
   onProgress: (toolName: string, step: string) => void;
-  onDone: (fullResponse: string, toolCalls: ToolCallInfo[], reasoning: string) => void;
+  onDone: (fullResponse: string, toolCalls: ToolCallInfo[]) => void;
   onError: (error: Error, partial: PartialRun) => void;
   onMeta: (meta: RunMeta) => void;
 }
@@ -49,8 +46,6 @@ export type RunMeta =
 export interface PartialRun {
   /** Text the model emitted across completed steps (already streamed to the UI). */
   text: string;
-  /** Reasoning (`<think>` blocks) gathered so far — never part of `text`. */
-  reasoning: string;
   /** Tools that ran, in order. */
   toolNames: string[];
   /** Steps that completed. */
@@ -140,7 +135,6 @@ export async function runChat(
   let inFlightStartedAt = 0;
   let inFlightInputBytes = 0;
   let partialText = "";
-  let reasoningText = "";
 
   // Warn the user a minute before the total budget runs out. Lives here (not
   // in the route) because only this side knows the actual budget.
@@ -266,35 +260,24 @@ export async function runChat(
 
       // Drive the stream: deltas reach the user the moment the model emits them,
       // and whatever is on screen at an abort is exactly what partialText holds.
-      // Two filters in a row, both push/flush because a tag or a name may be
-      // split across delta boundaries: the think filter peels `<think>` blocks
-      // into a separate reasoning lane (they must reach neither the answer
-      // text nor the DB), then the name filter rewrites internal tool names
-      // into Russian labels.
-      const thinkFilter = createThinkFilter();
+      // The filter rewrites internal tool names into Russian labels — a name
+      // may be split across delta boundaries, hence push/flush.
       const nameFilter = createToolNameFilter();
-      const emitReasoning = (reasoning: string) => {
-        if (!reasoning) return;
-        reasoningText += reasoning;
-        callbacks.onReasoning(reasoning);
-      };
-      const emitText = (text: string) => {
-        if (!text) return;
-        partialText += text;
-        callbacks.onText(text);
-      };
       for await (const delta of result.textStream) {
         if (delta) {
           lastActivityAt = Date.now();
-          const split = thinkFilter.push(delta);
-          emitReasoning(split.reasoning);
-          if (split.text) emitText(nameFilter.push(split.text));
+          const out = nameFilter.push(delta);
+          if (out) {
+            partialText += out;
+            callbacks.onText(out);
+          }
         }
       }
-      const thinkRest = thinkFilter.flush();
-      emitReasoning(thinkRest.reasoning);
-      if (thinkRest.text) emitText(nameFilter.push(thinkRest.text));
-      emitText(nameFilter.flush());
+      const filterRest = nameFilter.flush();
+      if (filterRest) {
+        partialText += filterRest;
+        callbacks.onText(filterRest);
+      }
 
       const finishReason = await result.finishReason;
       logRunSummary(
@@ -319,14 +302,13 @@ export async function runChat(
         );
         callbacks.onError(new Error(finishMessage(finishReason, silenceMs, chunkMs, maxSteps)), {
           text: partialText,
-          reasoning: reasoningText,
           toolNames: allToolCalls.map((t) => t.name),
           steps: stepNo,
         });
         return;
       }
 
-      callbacks.onDone(partialText, allToolCalls, reasoningText);
+      callbacks.onDone(partialText, allToolCalls);
       return;
     } catch (error) {
       const realError = pickRealError(error, lastStreamError);
@@ -369,7 +351,6 @@ export async function runChat(
       );
       callbacks.onError(new Error(formatAIError(realError)), {
         text: partialText,
-        reasoning: reasoningText,
         toolNames: allToolCalls.map((t) => t.name),
         steps: stepNo,
       });

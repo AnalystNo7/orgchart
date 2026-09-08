@@ -2,12 +2,10 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, User, Wrench, BookOpenCheck, BarChart3, Brain, ChevronRight } from "lucide-react";
+import { Bot, User, Wrench, BookOpenCheck, BarChart3, Brain } from "lucide-react";
 import type { AiMessage } from "@/lib/ai-store";
-import { splitLegacyThink } from "@/lib/ai/think-filter";
-import { cn } from "@/lib/utils";
 import { toolLabel } from "./tool-labels";
-import React, { useState } from "react";
+import React from "react";
 
 interface SourceRef {
   type: "OSINT" | "KB" | "LLM";
@@ -87,45 +85,14 @@ function SourceBadge({ type, label }: { type: string; label: string }) {
   );
 }
 
-/**
- * Свёрнутый блок «Ход рассуждений модели». По умолчанию скрыт — рассуждения
- * нужны, чтобы проверить логику ответа, а не чтобы читать их каждый раз.
- */
-function ReasoningBlock({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="mb-2">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex items-center gap-1 text-[12px] font-medium text-ink-500 transition-colors hover:text-ai"
-      >
-        <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} />
-        <span>Ход рассуждений модели</span>
-      </button>
-      {open && (
-        <div className="mt-1.5 whitespace-pre-wrap rounded-[var(--r-sm)] border border-line bg-ink-50 px-3 py-2 text-[12px] leading-relaxed text-ink-600">
-          {text.trim()}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** wide — развёрнутый режим панели: ответы ассистента занимают всю ширину,
  *  вопросы пользователя остаются компактными. */
 export function ChatMessage({ message, wide = false }: { message: AiMessage; wide?: boolean }) {
   const isUser = message.role === "user";
-  // Беседы, сохранённые до серверного фильтра, несут <think> прямо в тексте —
-  // разбираем при отрисовке, базу не мигрируем.
-  const legacy = !isUser ? splitLegacyThink(message.content) : null;
-  const content = legacy ? legacy.text : message.content;
-  const reasoning = !isUser
-    ? [message.reasoning ?? "", legacy?.reasoning ?? ""].filter((s) => s.trim()).join("\n\n")
-    : "";
-  const sources = !isUser ? parseSourceMarkers(content) : [];
-  const processedContent = !isUser ? stripSourceMarkers(content) : content;
+  const sources = !isUser ? parseSourceMarkers(message.content) : [];
+  const processedContent = !isUser
+    ? stripSourceMarkers(message.content)
+    : message.content;
 
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -158,7 +125,6 @@ export function ChatMessage({ message, wide = false }: { message: AiMessage; wid
             ))}
           </div>
         )}
-        {reasoning && <ReasoningBlock text={reasoning} />}
         <div className="chat-prose prose prose-sm max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {processedContent}
@@ -178,7 +144,7 @@ export function ChatMessage({ message, wide = false }: { message: AiMessage; wid
         )}
 
         {/* LLM-only badge when no tools were called and no markers found */}
-        {!isUser && sources.length === 0 && !content.includes("【") && content.length > 0 && (
+        {!isUser && sources.length === 0 && !message.content.includes("【") && message.content.length > 0 && (
           <div className="mt-2 border-t border-line-strong pt-2">
             <div className="flex items-center gap-1">
               <SourceBadge type="LLM" label="LLM-знания" />

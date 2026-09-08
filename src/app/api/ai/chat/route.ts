@@ -17,10 +17,6 @@ import { toolLabel } from "@/lib/ai/tool-labels";
 // on Vercel need the "автопродолжение" follow-up task.
 export const maxDuration = 300;
 
-/** Сообщение беседы как оно хранится: ответ ассистента может нести
- *  ход рассуждений отдельно от текста (см. src/lib/ai/think-filter.ts). */
-type StoredMessage = ChatMessage & { reasoning?: string };
-
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const {
@@ -30,7 +26,7 @@ export async function POST(req: NextRequest) {
   } = body as {
     scenarioId: string;
     conversationId?: string;
-    messages: StoredMessage[];
+    messages: ChatMessage[];
   };
 
   if (!scenarioId || !messages?.length) {
@@ -116,17 +112,10 @@ export async function POST(req: NextRequest) {
 
       send("status", { phase: "connecting" });
 
-      // Модели уходят только role/content — поле reasoning прошлых ответов
-      // сохраняется в беседе, но в контекст следующего запроса не попадает.
-      const llmMessages: ChatMessage[] = messages.map(({ role, content }) => ({ role, content }));
-
-      await runChat(llmMessages, scenarioId, scenario.name, {
+      await runChat(messages, scenarioId, scenario.name, {
         onText: (text) => {
           send("status", { phase: "streaming" });
           send("text", { text });
-        },
-        onReasoning: (text) => {
-          send("reasoning", { text });
         },
         onStatus: (phase, detail) => {
           // Fired by the orchestrator a minute before the real total budget —
@@ -164,14 +153,13 @@ export async function POST(req: NextRequest) {
             result: info.result,
           });
         },
-        onDone: async (fullResponse, allToolCalls, reasoning) => {
+        onDone: async (fullResponse, allToolCalls) => {
           cleanup();
           const newId = await saveConversation({
             scenarioId,
             conversationId,
             messages,
             assistantContent: fullResponse,
-            assistantReasoning: reasoning,
             context: { toolCalls: allToolCalls.map((t) => t.name) },
           });
           if (newId) send("conversation_id", { id: newId });
@@ -193,7 +181,6 @@ export async function POST(req: NextRequest) {
             assistantContent: partial.text
               ? `${partial.text}\n\n${note}`
               : note,
-            assistantReasoning: partial.reasoning,
             context: {
               toolCalls: partial.toolNames,
               aborted: true,
@@ -224,7 +211,7 @@ export async function POST(req: NextRequest) {
 function buildLocalResponseStream(
   response: string,
   sources: Array<{ type: string; label: string }>,
-  messages: StoredMessage[],
+  messages: ChatMessage[],
   scenarioId: string,
   conversationId?: string
 ): Response {
@@ -274,10 +261,8 @@ function buildLocalResponseStream(
 async function saveConversation(params: {
   scenarioId: string;
   conversationId?: string;
-  messages: StoredMessage[];
+  messages: ChatMessage[];
   assistantContent: string;
-  /** Ход рассуждений модели; пустая строка — поле не пишется. */
-  assistantReasoning?: string;
   context: Record<string, unknown>;
   fallbackTitle?: string;
 }): Promise<string | null> {
@@ -286,19 +271,14 @@ async function saveConversation(params: {
     conversationId,
     messages,
     assistantContent,
-    assistantReasoning,
     context,
     fallbackTitle = "Диалог с AI",
   } = params;
 
   try {
-    const allMessages: StoredMessage[] = [
+    const allMessages = [
       ...messages,
-      {
-        role: "assistant" as const,
-        content: assistantContent,
-        ...(assistantReasoning ? { reasoning: assistantReasoning } : {}),
-      },
+      { role: "assistant" as const, content: assistantContent },
     ];
     const title = messages[0]?.content.slice(0, 100) || fallbackTitle;
 
