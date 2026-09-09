@@ -109,6 +109,9 @@ export async function POST(req: NextRequest) {
       };
 
       const toolCalls: ToolCallInfo[] = [];
+      // Пока идёт ожидание (повтор после ошибки провайдера или очередь на
+      // слот), в баннере висит его текст; первый же другой статус снимает его.
+      let waiting = false;
 
       send("status", { phase: "connecting" });
 
@@ -127,12 +130,22 @@ export async function POST(req: NextRequest) {
             });
             return;
           }
-          // Retry wait: show the attempt counter in the warning banner AND
-          // switch the phase label.
-          if (phase === "retry_wait") {
-            if (detail) send("warning", { type: "retry", message: detail });
+          // Retry / queue wait: show the reason and the attempt counter (or
+          // the queue position) in the warning banner AND switch the phase.
+          if (phase === "retry_wait" || phase === "queue_wait") {
+            waiting = true;
+            if (detail) {
+              send("warning", {
+                type: phase === "queue_wait" ? "queue" : "retry",
+                message: detail,
+              });
+            }
             send("status", { phase });
             return;
+          }
+          if (waiting) {
+            waiting = false;
+            send("warning", { type: "clear", message: null });
           }
           send("status", { phase, detail });
         },

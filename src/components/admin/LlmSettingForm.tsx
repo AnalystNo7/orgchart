@@ -42,6 +42,10 @@ export interface LlmSettingPayload {
   stepTimeoutSec: number | null;
   chunkTimeoutSec: number | null;
   runContextBudgetBytes: number | null;
+  maxRetries: number | null;
+  retryDelaySec: number | null;
+  maxConcurrentRuns: number | null;
+  queueTimeoutSec: number | null;
 }
 
 interface FormValues {
@@ -59,6 +63,10 @@ interface FormValues {
   stepTimeoutSec: string;
   chunkTimeoutSec: string;
   runContextBudgetBytes: string;
+  maxRetries: string;
+  retryDelaySec: string;
+  maxConcurrentRuns: string;
+  queueTimeoutSec: string;
 }
 
 interface LlmSettingFormProps {
@@ -88,6 +96,10 @@ const EMPTY: FormValues = {
   stepTimeoutSec: "",
   chunkTimeoutSec: "",
   runContextBudgetBytes: "",
+  maxRetries: "",
+  retryDelaySec: "",
+  maxConcurrentRuns: "",
+  queueTimeoutSec: "",
 };
 
 function toFormValues(d?: LlmSettingFormProps["defaultValues"]): FormValues {
@@ -109,6 +121,11 @@ function toFormValues(d?: LlmSettingFormProps["defaultValues"]): FormValues {
     chunkTimeoutSec: d.chunkTimeoutSec != null ? String(d.chunkTimeoutSec) : "",
     runContextBudgetBytes:
       d.runContextBudgetBytes != null ? String(d.runContextBudgetBytes) : "",
+    maxRetries: d.maxRetries != null ? String(d.maxRetries) : "",
+    retryDelaySec: d.retryDelaySec != null ? String(d.retryDelaySec) : "",
+    maxConcurrentRuns:
+      d.maxConcurrentRuns != null ? String(d.maxConcurrentRuns) : "",
+    queueTimeoutSec: d.queueTimeoutSec != null ? String(d.queueTimeoutSec) : "",
   };
 }
 
@@ -135,6 +152,10 @@ function toPayload(v: FormValues): LlmSettingPayload {
     stepTimeoutSec: optInt(v.stepTimeoutSec),
     chunkTimeoutSec: optInt(v.chunkTimeoutSec),
     runContextBudgetBytes: optInt(v.runContextBudgetBytes),
+    maxRetries: optInt(v.maxRetries),
+    retryDelaySec: optInt(v.retryDelaySec),
+    maxConcurrentRuns: optInt(v.maxConcurrentRuns),
+    queueTimeoutSec: optInt(v.queueTimeoutSec),
   };
 }
 
@@ -536,6 +557,106 @@ export function LlmSettingForm({
                 один ответ
               </p>
               {fieldError(errors.runContextBudgetBytes?.message)}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Повторы и очередь к провайдеру</p>
+            <p className="text-xs text-neutral-500">
+              Повтор запроса при 429 (лимит запросов, занятый слот шлюза), 529/503
+              (перегрузка) и сетевом обрыве — только пока пользователю ещё ничего не
+              показано. Запросы сверх лимита одновременных ждут в очереди и видят
+              свою позицию.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="llm-retries">Повторов при 429/529/обрыве</Label>
+              <Input
+                id="llm-retries"
+                type="number"
+                min="0"
+                max="10"
+                {...register("maxRetries", {
+                  validate: (v) => {
+                    if (v.trim() === "") return true;
+                    const n = parseNum(v);
+                    return (
+                      (!isNaN(n) && n >= 0 && n <= 10) ||
+                      "Повторов — целое число от 0 до 10"
+                    );
+                  },
+                })}
+                placeholder="3"
+              />
+              <p className="text-xs text-neutral-500">Пусто = 3. 0 — без повторов</p>
+              {fieldError(errors.maxRetries?.message)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="llm-retrydelay">Пауза между повторами, сек</Label>
+              <Input
+                id="llm-retrydelay"
+                type="number"
+                min="5"
+                max="300"
+                {...register("retryDelaySec", {
+                  validate: (v) => {
+                    if (v.trim() === "") return true;
+                    const n = parseNum(v);
+                    return (
+                      (!isNaN(n) && n >= 5 && n <= 300) ||
+                      "Пауза — число от 5 до 300 секунд"
+                    );
+                  },
+                })}
+                placeholder="20"
+              />
+              <p className="text-xs text-neutral-500">Пусто = 20. Retry-After провайдера учитывается, если он больше</p>
+              {fieldError(errors.retryDelaySec?.message)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="llm-concurrent">Одновременных запросов к провайдеру</Label>
+              <Input
+                id="llm-concurrent"
+                type="number"
+                min="1"
+                max="20"
+                {...register("maxConcurrentRuns", {
+                  validate: (v) => {
+                    if (v.trim() === "") return true;
+                    const n = parseNum(v);
+                    return (
+                      (!isNaN(n) && n >= 1 && n <= 20) ||
+                      "Одновременных запросов — число от 1 до 20"
+                    );
+                  },
+                })}
+                placeholder="1"
+              />
+              <p className="text-xs text-neutral-500">Пусто = 1. Слотов на один процесс приложения</p>
+              {fieldError(errors.maxConcurrentRuns?.message)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="llm-queuetimeout">Макс. ожидание в очереди, сек</Label>
+              <Input
+                id="llm-queuetimeout"
+                type="number"
+                min="10"
+                max="1800"
+                {...register("queueTimeoutSec", {
+                  validate: (v) => {
+                    if (v.trim() === "") return true;
+                    const n = parseNum(v);
+                    return (
+                      (!isNaN(n) && n >= 10 && n <= 1800) ||
+                      "Ожидание — число от 10 до 1800 секунд"
+                    );
+                  },
+                })}
+                placeholder="180"
+              />
+              <p className="text-xs text-neutral-500">Пусто = 180. Дольше — ошибка вместо ожидания</p>
+              {fieldError(errors.queueTimeoutSec?.message)}
             </div>
           </div>
 

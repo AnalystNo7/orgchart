@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec, toolResultMaxBytes, maxSteps, stepTimeoutSec, chunkTimeoutSec, runContextBudgetBytes } =
+  const { name, provider, baseUrl, apiKey, model, temperature, maxOutputTokens, timeoutSec, toolResultMaxBytes, maxSteps, stepTimeoutSec, chunkTimeoutSec, runContextBudgetBytes, maxRetries, retryDelaySec, maxConcurrentRuns, queueTimeoutSec } =
     parsed.data;
 
   try {
@@ -54,6 +54,10 @@ export async function POST(req: NextRequest) {
         stepTimeoutSec: stepTimeoutSec ?? null,
         chunkTimeoutSec: chunkTimeoutSec ?? null,
         runContextBudgetBytes: runContextBudgetBytes ?? null,
+        maxRetries: maxRetries ?? null,
+        retryDelaySec: retryDelaySec ?? null,
+        maxConcurrentRuns: maxConcurrentRuns ?? null,
+        queueTimeoutSec: queueTimeoutSec ?? null,
         isActive: false,
       },
     });

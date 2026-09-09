@@ -100,6 +100,14 @@ export interface LlmGenerationSettings {
   chunkTimeoutMs?: number;
   /** undefined = AI_RUN_CONTEXT_BUDGET_BYTES */
   runContextBudgetBytes?: number;
+  /** undefined = AI_MAX_RETRIES; 0 = без повторов */
+  maxRetries?: number;
+  /** undefined = AI_RETRY_DELAY_MS */
+  retryDelayMs?: number;
+  /** undefined = AI_MAX_CONCURRENT_RUNS */
+  maxConcurrentRuns?: number;
+  /** undefined = AI_QUEUE_TIMEOUT_MS */
+  queueTimeoutMs?: number;
 }
 
 /** Which configuration actually answered — for the [AI_RUN] log line. */
@@ -166,6 +174,12 @@ export async function getLlm(): Promise<LlmRuntime> {
       stepTimeoutMs: preset.stepTimeoutSec != null ? preset.stepTimeoutSec * 1000 : undefined,
       chunkTimeoutMs: preset.chunkTimeoutSec != null ? preset.chunkTimeoutSec * 1000 : undefined,
       runContextBudgetBytes: preset.runContextBudgetBytes ?? undefined,
+      maxRetries: preset.maxRetries ?? undefined,
+      retryDelayMs:
+        preset.retryDelaySec != null ? preset.retryDelaySec * 1000 : undefined,
+      maxConcurrentRuns: preset.maxConcurrentRuns ?? undefined,
+      queueTimeoutMs:
+        preset.queueTimeoutSec != null ? preset.queueTimeoutSec * 1000 : undefined,
     },
     info: {
       source: "preset",

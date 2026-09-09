@@ -27,6 +27,10 @@ interface LlmSettingRow {
   stepTimeoutSec: number | null;
   chunkTimeoutSec: number | null;
   runContextBudgetBytes: number | null;
+  maxRetries: number | null;
+  retryDelaySec: number | null;
+  maxConcurrentRuns: number | null;
+  queueTimeoutSec: number | null;
   isActive: boolean;
   keyMask: string;
   createdAt: string;
@@ -47,6 +51,10 @@ function summaryLine(s: LlmSettingRow): string {
   if (s.chunkTimeoutSec != null) parts.push(`тишина ${s.chunkTimeoutSec} с`);
   if (s.runContextBudgetBytes != null)
     parts.push(`контекст ${s.runContextBudgetBytes} Б`);
+  if (s.maxRetries != null) parts.push(`повторов ${s.maxRetries}`);
+  if (s.retryDelaySec != null) parts.push(`пауза ${s.retryDelaySec} с`);
+  if (s.maxConcurrentRuns != null) parts.push(`слотов ${s.maxConcurrentRuns}`);
+  if (s.queueTimeoutSec != null) parts.push(`очередь ≤${s.queueTimeoutSec} с`);
   return parts.join(" · ");
 }
 
@@ -76,6 +84,10 @@ export default function AdminLlmPage() {
             stepTimeoutSec: editing.stepTimeoutSec,
             chunkTimeoutSec: editing.chunkTimeoutSec,
             runContextBudgetBytes: editing.runContextBudgetBytes,
+            maxRetries: editing.maxRetries,
+            retryDelaySec: editing.retryDelaySec,
+            maxConcurrentRuns: editing.maxConcurrentRuns,
+            queueTimeoutSec: editing.queueTimeoutSec,
           }
         : undefined,
     [editing]

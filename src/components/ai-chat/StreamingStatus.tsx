@@ -56,7 +56,12 @@ const PHASE_CONFIG: Record<
     color: "text-brand",
   },
   retry_wait: {
-    label: "Провайдер занят — жду свободный слот...",
+    label: "Провайдер занят — жду и повторяю запрос...",
+    icon: Plug,
+    color: "text-amber-600",
+  },
+  queue_wait: {
+    label: "Ожидание свободного слота провайдера...",
     icon: Plug,
     color: "text-amber-600",
   },

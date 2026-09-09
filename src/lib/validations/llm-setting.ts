@@ -79,6 +79,34 @@ const baseFields = {
     .max(1000000, "Лимит результата инструмента — максимум 1000000 байт")
     .nullable()
     .optional(),
+  maxRetries: z
+    .number()
+    .int()
+    .min(0, "Повторов — минимум 0")
+    .max(10, "Повторов — максимум 10")
+    .nullable()
+    .optional(),
+  retryDelaySec: z
+    .number()
+    .int()
+    .min(5, "Пауза между повторами — минимум 5 секунд")
+    .max(300, "Пауза между повторами — максимум 300 секунд")
+    .nullable()
+    .optional(),
+  maxConcurrentRuns: z
+    .number()
+    .int()
+    .min(1, "Одновременных запросов — минимум 1")
+    .max(20, "Одновременных запросов — максимум 20")
+    .nullable()
+    .optional(),
+  queueTimeoutSec: z
+    .number()
+    .int()
+    .min(10, "Ожидание в очереди — минимум 10 секунд")
+    .max(1800, "Ожидание в очереди — максимум 1800 секунд")
+    .nullable()
+    .optional(),
 };
 
 function requireBaseUrlForCompatible(

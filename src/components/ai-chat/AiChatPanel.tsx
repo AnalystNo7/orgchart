@@ -370,7 +370,9 @@ export function AiChatPanel() {
                   } else if (event === "heartbeat") {
                     setLastHeartbeat(data.ts);
                   } else if (event === "warning") {
-                    setTimeoutWarning(data.message);
+                    // type "clear" (message: null) снимает баннер, когда
+                    // ожидание повтора или очереди закончилось.
+                    setTimeoutWarning(data.message ?? null);
                   }
                 } catch {
                   // skip

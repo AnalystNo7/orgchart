@@ -11,7 +11,13 @@ import {
   AI_MAX_STEPS,
   AI_ROUTE_MAX_DURATION_SEC,
   AI_STEP_TIMEOUT_MS,
+  AI_MAX_RETRIES,
+  AI_RETRY_DELAY_MS,
+  AI_RETRY_DELAY_CAP_MS,
+  AI_MAX_CONCURRENT_RUNS,
+  AI_QUEUE_TIMEOUT_MS,
 } from "./limits";
+import { acquireRunSlot, QueueTimeoutError } from "./run-queue";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -107,6 +113,11 @@ export async function runChat(
     }
   }
   const stepMs = Math.min(settings.stepTimeoutMs ?? AI_STEP_TIMEOUT_MS, totalMs);
+  // Повторы и очередь — тоже из пресета, дефолты в limits.ts.
+  const maxRetries = settings.maxRetries ?? AI_MAX_RETRIES;
+  const retryDelayMs = settings.retryDelayMs ?? AI_RETRY_DELAY_MS;
+  const maxConcurrentRuns = settings.maxConcurrentRuns ?? AI_MAX_CONCURRENT_RUNS;
+  const queueTimeoutMs = settings.queueTimeoutMs ?? AI_QUEUE_TIMEOUT_MS;
 
   // Who is actually answering and under what caps. maxOutputTokens is nullable
   // in the preset, and an absent cap is a different thing from an unknown one —
@@ -119,10 +130,39 @@ export async function runChat(
       ` · timeout total ${sec(totalMs)}s / step ${sec(stepMs)}s / chunk ${sec(chunkMs)}s${vercelClamped ? " (Vercel clamp)" : ""}` +
       ` · tool-cap ${settings.toolResultMaxBytes ?? "по умолчанию"}` +
       ` · шагов ≤${maxSteps} · контекст ≤${contextBudgetBytes}B` +
+      ` · повторов ≤${maxRetries} × ${sec(retryDelayMs)}s · слотов ${maxConcurrentRuns} · очередь ≤${sec(queueTimeoutMs)}s` +
       ` · инструментов ${Object.keys(tools).length}` +
       ` · промпт ${promptIsCustom ? "изменён" : "стандартный"}` +
       ` · документы БЗ: ${kbDocs.count > 0 ? `${kbDocs.count} (${(kbDocs.bytes / 1024).toFixed(1)} КБ)` : "нет"}`,
   );
+
+  // Слот к провайдеру: сверх лимита прогоны ждут здесь (с видимой позицией),
+  // а не бьются о 429 шлюза. Слот удерживается весь прогон, включая паузы
+  // повторов — у шлюза он в это время всё равно занят.
+  const ticket = await acquireRunSlot({
+    max: maxConcurrentRuns,
+    timeoutMs: queueTimeoutMs,
+    onWait: (position, ahead) => {
+      callbacks.onStatus(
+        "queue_wait",
+        `В очереди к AI-провайдеру: позиция ${position}` +
+          (ahead > 0 ? `, впереди ${ahead}` : "") +
+          "…",
+      );
+    },
+  }).catch((error: unknown) => {
+    console.error("[AI_QUEUE]", error instanceof Error ? error.message : error);
+    callbacks.onError(new Error(formatAIError(error)), {
+      text: "",
+      toolNames: [],
+      steps: 0,
+    });
+    return null;
+  });
+  if (!ticket) return;
+  if (ticket.waitedMs > 0) {
+    console.log(`[AI_QUEUE] слот получен после ожидания ${sec(ticket.waitedMs)}s`);
+  }
 
   // Step timing: the gaps between steps are the model's own latency, which
   // is what a whole-loop timeout usually burns through.
@@ -154,208 +194,217 @@ export async function runChat(
   // stall apart from an exhausted total budget in the finish handling.
   let lastActivityAt = Date.now();
 
-  // Gonka rejects a new request while an aborted one still holds its slot
-  // ("too many concurrent requests"); the slot frees in tens of seconds, so
-  // the SDK's fast built-in retries (3 attempts in ~7s) never make it.
-  const MAX_CONCURRENT_RETRIES = 3;
-  const CONCURRENT_RETRY_DELAY_MS = 20_000;
+  try {
+    for (let attempt = 0; ; attempt++) {
+      lastStreamError = undefined;
+      stepNo = 0;
+      firstStepMs = 0;
+      inFlightStep = 0;
+      inFlightStartedAt = 0;
+      inFlightInputBytes = 0;
+      lastActivityAt = Date.now();
 
-  for (let attempt = 0; ; attempt++) {
-    lastStreamError = undefined;
-    stepNo = 0;
-    firstStepMs = 0;
-    inFlightStep = 0;
-    inFlightStartedAt = 0;
-    inFlightInputBytes = 0;
-    lastActivityAt = Date.now();
+      try {
+        callbacks.onMeta({ type: "budget", totalMs, maxSteps });
+        callbacks.onStatus("llm_thinking");
 
-    try {
-      callbacks.onMeta({ type: "budget", totalMs, maxSteps });
-      callbacks.onStatus("llm_thinking");
-
-      const result = streamText({
-        model,
-        temperature: settings.temperature,
-        maxOutputTokens: settings.maxOutputTokens,
-        timeout: {
-          totalMs,
-          stepMs,
-          chunkMs,
-        },
-        system: systemPrompt,
-        messages: messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-        tools,
-        stopWhen: stepCountIs(maxSteps),
-        onError: ({ error }) => {
-          lastStreamError = error;
-          console.error(
-            "[AI_STREAM_ERROR]",
-            error instanceof Error ? error.message : error,
-          );
-        },
-        experimental_onStepStart: ({ stepNumber, messages: stepMessages }) => {
-          // Streamed deltas of consecutive steps would otherwise concatenate
-          // into one paragraph.
-          if (partialText && !partialText.endsWith("\n\n")) {
-            partialText += "\n\n";
-            callbacks.onText("\n\n");
-          }
-          inFlightStep = stepNumber + 1;
-          inFlightStartedAt = Date.now();
-          lastActivityAt = Date.now();
-          inFlightInputBytes = Buffer.byteLength(
-            JSON.stringify(stepMessages),
-            "utf8",
-          );
-          console.log(
-            `[AI_STEP_START] #${inFlightStep} +${sec(inFlightStartedAt - runStartedAt)}s` +
-              ` · сообщений ${stepMessages.length}` +
-              ` · вход ~${kb(inFlightInputBytes)} КБ`,
-          );
-          callbacks.onMeta({
-            type: "step_start",
-            step: inFlightStep,
-            inputKb: Math.round(inFlightInputBytes / 1024),
-          });
-        },
-        onStepFinish: ({ text, toolCalls, toolResults }) => {
-          lastActivityAt = Date.now();
-          stepNo += 1;
-          if (stepNo === 1) firstStepMs = Date.now() - runStartedAt;
-          console.log(
-            `[AI_STEP] #${stepNo} +${Date.now() - runStartedAt}ms` +
-              `, tools: ${toolCalls?.map((t) => t.toolName).join(", ") || "—"}` +
-              `, text: ${text ? text.length : 0} chars`,
-          );
-          // Text is NOT sent from here any more — it already went out as
-          // stream deltas; re-sending would duplicate every step's text.
-          if (toolCalls && toolCalls.length > 0) {
-            for (let i = 0; i < toolCalls.length; i++) {
-              const tc = toolCalls[i];
-              const tr = toolResults?.[i] as
-                | Record<string, unknown>
-                | undefined;
-              const tcAny = tc as Record<string, unknown>;
-              const toolInput = tcAny.input ?? tcAny.args ?? {};
-              const trResult = tr?.result;
-              const info: ToolCallInfo = {
-                name: tc.toolName,
-                input: toolInput as Record<string, unknown>,
-                result:
-                  typeof trResult === "string"
-                    ? trResult
-                    : JSON.stringify(trResult ?? ""),
-              };
-              allToolCalls.push(info);
-              callbacks.onStatus("tool_completed", tc.toolName);
-              callbacks.onToolCall(info);
+        const result = streamText({
+          model,
+          temperature: settings.temperature,
+          maxOutputTokens: settings.maxOutputTokens,
+          // Повторы — только наш цикл ниже: встроенные у SDK быстрые (~7 с на
+          // 3 запроса) и удваивают счёт; с 0 «попытка N из M» = число реальных
+          // HTTP-запросов.
+          maxRetries: 0,
+          timeout: {
+            totalMs,
+            stepMs,
+            chunkMs,
+          },
+          system: systemPrompt,
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          tools,
+          stopWhen: stepCountIs(maxSteps),
+          onError: ({ error }) => {
+            lastStreamError = error;
+            console.error(
+              "[AI_STREAM_ERROR]",
+              error instanceof Error ? error.message : error,
+            );
+          },
+          experimental_onStepStart: ({ stepNumber, messages: stepMessages }) => {
+            // Streamed deltas of consecutive steps would otherwise concatenate
+            // into one paragraph.
+            if (partialText && !partialText.endsWith("\n\n")) {
+              partialText += "\n\n";
+              callbacks.onText("\n\n");
             }
-            callbacks.onStatus("llm_analyzing");
-          }
-        },
-      });
+            inFlightStep = stepNumber + 1;
+            inFlightStartedAt = Date.now();
+            lastActivityAt = Date.now();
+            inFlightInputBytes = Buffer.byteLength(
+              JSON.stringify(stepMessages),
+              "utf8",
+            );
+            console.log(
+              `[AI_STEP_START] #${inFlightStep} +${sec(inFlightStartedAt - runStartedAt)}s` +
+                ` · сообщений ${stepMessages.length}` +
+                ` · вход ~${kb(inFlightInputBytes)} КБ`,
+            );
+            callbacks.onMeta({
+              type: "step_start",
+              step: inFlightStep,
+              inputKb: Math.round(inFlightInputBytes / 1024),
+            });
+          },
+          onStepFinish: ({ text, toolCalls, toolResults }) => {
+            lastActivityAt = Date.now();
+            stepNo += 1;
+            if (stepNo === 1) firstStepMs = Date.now() - runStartedAt;
+            console.log(
+              `[AI_STEP] #${stepNo} +${Date.now() - runStartedAt}ms` +
+                `, tools: ${toolCalls?.map((t) => t.toolName).join(", ") || "—"}` +
+                `, text: ${text ? text.length : 0} chars`,
+            );
+            // Text is NOT sent from here any more — it already went out as
+            // stream deltas; re-sending would duplicate every step's text.
+            if (toolCalls && toolCalls.length > 0) {
+              for (let i = 0; i < toolCalls.length; i++) {
+                const tc = toolCalls[i];
+                const tr = toolResults?.[i] as
+                  | Record<string, unknown>
+                  | undefined;
+                const tcAny = tc as Record<string, unknown>;
+                const toolInput = tcAny.input ?? tcAny.args ?? {};
+                const trResult = tr?.result;
+                const info: ToolCallInfo = {
+                  name: tc.toolName,
+                  input: toolInput as Record<string, unknown>,
+                  result:
+                    typeof trResult === "string"
+                      ? trResult
+                      : JSON.stringify(trResult ?? ""),
+                };
+                allToolCalls.push(info);
+                callbacks.onStatus("tool_completed", tc.toolName);
+                callbacks.onToolCall(info);
+              }
+              callbacks.onStatus("llm_analyzing");
+            }
+          },
+        });
 
-      // Drive the stream: deltas reach the user the moment the model emits them,
-      // and whatever is on screen at an abort is exactly what partialText holds.
-      // The filter rewrites internal tool names into Russian labels — a name
-      // may be split across delta boundaries, hence push/flush.
-      const nameFilter = createToolNameFilter();
-      for await (const delta of result.textStream) {
-        if (delta) {
-          lastActivityAt = Date.now();
-          const out = nameFilter.push(delta);
-          if (out) {
-            partialText += out;
-            callbacks.onText(out);
+        // Drive the stream: deltas reach the user the moment the model emits them,
+        // and whatever is on screen at an abort is exactly what partialText holds.
+        // The filter rewrites internal tool names into Russian labels — a name
+        // may be split across delta boundaries, hence push/flush.
+        const nameFilter = createToolNameFilter();
+        for await (const delta of result.textStream) {
+          if (delta) {
+            lastActivityAt = Date.now();
+            const out = nameFilter.push(delta);
+            if (out) {
+              partialText += out;
+              callbacks.onText(out);
+            }
           }
         }
-      }
-      const filterRest = nameFilter.flush();
-      if (filterRest) {
-        partialText += filterRest;
-        callbacks.onText(filterRest);
-      }
+        const filterRest = nameFilter.flush();
+        if (filterRest) {
+          partialText += filterRest;
+          callbacks.onText(filterRest);
+        }
 
-      const finishReason = await result.finishReason;
-      logRunSummary(
-        Date.now() - runStartedAt,
-        stepNo,
-        firstStepMs,
-        toolStats,
-        await result.totalUsage,
-        finishReason,
-      );
-
-      if (warnTimer) clearTimeout(warnTimer);
-
-      // A stream timeout does NOT throw — the stream just ends with
-      // finish: "other". Anything but a clean "stop" is an interrupted answer
-      // and must look like one, not like a finished report cut mid-sentence.
-      if (finishReason !== "stop") {
-        const silenceMs = Date.now() - lastActivityAt;
-        console.log(
-          `[AI_INCOMPLETE] finish: ${finishReason} → оформлен как обрыв` +
-            ` (тишина ${sec(silenceMs)}s)`,
+        const finishReason = await result.finishReason;
+        logRunSummary(
+          Date.now() - runStartedAt,
+          stepNo,
+          firstStepMs,
+          toolStats,
+          await result.totalUsage,
+          finishReason,
         );
-        callbacks.onError(new Error(finishMessage(finishReason, silenceMs, chunkMs, maxSteps)), {
+
+        if (warnTimer) clearTimeout(warnTimer);
+
+        // A stream timeout does NOT throw — the stream just ends with
+        // finish: "other". Anything but a clean "stop" is an interrupted answer
+        // and must look like one, not like a finished report cut mid-sentence.
+        if (finishReason !== "stop") {
+          const silenceMs = Date.now() - lastActivityAt;
+          console.log(
+            `[AI_INCOMPLETE] finish: ${finishReason} → оформлен как обрыв` +
+              ` (тишина ${sec(silenceMs)}s)`,
+          );
+          callbacks.onError(new Error(finishMessage(finishReason, silenceMs, chunkMs, maxSteps)), {
+            text: partialText,
+            toolNames: allToolCalls.map((t) => t.name),
+            steps: stepNo,
+          });
+          return;
+        }
+
+        callbacks.onDone(partialText, allToolCalls);
+        return;
+      } catch (error) {
+        const realError = pickRealError(error, lastStreamError);
+
+        // Retryable-ошибки провайдера (лимит запросов, занятый слот шлюза,
+        // перегрузка, сетевой обрыв) — повтор с настоящей паузой, но только пока
+        // пользователю ещё ничего не показано: повтор начинает ответ заново.
+        const verdict = classifyProviderError(realError);
+        if (verdict.retryable && partialText === "" && attempt < maxRetries) {
+          // Настроенная пауза — минимум; Retry-After провайдера может её
+          // увеличить, но не дальше потолка.
+          const delayMs = Math.max(
+            retryDelayMs,
+            Math.min(verdict.retryAfterMs ?? 0, AI_RETRY_DELAY_CAP_MS),
+          );
+          console.log(
+            `[AI_RETRY] ${verdict.reason} — попытка ${attempt + 1} из ${maxRetries},` +
+              ` пауза ${sec(delayMs)}s` +
+              (verdict.retryAfterMs != null
+                ? ` (Retry-After ${sec(verdict.retryAfterMs)}s)`
+                : ""),
+          );
+          callbacks.onStatus(
+            "retry_wait",
+            `Провайдер занят (${verdict.reason}) — повтор через ${Math.round(delayMs / 1000)} с,` +
+              ` попытка ${attempt + 1} из ${maxRetries}…`,
+          );
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+
+        if (warnTimer) clearTimeout(warnTimer);
+        const elapsed = Date.now() - runStartedAt;
+        // inFlightStep > stepNo means that step started and never finished — that
+        // is the one that hung, and the log below is the only place it is named.
+        const hung =
+          inFlightStep > stepNo
+            ? ` · шаг #${inFlightStep} висел ${sec(Date.now() - inFlightStartedAt)}s` +
+              ` (вход ~${kb(inFlightInputBytes)} КБ)`
+            : "";
+        console.error(
+          `[AI_CHAT_ERROR] ${sec(elapsed)}s, ${stepNo} шаг(ов)` +
+            ` · инструменты ${sec(toolStats.totalMs)}s (${formatToolCalls(toolStats)})` +
+            ` · модель ~${sec(Math.max(0, elapsed - toolStats.totalMs))}s` +
+            hung,
+          realError,
+        );
+        callbacks.onError(new Error(formatAIError(realError)), {
           text: partialText,
           toolNames: allToolCalls.map((t) => t.name),
           steps: stepNo,
         });
         return;
       }
-
-      callbacks.onDone(partialText, allToolCalls);
-      return;
-    } catch (error) {
-      const realError = pickRealError(error, lastStreamError);
-
-      // The gateway slot held by an aborted request frees up in tens of
-      // seconds — retry with real pauses, but only while nothing has been
-      // shown to the user yet (a retry would restart the answer from scratch).
-      if (
-        isConcurrentLimitError(realError) &&
-        partialText === "" &&
-        attempt < MAX_CONCURRENT_RETRIES
-      ) {
-        console.log(
-          `[AI_RETRY] 429 (concurrent) — попытка ${attempt + 1} из ${MAX_CONCURRENT_RETRIES},` +
-            ` пауза ${sec(CONCURRENT_RETRY_DELAY_MS)}s`,
-        );
-        callbacks.onStatus(
-          "retry_wait",
-          `Провайдер занят (429) — жду свободный слот, попытка ${attempt + 1} из ${MAX_CONCURRENT_RETRIES}…`,
-        );
-        await new Promise((r) => setTimeout(r, CONCURRENT_RETRY_DELAY_MS));
-        continue;
-      }
-
-      if (warnTimer) clearTimeout(warnTimer);
-      const elapsed = Date.now() - runStartedAt;
-      // inFlightStep > stepNo means that step started and never finished — that
-      // is the one that hung, and the log below is the only place it is named.
-      const hung =
-        inFlightStep > stepNo
-          ? ` · шаг #${inFlightStep} висел ${sec(Date.now() - inFlightStartedAt)}s` +
-            ` (вход ~${kb(inFlightInputBytes)} КБ)`
-          : "";
-      console.error(
-        `[AI_CHAT_ERROR] ${sec(elapsed)}s, ${stepNo} шаг(ов)` +
-          ` · инструменты ${sec(toolStats.totalMs)}s (${formatToolCalls(toolStats)})` +
-          ` · модель ~${sec(Math.max(0, elapsed - toolStats.totalMs))}s` +
-          hung,
-        realError,
-      );
-      callbacks.onError(new Error(formatAIError(realError)), {
-        text: partialText,
-        toolNames: allToolCalls.map((t) => t.name),
-        steps: stepNo,
-      });
-      return;
     }
+  } finally {
+    ticket.release();
   }
 }
 
@@ -372,10 +421,94 @@ function pickRealError(caught: unknown, streamError: unknown): unknown {
   return caught;
 }
 
-/** Gonka's "slot is still busy" rejection — retryable with a real pause. */
-function isConcurrentLimitError(error: unknown): boolean {
+export interface ProviderErrorVerdict {
+  retryable: boolean;
+  /** Короткая причина для лога и баннера, например «429, лимит запросов». */
+  reason: string;
+  /** Пауза, которую просит провайдер (заголовок Retry-After), если есть. */
+  retryAfterMs?: number;
+}
+
+/**
+ * Что делать с ошибкой провайдера: ждать и повторять или отдать пользователю.
+ * Порядок проверок важен: месячный лимит и ошибки авторизации могут нести те
+ * же коды (4xx/429), но повторять их бессмысленно.
+ */
+export function classifyProviderError(error: unknown): ProviderErrorVerdict {
+  const e = (error ?? {}) as {
+    statusCode?: unknown;
+    responseBody?: unknown;
+    responseHeaders?: unknown;
+  };
   const msg = error instanceof Error ? error.message : String(error);
-  return msg.includes("too many concurrent requests");
+  const body = typeof e.responseBody === "string" ? e.responseBody : "";
+  const text = `${msg}\n${body}`.toLowerCase();
+  const status = typeof e.statusCode === "number" ? e.statusCode : undefined;
+  const retryAfterMs = parseRetryAfter(e.responseHeaders);
+
+  if (text.includes("usage limit")) {
+    return { retryable: false, reason: "лимит использования API" };
+  }
+  if (
+    status === 401 ||
+    status === 403 ||
+    text.includes("authentication") ||
+    text.includes("api_key") ||
+    text.includes("api key")
+  ) {
+    return { retryable: false, reason: "аутентификация" };
+  }
+  if (text.includes("too many concurrent requests")) {
+    return { retryable: true, reason: "429, занят слот шлюза", retryAfterMs };
+  }
+  if (
+    status === 429 ||
+    text.includes("429") ||
+    text.includes("rate_limit") ||
+    text.includes("rate limit") ||
+    text.includes("tokens per minute")
+  ) {
+    return { retryable: true, reason: "429, лимит запросов", retryAfterMs };
+  }
+  if (
+    status === 529 ||
+    status === 503 ||
+    status === 502 ||
+    text.includes("overloaded") ||
+    text.includes("529")
+  ) {
+    return {
+      retryable: true,
+      reason: `${status ?? 529}, перегрузка провайдера`,
+      retryAfterMs,
+    };
+  }
+  if (
+    text.includes("econnreset") ||
+    text.includes("econnrefused") ||
+    text.includes("etimedout") ||
+    text.includes("fetch failed") ||
+    text.includes("socket hang up")
+  ) {
+    return { retryable: true, reason: "сетевой обрыв" };
+  }
+  return {
+    retryable: false,
+    reason: status != null ? `HTTP ${status}` : "ошибка провайдера",
+  };
+}
+
+/** Retry-After: секунды или HTTP-дата → миллисекунды ожидания. */
+function parseRetryAfter(headers: unknown): number | undefined {
+  if (!headers || typeof headers !== "object") return undefined;
+  const h = headers as Record<string, unknown>;
+  const raw = h["retry-after"] ?? h["Retry-After"];
+  if (typeof raw !== "string" || raw.trim() === "") return undefined;
+  const secs = Number(raw);
+  if (Number.isFinite(secs) && secs >= 0) return Math.round(secs * 1000);
+  const at = Date.parse(raw);
+  if (Number.isFinite(at)) return Math.max(0, at - Date.now());
+  return undefined;
 }
 
 /** ms → seconds with one decimal, for log readability. */
@@ -473,10 +606,18 @@ function finishMessage(
 }
 
 export function formatAIError(error: unknown): string {
+  // Очередь на слот провайдера — текст уже человеческий.
+  if (error instanceof QueueTimeoutError) return error.message;
+
   const raw = error instanceof Error ? error.message : String(error);
   const body = (error as Record<string, unknown>)?.responseBody as
     | string
     | undefined;
+  // Провайдер может вернуть код без слова в тексте («Invalid API key
+  // provided» при 401) — поэтому смотрим и на statusCode, и на тело ответа.
+  const statusRaw = (error as Record<string, unknown>)?.statusCode;
+  const status = typeof statusRaw === "number" ? statusRaw : undefined;
+  const lower = `${raw}\n${body ?? ""}`.toLowerCase();
 
   // API rate/usage limit
   if (raw.includes("usage limit") || body?.includes("usage limit")) {
@@ -487,11 +628,15 @@ export function formatAIError(error: unknown): string {
 
   // Authentication
   if (
+    status === 401 ||
+    status === 403 ||
     raw.includes("401") ||
-    raw.includes("authentication") ||
-    raw.includes("api_key")
+    lower.includes("authentication") ||
+    lower.includes("unauthorized") ||
+    lower.includes("api_key") ||
+    lower.includes("api key")
   ) {
-    return "Ошибка аутентификации API. Проверьте API-ключ в .env файле.";
+    return "Ошибка аутентификации API. Проверьте API-ключ в настройках подключения (Настройки → LLM) или в .env.";
   }
 
   // Gateway concurrent-slot limit: an aborted request still holds its slot
@@ -505,6 +650,7 @@ export function formatAIError(error: unknown): string {
 
   // Rate limiting (429) — including per-minute token limits
   if (
+    status === 429 ||
     raw.includes("429") ||
     raw.includes("rate_limit") ||
     raw.includes("rate limit") ||
@@ -514,7 +660,13 @@ export function formatAIError(error: unknown): string {
   }
 
   // Model overloaded
-  if (raw.includes("overloaded") || raw.includes("529")) {
+  if (
+    status === 529 ||
+    status === 503 ||
+    status === 502 ||
+    lower.includes("overloaded") ||
+    raw.includes("529")
+  ) {
     return "AI-сервис временно перегружен. Попробуйте через несколько минут.";
   }
 

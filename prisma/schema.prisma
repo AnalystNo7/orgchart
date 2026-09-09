@@ -743,6 +743,11 @@ model LlmSetting {
   stepTimeoutSec        Int? // null = AI_STEP_TIMEOUT_MS (600 с)
   chunkTimeoutSec       Int? // null = AI_CHUNK_TIMEOUT_MS (120 с)
   runContextBudgetBytes Int? // null = AI_RUN_CONTEXT_BUDGET_BYTES (120000)
+  // Повторы и очередь к провайдеру; null = дефолт из src/lib/ai/limits.ts
+  maxRetries            Int? // null = AI_MAX_RETRIES (3); 0 = без повторов
+  retryDelaySec         Int? // null = AI_RETRY_DELAY_MS (20 с); Retry-After провайдера учитывается, если больше
+  maxConcurrentRuns     Int? // null = AI_MAX_CONCURRENT_RUNS (1) — одновременных прогонов к провайдеру на процесс
+  queueTimeoutSec       Int? // null = AI_QUEUE_TIMEOUT_MS (180 с) — максимум ожидания в очереди
   isActive              Boolean  @default(false) // "only one active" enforced by activate endpoint transaction
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

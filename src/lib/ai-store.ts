@@ -9,6 +9,7 @@ export type StreamingPhase =
   | "streaming"
   | "local_search"
   | "retry_wait"
+  | "queue_wait"
   | null;
 
 export interface CompletedStep {
