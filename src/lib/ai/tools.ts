@@ -29,7 +29,7 @@ export function createToolRunStats(): ToolRunStats {
  * what-if modelling mid-way, and caching one would serve stale data.
  * run_health_check writes AIInsight rows, so it belongs to the other camp.
  */
-const READ_ONLY_TOOLS = new Set([
+export const READ_ONLY_TOOLS = new Set([
   "get_benchmarks",
   "query_knowledge_base",
   "analyze_skill_gaps",
@@ -85,7 +85,15 @@ function wrapExecute(
 ) {
   const cacheable = READ_ONLY_TOOLS.has(name);
 
-  return async (params: Record<string, unknown>) => {
+  return async (
+    params: Record<string, unknown>,
+    options?: { abortSignal?: AbortSignal },
+  ) => {
+    // Клиент уже отменил запрос: не начинать работу в БД ради результата,
+    // который никто не прочитает (SDK замечает abort только на следующем чанке).
+    if (options?.abortSignal?.aborted) {
+      return JSON.stringify({ error: "aborted", message: "Запрос отменён." });
+    }
     const key = cacheable ? `${name}:${JSON.stringify(params)}` : null;
 
     // Budget first: results stay in the message history and are re-sent to the

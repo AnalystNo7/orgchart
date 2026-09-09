@@ -1,6 +1,11 @@
 import { streamText, stepCountIs } from "ai";
 import { getLlm } from "./provider";
-import { buildTools, createToolRunStats, type ToolRunStats } from "./tools";
+import {
+  buildTools,
+  createToolRunStats,
+  READ_ONLY_TOOLS,
+  type ToolRunStats,
+} from "./tools";
 import { getSystemPrompt } from "./system-prompt";
 import { createToolNameFilter } from "./tool-labels";
 import {
@@ -16,6 +21,7 @@ import {
   AI_RETRY_DELAY_CAP_MS,
   AI_MAX_CONCURRENT_RUNS,
   AI_QUEUE_TIMEOUT_MS,
+  AI_RETRY_MAX_SHOWN_CHARS,
 } from "./limits";
 import { acquireRunSlot, QueueTimeoutError } from "./run-queue";
 
@@ -38,6 +44,16 @@ export interface StreamCallbacks {
   onDone: (fullResponse: string, toolCalls: ToolCallInfo[]) => void;
   onError: (error: Error, partial: PartialRun) => void;
   onMeta: (meta: RunMeta) => void;
+  /**
+   * Клиент отменил запрос (кнопка «Отмена», закрытие вкладки). Поток к нему
+   * уже закрыт: сюда только сохранение собранного, ничего не отправлять.
+   */
+  onAbort?: (partial: PartialRun) => void | Promise<void>;
+}
+
+export interface RunChatOptions {
+  /** Сигнал отмены от клиента; прерывает очередь, паузы повторов и стрим. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -67,7 +83,17 @@ export async function runChat(
   scenarioId: string,
   scenarioName: string,
   callbacks: StreamCallbacks,
+  options: RunChatOptions = {},
 ): Promise<void> {
+  const { signal } = options;
+  const emptyPartial = (): PartialRun => ({ text: "", toolNames: [], steps: 0 });
+  // Клиент ушёл ещё до старта — не тратим ни БД, ни слот.
+  if (signal?.aborted) {
+    console.log("[AI_ABORT] отмена до старта прогона");
+    await callbacks.onAbort?.(emptyPartial());
+    return;
+  }
+
   const {
     prompt: systemPrompt,
     isCustom: promptIsCustom,
@@ -142,6 +168,7 @@ export async function runChat(
   const ticket = await acquireRunSlot({
     max: maxConcurrentRuns,
     timeoutMs: queueTimeoutMs,
+    signal,
     onWait: (position, ahead) => {
       callbacks.onStatus(
         "queue_wait",
@@ -150,19 +177,24 @@ export async function runChat(
           "…",
       );
     },
-  }).catch((error: unknown) => {
+  }).catch(async (error: unknown) => {
+    if (signal?.aborted) {
+      console.log("[AI_ABORT] отмена во время ожидания в очереди");
+      await callbacks.onAbort?.(emptyPartial());
+      return null;
+    }
     console.error("[AI_QUEUE]", error instanceof Error ? error.message : error);
-    callbacks.onError(new Error(formatAIError(error)), {
-      text: "",
-      toolNames: [],
-      steps: 0,
-    });
+    callbacks.onError(new Error(formatAIError(error)), emptyPartial());
     return null;
   });
   if (!ticket) return;
   if (ticket.waitedMs > 0) {
     console.log(`[AI_QUEUE] слот получен после ожидания ${sec(ticket.waitedMs)}s`);
   }
+  // Отмена клиента освобождает слот сразу, не дожидаясь выхода из стрима:
+  // SDK замечает abort только на следующем чанке, а инструмент может идти в БД.
+  const releaseOnAbort = () => ticket.release();
+  signal?.addEventListener("abort", releaseOnAbort, { once: true });
 
   // Step timing: the gaps between steps are the model's own latency, which
   // is what a whole-loop timeout usually burns through.
@@ -194,6 +226,56 @@ export async function runChat(
   // stall apart from an exhausted total budget in the finish handling.
   let lastActivityAt = Date.now();
 
+  const partial = (): PartialRun => ({
+    text: partialText,
+    toolNames: allToolCalls.map((t) => t.name),
+    steps: stepNo,
+  });
+  const finishAbort = async () => {
+    console.log(
+      `[AI_ABORT] ${sec(Date.now() - runStartedAt)}s, ${stepNo} шаг(ов),` +
+        ` ${partialText.length} символов сохранено`,
+    );
+    await callbacks.onAbort?.(partial());
+  };
+  // «Ранний» прогон можно перезапустить: модель успела только объявить план,
+  // а все её вызовы были read-only — повтор возьмёт их из кэша, а не повторит
+  // запись в БД.
+  const isEarlyRun = () =>
+    stepNo <= 1 &&
+    partialText.length <= AI_RETRY_MAX_SHOWN_CHARS &&
+    allToolCalls.every((t) => READ_ONLY_TOOLS.has(t.name));
+  // Пауза перед повтором: настроенная — минимум, Retry-After провайдера может
+  // её увеличить, но не дальше потолка. Если текст уже показан — честная
+  // пометка в чат, чтобы перезапуск не выглядел как сбой.
+  const waitBeforeRetry = async (verdict: ProviderErrorVerdict, attempt: number) => {
+    const delayMs = Math.max(
+      retryDelayMs,
+      Math.min(verdict.retryAfterMs ?? 0, AI_RETRY_DELAY_CAP_MS),
+    );
+    console.log(
+      `[AI_RETRY] ${verdict.reason} — попытка ${attempt + 1} из ${maxRetries},` +
+        ` пауза ${sec(delayMs)}s` +
+        (verdict.retryAfterMs != null
+          ? ` (Retry-After ${sec(verdict.retryAfterMs)}s)`
+          : "") +
+        ` · после шага ${stepNo}, показано ${partialText.length} символов`,
+    );
+    if (partialText !== "") {
+      const note =
+        `\n\n_Повтор из-за ошибки провайдера (${verdict.reason}),` +
+        ` попытка ${attempt + 1} из ${maxRetries}…_\n\n`;
+      partialText += note;
+      callbacks.onText(note);
+    }
+    callbacks.onStatus(
+      "retry_wait",
+      `Провайдер занят (${verdict.reason}) — повтор через ${Math.round(delayMs / 1000)} с,` +
+        ` попытка ${attempt + 1} из ${maxRetries}…`,
+    );
+    await sleep(delayMs, signal);
+  };
+
   try {
     for (let attempt = 0; ; attempt++) {
       lastStreamError = undefined;
@@ -216,6 +298,10 @@ export async function runChat(
           // 3 запроса) и удваивают счёт; с 0 «попытка N из M» = число реальных
           // HTTP-запросов.
           maxRetries: 0,
+          abortSignal: signal,
+          onAbort: ({ steps }) => {
+            console.log(`[AI_ABORT] SDK прервал поток после ${steps.length} шаг(ов)`);
+          },
           timeout: {
             totalMs,
             stepMs,
@@ -319,6 +405,10 @@ export async function runChat(
         }
 
         const finishReason = await result.finishReason;
+        if (signal?.aborted) {
+          await finishAbort();
+          return;
+        }
         logRunSummary(
           Date.now() - runStartedAt,
           stepNo,
@@ -328,18 +418,48 @@ export async function runChat(
           finishReason,
         );
 
-        if (warnTimer) clearTimeout(warnTimer);
-
         // A stream timeout does NOT throw — the stream just ends with
         // finish: "other". Anything but a clean "stop" is an interrupted answer
         // and must look like one, not like a finished report cut mid-sentence.
         if (finishReason !== "stop") {
+          // Ошибка провайдера посреди прогона (429 на шаге 2) тоже приходит
+          // сюда, а не в catch: SDK кладёт её в onError и тихо закрывает поток.
+          const streamVerdict =
+            lastStreamError !== undefined
+              ? classifyProviderError(lastStreamError)
+              : null;
+          if (streamVerdict?.retryable && isEarlyRun() && attempt < maxRetries) {
+            await waitBeforeRetry(streamVerdict, attempt);
+            if (signal?.aborted) {
+              await finishAbort();
+              return;
+            }
+            continue;
+          }
+          if (streamVerdict) {
+            console.log(
+              `[AI_RETRY_SKIP] ${streamVerdict.reason} · ` +
+                (streamVerdict.retryable ? "retryable" : "не retryable") +
+                ` · шаг ${stepNo}, показано ${partialText.length} символов,` +
+                ` попытка ${attempt + 1} из ${maxRetries + 1}`,
+            );
+          }
           const silenceMs = Date.now() - lastActivityAt;
           console.log(
             `[AI_INCOMPLETE] finish: ${finishReason} → оформлен как обрыв` +
-              ` (тишина ${sec(silenceMs)}s)`,
+              ` (тишина ${sec(silenceMs)}s)` +
+              (streamVerdict ? ` · причина: ${streamVerdict.reason}` : ""),
           );
-          callbacks.onError(new Error(finishMessage(finishReason, silenceMs, chunkMs, maxSteps)), {
+          // Известная ошибка провайдера (429 на шаге 2 и т.п.) должна звучать
+          // как она сама, а не как «таймаут»; повтора не было — скажем почему.
+          const message = streamVerdict
+            ? formatAIError(lastStreamError) +
+              (streamVerdict.retryable
+                ? ` Ответ прерван после ${stepNo} шаг(ов); автоповтор не выполнен,` +
+                  ` так как часть ответа уже показана. Повторите запрос.`
+                : "")
+            : finishMessage(finishReason, silenceMs, chunkMs, maxSteps);
+          callbacks.onError(new Error(message), {
             text: partialText,
             toolNames: allToolCalls.map((t) => t.name),
             steps: stepNo,
@@ -350,36 +470,28 @@ export async function runChat(
         callbacks.onDone(partialText, allToolCalls);
         return;
       } catch (error) {
+        // Отмена клиента: при 0 шагов finishReason отклоняется нашим reason,
+        // а отменённое ожидание в очереди/паузе бросает сюда же. Никаких
+        // повторов и никакого onError — клиент уже сам показал отмену.
+        if (signal?.aborted) {
+          await finishAbort();
+          return;
+        }
         const realError = pickRealError(error, lastStreamError);
 
         // Retryable-ошибки провайдера (лимит запросов, занятый слот шлюза,
-        // перегрузка, сетевой обрыв) — повтор с настоящей паузой, но только пока
-        // пользователю ещё ничего не показано: повтор начинает ответ заново.
+        // перегрузка, сетевой обрыв) — повтор с настоящей паузой, пока прогон
+        // «ранний» (см. isEarlyRun): повтор начинает ответ заново.
         const verdict = classifyProviderError(realError);
-        if (verdict.retryable && partialText === "" && attempt < maxRetries) {
-          // Настроенная пауза — минимум; Retry-After провайдера может её
-          // увеличить, но не дальше потолка.
-          const delayMs = Math.max(
-            retryDelayMs,
-            Math.min(verdict.retryAfterMs ?? 0, AI_RETRY_DELAY_CAP_MS),
-          );
-          console.log(
-            `[AI_RETRY] ${verdict.reason} — попытка ${attempt + 1} из ${maxRetries},` +
-              ` пауза ${sec(delayMs)}s` +
-              (verdict.retryAfterMs != null
-                ? ` (Retry-After ${sec(verdict.retryAfterMs)}s)`
-                : ""),
-          );
-          callbacks.onStatus(
-            "retry_wait",
-            `Провайдер занят (${verdict.reason}) — повтор через ${Math.round(delayMs / 1000)} с,` +
-              ` попытка ${attempt + 1} из ${maxRetries}…`,
-          );
-          await new Promise((r) => setTimeout(r, delayMs));
+        if (verdict.retryable && isEarlyRun() && attempt < maxRetries) {
+          await waitBeforeRetry(verdict, attempt);
+          if (signal?.aborted) {
+            await finishAbort();
+            return;
+          }
           continue;
         }
 
-        if (warnTimer) clearTimeout(warnTimer);
         const elapsed = Date.now() - runStartedAt;
         // inFlightStep > stepNo means that step started and never finished — that
         // is the one that hung, and the log below is the only place it is named.
@@ -404,8 +516,29 @@ export async function runChat(
       }
     }
   } finally {
+    signal?.removeEventListener("abort", releaseOnAbort);
+    if (warnTimer) clearTimeout(warnTimer);
     ticket.release();
   }
+}
+
+/**
+ * Пауза, которую можно прервать отменой клиента. Резолвится (не отклоняется)
+ * по abort — вызывающий сразу проверяет signal.aborted.
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -440,7 +573,7 @@ export function classifyProviderError(error: unknown): ProviderErrorVerdict {
     responseBody?: unknown;
     responseHeaders?: unknown;
   };
-  const msg = error instanceof Error ? error.message : String(error);
+  const msg = errorTextOf(error);
   const body = typeof e.responseBody === "string" ? e.responseBody : "";
   const text = `${msg}\n${body}`.toLowerCase();
   const status = typeof e.statusCode === "number" ? e.statusCode : undefined;
@@ -496,6 +629,26 @@ export function classifyProviderError(error: unknown): ProviderErrorVerdict {
     retryable: false,
     reason: status != null ? `HTTP ${status}` : "ошибка провайдера",
   };
+}
+
+/**
+ * Текст ошибки провайдера. Через onError стрима SDK отдаёт не только Error,
+ * но и «голый» объект из тела SSE ({ message, type }) или { error: {...} } —
+ * String(obj) дал бы «[object Object]», и классификатор ослеп бы.
+ */
+function errorTextOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object") {
+    const o = error as { message?: unknown; error?: { message?: unknown } };
+    if (typeof o.message === "string") return o.message;
+    if (o.error && typeof o.error.message === "string") return o.error.message;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      /* циклический объект */
+    }
+  }
+  return String(error);
 }
 
 /** Retry-After: секунды или HTTP-дата → миллисекунды ожидания. */
@@ -609,7 +762,7 @@ export function formatAIError(error: unknown): string {
   // Очередь на слот провайдера — текст уже человеческий.
   if (error instanceof QueueTimeoutError) return error.message;
 
-  const raw = error instanceof Error ? error.message : String(error);
+  const raw = errorTextOf(error);
   const body = (error as Record<string, unknown>)?.responseBody as
     | string
     | undefined;

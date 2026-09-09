@@ -89,24 +89,62 @@ export async function POST(req: NextRequest) {
     };
   }
 
+  // Отмена клиента (кнопка «Отмена», закрытие вкладки, обрыв сети): один
+  // сигнал на запрос. Прогон прерывается, слоты освобождаются, в закрытый
+  // поток больше ничего не пишется. cancel() у потока и req.signal приходят
+  // от одного и того же события close — обработчик идемпотентен.
+  const abort = new AbortController();
+  let closed = false;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const cleanup = () => {
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
+  };
+  const abortRun = (reason: unknown) => {
+    if (abort.signal.aborted) return;
+    cleanup();
+    abort.abort(
+      reason instanceof Error
+        ? reason
+        : new DOMException("client disconnected", "AbortError"),
+    );
+  };
+  if (req.signal.aborted) abortRun(req.signal.reason);
+  else req.signal.addEventListener("abort", () => abortRun(req.signal.reason), { once: true });
+
   // Create SSE stream
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event: string, data: unknown) => {
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        );
+        if (closed) return;
+        try {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        } catch {
+          // Поток уже отменён клиентом, cancel() ещё не успел — запомнить.
+          closed = true;
+        }
+      };
+      // Единственная точка закрытия потока; повторный вызов безопасен.
+      const finish = () => {
+        if (closed) return;
+        closed = true;
+        cleanup();
+        try {
+          controller.close();
+        } catch {
+          // уже закрыт
+        }
       };
 
       // Heartbeat: send ping every 5s to keep connection alive
-      const heartbeatInterval = setInterval(() => {
+      heartbeat = setInterval(() => {
         send("heartbeat", { ts: Date.now() });
       }, 5000);
-
-      const cleanup = () => {
-        clearInterval(heartbeatInterval);
-      };
 
       const toolCalls: ToolCallInfo[] = [];
       // Пока идёт ожидание (повтор после ошибки провайдера или очередь на
@@ -115,97 +153,130 @@ export async function POST(req: NextRequest) {
 
       send("status", { phase: "connecting" });
 
-      await runChat(messages, scenarioId, scenario.name, {
-        onText: (text) => {
-          send("status", { phase: "streaming" });
-          send("text", { text });
-        },
-        onStatus: (phase, detail) => {
-          // Fired by the orchestrator a minute before the real total budget —
-          // only it knows what that budget is.
-          if (phase === "timeout_warning") {
-            send("warning", {
-              type: "timeout",
-              message: "Запрос выполняется дольше обычного. Возможен таймаут.",
-            });
-            return;
-          }
-          // Retry / queue wait: show the reason and the attempt counter (or
-          // the queue position) in the warning banner AND switch the phase.
-          if (phase === "retry_wait" || phase === "queue_wait") {
-            waiting = true;
-            if (detail) {
+      try {
+        await runChat(messages, scenarioId, scenario.name, {
+          onText: (text) => {
+            send("status", { phase: "streaming" });
+            send("text", { text });
+          },
+          onStatus: (phase, detail) => {
+            // Fired by the orchestrator a minute before the real total budget —
+            // only it knows what that budget is.
+            if (phase === "timeout_warning") {
               send("warning", {
-                type: phase === "queue_wait" ? "queue" : "retry",
-                message: detail,
+                type: "timeout",
+                message: "Запрос выполняется дольше обычного. Возможен таймаут.",
               });
+              return;
             }
-            send("status", { phase });
-            return;
-          }
-          if (waiting) {
-            waiting = false;
-            send("warning", { type: "clear", message: null });
-          }
-          send("status", { phase, detail });
-        },
-        onProgress: (toolName, step) => {
-          send("progress", { tool: toolName, step });
-        },
-        onMeta: (meta) => {
-          send("meta", meta);
-        },
-        onToolCall: (info) => {
-          toolCalls.push(info);
-          send("tool_call", {
-            name: info.name,
-            input: info.input,
-          });
-          send("tool_result", {
-            name: info.name,
-            result: info.result,
-          });
-        },
-        onDone: async (fullResponse, allToolCalls) => {
-          cleanup();
-          const newId = await saveConversation({
-            scenarioId,
-            conversationId,
-            messages,
-            assistantContent: fullResponse,
-            context: { toolCalls: allToolCalls.map((t) => t.name) },
-          });
-          if (newId) send("conversation_id", { id: newId });
+            // Retry / queue wait: show the reason and the attempt counter (or
+            // the queue position) in the warning banner AND switch the phase.
+            if (phase === "retry_wait" || phase === "queue_wait") {
+              waiting = true;
+              if (detail) {
+                send("warning", {
+                  type: phase === "queue_wait" ? "queue" : "retry",
+                  message: detail,
+                });
+              }
+              send("status", { phase });
+              return;
+            }
+            if (waiting) {
+              waiting = false;
+              send("warning", { type: "clear", message: null });
+            }
+            send("status", { phase, detail });
+          },
+          onProgress: (toolName, step) => {
+            send("progress", { tool: toolName, step });
+          },
+          onMeta: (meta) => {
+            send("meta", meta);
+          },
+          onToolCall: (info) => {
+            toolCalls.push(info);
+            send("tool_call", {
+              name: info.name,
+              input: info.input,
+            });
+            send("tool_result", {
+              name: info.name,
+              result: info.result,
+            });
+          },
+          onDone: async (fullResponse, allToolCalls) => {
+            cleanup();
+            const newId = await saveConversation({
+              scenarioId,
+              conversationId,
+              messages,
+              assistantContent: fullResponse,
+              context: { toolCalls: allToolCalls.map((t) => t.name) },
+            });
+            if (newId) send("conversation_id", { id: newId });
 
-          send("done", { toolCalls: allToolCalls.map((t) => t.name) });
-          controller.close();
-        },
-        onError: async (error, partial) => {
-          cleanup();
-          // Everything gathered so far is otherwise thrown away: the model's
-          // text stays only in the browser and the turn is never persisted,
-          // so a follow-up "продолжай" reaches the model with no memory of it.
-          const note = buildAbortNote(partial);
-          send("text", { text: note });
-          const newId = await saveConversation({
-            scenarioId,
-            conversationId,
-            messages,
-            assistantContent: partial.text
-              ? `${partial.text}\n\n${note}`
-              : note,
-            context: {
-              toolCalls: partial.toolNames,
-              aborted: true,
-              steps: partial.steps,
-            },
-          });
-          if (newId) send("conversation_id", { id: newId });
+            send("done", { toolCalls: allToolCalls.map((t) => t.name) });
+            finish();
+          },
+          onError: async (error, partial) => {
+            cleanup();
+            // Everything gathered so far is otherwise thrown away: the model's
+            // text stays only in the browser and the turn is never persisted,
+            // so a follow-up "продолжай" reaches the model with no memory of it.
+            const note = buildAbortNote(partial);
+            send("text", { text: note });
+            const newId = await saveConversation({
+              scenarioId,
+              conversationId,
+              messages,
+              assistantContent: partial.text
+                ? `${partial.text}\n\n${note}`
+                : note,
+              context: {
+                toolCalls: partial.toolNames,
+                aborted: true,
+                steps: partial.steps,
+              },
+            });
+            if (newId) send("conversation_id", { id: newId });
 
-          send("error", { message: error.message });
-          controller.close();
-        },
-      });
+            send("error", { message: error.message });
+            finish();
+          },
+          onAbort: async (partial) => {
+            cleanup();
+            // Клиент уже показал «Запрос отменён пользователем.», поток закрыт —
+            // только сохраняем собранное, чтобы «продолжай» имело контекст.
+            await saveConversation({
+              scenarioId,
+              conversationId,
+              messages,
+              assistantContent: partial.text
+                ? `${partial.text}\n\n${CANCELLED_NOTE}`
+                : CANCELLED_NOTE,
+              context: {
+                toolCalls: partial.toolNames,
+                aborted: true,
+                cancelled: true,
+                steps: partial.steps,
+              },
+            });
+          },
+        }, { signal: abort.signal });
+      } catch (e) {
+        // Неожиданное исключение (например, недоступна БД в getLlm): клиент
+        // должен получить сообщение, а не оборванный поток.
+        console.error("[AI_CHAT_ROUTE]", e);
+        send("error", {
+          message: "Внутренняя ошибка AI-чата. Подробности в консоли сервера.",
+        });
+        finish();
+      }
+    },
+    cancel(reason) {
+      closed = true;
+      abortRun(reason);
     },
   });
 
@@ -320,6 +391,9 @@ async function saveConversation(params: {
     return null;
   }
 }
+
+/** Пометка в сохранённом диалоге при отмене клиентом (зеркалит текст в UI). */
+const CANCELLED_NOTE = "_Запрос отменён пользователем._";
 
 /** Honest note appended to an aborted turn, listing what did get collected. */
 function buildAbortNote(partial: PartialRun): string {
