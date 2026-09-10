@@ -38,6 +38,7 @@ export const TOOL_LABELS: Record<string, string> = {
   get_pipeline: "Получение пайплайна",
   analyze_budget: "Анализ бюджета",
   get_unit_economics: "Unit-экономика",
+  get_employee_economics: "Экономика по сотрудникам",
   run_health_check: "Проверка здоровья организации",
   get_insights: "Получение инсайтов",
 };

@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { Bot, User, Wrench, BookOpenCheck, BarChart3, Brain } from "lucide-react";
 import type { AiMessage } from "@/lib/ai-store";
 import { toolLabel } from "./tool-labels";
+import { splitThinking } from "./think-split";
 import React from "react";
 
 interface SourceRef {
@@ -114,8 +115,13 @@ function SourceBadge({ type, label }: { type: string; label: string }) {
 export function ChatMessage({ message, wide = false }: { message: AiMessage; wide?: boolean }) {
   const isUser = message.role === "user";
   const sources = !isUser ? parseSourceMarkers(message.content) : [];
+  // Закрытые блоки <think>…</think> уходят в свёрнутый «Ход рассуждений»;
+  // незакрытый остаётся в тексте и показывается маркером (replaceThinkTags).
+  const { reasoning, answer } = !isUser
+    ? splitThinking(message.content)
+    : { reasoning: [], answer: message.content };
   const processedContent = !isUser
-    ? replaceThinkTags(stripSourceMarkers(message.content))
+    ? replaceThinkTags(stripSourceMarkers(answer))
     : message.content;
 
   return (
@@ -148,6 +154,16 @@ export function ChatMessage({ message, wide = false }: { message: AiMessage; wid
               </div>
             ))}
           </div>
+        )}
+        {reasoning.length > 0 && (
+          <details className="chat-reasoning mb-2">
+            <summary>💭 Ход рассуждений</summary>
+            <div className="chat-prose prose prose-sm max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {reasoning.map((r) => stripSourceMarkers(r)).join("\n\n---\n\n")}
+              </ReactMarkdown>
+            </div>
+          </details>
         )}
         <div className="chat-prose prose prose-sm max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>

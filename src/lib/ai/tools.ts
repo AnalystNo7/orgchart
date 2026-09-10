@@ -50,6 +50,7 @@ export const READ_ONLY_TOOLS = new Set([
   "get_pipeline",
   "analyze_budget",
   "get_unit_economics",
+  "get_employee_economics",
   "get_insights",
 ]);
 
@@ -569,13 +570,28 @@ export function buildTools(
 
     get_unit_economics: tool({
       description:
-        "Unit-экономика: revenue/FTE, cost/FTE, маржинальность, утилизация ПП по подразделениям.",
+        "Unit-экономика по подразделениям: стоимость и выручка на 1 FTE в год (₽, по рабочим часам года), доля ПП с привязкой к доходным договорам. Единицы описаны в поле _units. Цифры по отдельным сотрудникам — get_employee_economics.",
       inputSchema: zodSchema(
         z.object({
           scenarioId: z.string().optional().describe("ID сценария"),
         })
       ),
       execute: wrapExecute("get_unit_economics", currentScenarioId, onProgress, toolResultMaxBytes, stats, cache, contextBudgetBytes),
+    }),
+
+    get_employee_economics: tool({
+      description:
+        "Экономика по сотрудникам: стоимость в год (₽, costRate × FTE × рабочие часы года) и покрытие доходными договорами (% FTE по привязкам, НЕ фактическая загрузка). Имена ровно как в справочнике (могут быть обезличены: «сотрудник12»). Сортировка: cost (дорогие), coverage (наименее покрытые), costUncovered (стоимость непокрытой части — «убыточность» по данным). Постранично, не более одного вызова за шаг.",
+      inputSchema: zodSchema(
+        z.object({
+          scenarioId: z.string().optional().describe("ID сценария"),
+          departmentId: z.string().optional().describe("Ограничить одним подразделением"),
+          sortBy: z.enum(["cost", "coverage", "costUncovered"]).optional().describe("Сортировка, по умолчанию cost"),
+          limit: z.number().int().min(1).max(50).optional().describe("Записей на страницу, по умолчанию 30"),
+          offset: z.number().int().min(0).optional().describe("Смещение для продолжения (nextOffset из ответа)"),
+        })
+      ),
+      execute: wrapExecute("get_employee_economics", currentScenarioId, onProgress, toolResultMaxBytes, stats, cache, contextBudgetBytes),
     }),
 
     run_health_check: tool({

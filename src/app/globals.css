@@ -383,3 +383,25 @@ h4 { font-family: var(--font-body); font-size: 15px; font-weight: 600; line-heig
 .chat-prose :where(td[align="center"], th[align="center"]):not(:where([class~="not-prose"] *)) {
   text-align: center;
 }
+
+/* Свёрнутый блок рассуждений модели в чате: закрыт по умолчанию, текст
+   приглушён — это служебная часть ответа, а не его результат. */
+.chat-reasoning {
+  border-left: 2px solid var(--line);
+  padding-left: 0.5rem;
+  font-size: 0.8em;
+  color: var(--gpc-gray-500);
+}
+.chat-reasoning > summary {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  color: var(--gpc-gray-500);
+}
+.chat-reasoning[open] > summary {
+  margin-bottom: 0.25rem;
+}
+.chat-reasoning .chat-prose {
+  --tw-prose-body: var(--gpc-gray-500);
+  --tw-prose-headings: var(--gpc-gray-500);
+}

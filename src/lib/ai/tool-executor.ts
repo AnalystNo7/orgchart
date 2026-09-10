@@ -6,6 +6,7 @@ import {
   type PnlAllocationMode,
 } from "@/lib/pnl-calculator";
 import { calculateOhi } from "@/lib/ohi-calculator";
+import { getWorkingHours } from "@/lib/work-calendar";
 import { runHealthCheck } from "@/lib/org-analyzer";
 import { getBenchmarks, listAvailableMetrics, listAvailableIndustries, type BenchmarkCategory } from "./benchmarks";
 import { retrieveChunks, formatRetrievalContext } from "@/lib/rag";
@@ -139,6 +140,16 @@ export async function executeTool(
       case "get_unit_economics":
         return await getUnitEconomics(
           (input.scenarioId as string) || currentScenarioId
+        );
+      case "get_employee_economics":
+        return await getEmployeeEconomics(
+          (input.scenarioId as string) || currentScenarioId,
+          {
+            departmentId: input.departmentId as string | undefined,
+            sortBy: input.sortBy as string | undefined,
+            limit: input.limit as number | undefined,
+            offset: input.offset as number | undefined,
+          }
         );
       case "run_health_check":
         return await runHealthCheckTool(
@@ -1704,7 +1715,36 @@ async function analyzeBudget(scenarioId: string): Promise<string> {
   });
 }
 
+/** Отчётный год для экономики по сотрудникам: текущий календарный, UTC. */
+function reportingYear(): { periodStart: Date; periodEnd: Date; hoursYear: number; year: number } {
+  const year = new Date().getUTCFullYear();
+  const periodStart = new Date(Date.UTC(year, 0, 1));
+  const periodEnd = new Date(Date.UTC(year, 11, 31));
+  return { year, periodStart, periodEnd, hoursYear: getWorkingHours(periodStart, periodEnd) };
+}
+
+/** Доля отчётного окна, покрытая интервалом привязки (по дням, включительно). */
+function overlapFraction(aStart: Date, aEnd: Date, winStart: Date, winEnd: Date): number {
+  const DAY = 86_400_000;
+  const from = Math.max(aStart.getTime(), winStart.getTime());
+  const to = Math.min(aEnd.getTime(), winEnd.getTime());
+  if (to < from) return 0;
+  const overlapDays = Math.floor((to - from) / DAY) + 1;
+  const winDays = Math.floor((winEnd.getTime() - winStart.getTime()) / DAY) + 1;
+  return winDays > 0 ? overlapDays / winDays : 0;
+}
+
+const UNIT_ECONOMICS_UNITS = {
+  annualCostPerFteRub:
+    "стоимость на 1 FTE в год, ₽ = Σ(costRate ₽/час × FTE × рабочие часы отчётного года) / Σ FTE",
+  annualRevenuePerFteRub:
+    "выручка на 1 FTE в год, ₽ — суммы доходных договоров, распределённые пропорционально FTE (грубая оценка; точный P&L — calculate_pnl)",
+  contractCoveragePct:
+    "доля ПП-сотрудников, имеющих хотя бы одну привязку к доходному договору, %. Это НЕ фактическая загрузка: данных о часах в системе нет",
+};
+
 async function getUnitEconomics(scenarioId: string): Promise<string> {
+  const { year, hoursYear } = reportingYear();
   const employees = await prisma.employee.findMany({
     where: { scenarioId },
     include: {
@@ -1715,45 +1755,164 @@ async function getUnitEconomics(scenarioId: string): Promise<string> {
 
   const totalFte = employees.reduce((s, e) => s + Number(e.fte), 0);
   const ppEmployees = employees.filter((e) => e.category === "PP");
-  const ppWithContracts = ppEmployees.filter((e) => e.contracts.length > 0);
+  const ppWithContracts = ppEmployees.filter((e) =>
+    e.contracts.some((c) => c.contract.type === "REVENUE")
+  );
 
-  // Revenue from contracts linked to PP employees
+  // Revenue from contracts linked to employees, spread by FTE share (rough).
   const totalRevenue = employees.reduce((s, e) => {
     return s + e.contracts
       .filter((c) => c.contract.type === "REVENUE")
       .reduce((ss, c) => ss + Number(c.contract.amount || 0) * (Number(e.fte) / totalFte), 0);
   }, 0);
 
-  const totalCost = employees.reduce((s, e) => s + Number(e.costRate || 0) * Number(e.fte), 0);
+  // costRate is ₽/hour: without the year's working hours the number has no
+  // period, and a model would happily annualise it into invented millions.
+  const annualCost = (e: { costRate: unknown; fte: unknown }) =>
+    Number(e.costRate || 0) * Number(e.fte) * hoursYear;
+  const totalCost = employees.reduce((s, e) => s + annualCost(e), 0);
 
-  // Per-department breakdown
-  const deptMap = new Map<string, { name: string; fte: number; revenue: number; cost: number; ppCount: number; ppUtilized: number }>();
+  const deptMap = new Map<string, { name: string; fte: number; cost: number; ppCount: number; ppCovered: number }>();
   for (const e of employees) {
     const key = e.departmentId;
-    if (!deptMap.has(key)) deptMap.set(key, { name: e.department.name, fte: 0, revenue: 0, cost: 0, ppCount: 0, ppUtilized: 0 });
+    if (!deptMap.has(key)) deptMap.set(key, { name: e.department.name, fte: 0, cost: 0, ppCount: 0, ppCovered: 0 });
     const d = deptMap.get(key)!;
     d.fte += Number(e.fte);
-    d.cost += Number(e.costRate || 0) * Number(e.fte);
+    d.cost += annualCost(e);
     if (e.category === "PP") {
       d.ppCount++;
-      if (e.contracts.length > 0) d.ppUtilized++;
+      if (e.contracts.some((c) => c.contract.type === "REVENUE")) d.ppCovered++;
     }
   }
 
   return JSON.stringify({
+    year,
+    hoursYear,
+    _units: UNIT_ECONOMICS_UNITS,
     summary: {
       totalEmployees: employees.length,
       totalFte: Math.round(totalFte * 10) / 10,
-      revenuePerFte: totalFte > 0 ? Math.round(totalRevenue / totalFte) : 0,
-      costPerFte: totalFte > 0 ? Math.round(totalCost / totalFte) : 0,
-      utilization: ppEmployees.length > 0 ? Math.round((ppWithContracts.length / ppEmployees.length) * 100) : 0,
+      annualRevenuePerFteRub: totalFte > 0 ? Math.round(totalRevenue / totalFte) : 0,
+      annualCostPerFteRub: totalFte > 0 ? Math.round(totalCost / totalFte) : 0,
+      contractCoveragePct: ppEmployees.length > 0 ? Math.round((ppWithContracts.length / ppEmployees.length) * 100) : 0,
     },
     departments: Array.from(deptMap.values()).map((d) => ({
       department: d.name,
       fte: Math.round(d.fte * 10) / 10,
-      costPerFte: d.fte > 0 ? Math.round(d.cost / d.fte) : 0,
-      ppUtilization: d.ppCount > 0 ? Math.round((d.ppUtilized / d.ppCount) * 100) : null,
+      annualCostPerFteRub: d.fte > 0 ? Math.round(d.cost / d.fte) : 0,
+      ppContractCoveragePct: d.ppCount > 0 ? Math.round((d.ppCovered / d.ppCount) * 100) : null,
     })),
+  });
+}
+
+const EMPLOYEE_ECONOMICS_UNITS = {
+  costRateRubHour: "ставка себестоимости, ₽/час, как в справочнике",
+  annualCostRub:
+    "стоимость в год, ₽ = costRateRubHour × FTE × рабочие часы отчётного года по производственному календарю (hoursYear)",
+  coveragePct:
+    "покрытие договорами, % FTE сотрудника, обеспеченный привязками к ДОХОДНЫМ договорам в отчётном году с учётом периодов привязок. Это НЕ фактическая загрузка: данных о часах в системе нет",
+  uncoveredCostRub: "стоимость непокрытой договорами части, ₽/год = annualCostRub × (1 − coveragePct/100)",
+  name: "имя ровно как в справочнике (в обезличенных базах — «сотрудник12» или номер)",
+};
+
+const EMPLOYEE_SORTS = new Set(["cost", "coverage", "costUncovered"]);
+
+/**
+ * Экономика по сотрудникам: стоимость в год и покрытие доходными договорами.
+ * Единственный инструмент с денежными цифрами на уровне человека — до него
+ * модель «достраивала» их из агрегатов подразделения.
+ */
+async function getEmployeeEconomics(
+  scenarioId: string,
+  opts: { departmentId?: string; sortBy?: string; limit?: number; offset?: number }
+): Promise<string> {
+  const { year, periodStart, periodEnd, hoursYear } = reportingYear();
+  const sortBy = opts.sortBy && EMPLOYEE_SORTS.has(opts.sortBy) ? opts.sortBy : "cost";
+  const limit = Math.min(50, Math.max(1, Math.floor(opts.limit ?? 30)));
+  const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+
+  const employees = await prisma.employee.findMany({
+    where: { scenarioId, ...(opts.departmentId ? { departmentId: opts.departmentId } : {}) },
+    include: {
+      department: { select: { name: true } },
+      contracts: { include: { contract: { select: { type: true, status: true } } } },
+    },
+    orderBy: { fullName: "asc" },
+  });
+
+  const rows = employees.map((e) => {
+    const fte = Number(e.fte);
+    const costRate = e.costRate != null ? Number(e.costRate) : null;
+    const annualCostRub = costRate != null ? Math.round(costRate * fte * hoursYear) : null;
+    let coveredFte = 0;
+    let contractsCount = 0;
+    const revenueStatuses = { PROVIDED: 0, PLANNED: 0, NOT_PROVIDED: 0 };
+    for (const link of e.contracts) {
+      if (link.contract.type !== "REVENUE") continue;
+      contractsCount += 1;
+      revenueStatuses[link.revenueStatus] += 1;
+      coveredFte += Number(link.fte) * overlapFraction(link.periodStart, link.periodEnd, periodStart, periodEnd);
+    }
+    const coveragePct = fte > 0 ? Math.min(100, Math.round((coveredFte / fte) * 100)) : 0;
+    const uncoveredCostRub =
+      annualCostRub != null ? Math.round(annualCostRub * (1 - coveragePct / 100)) : null;
+    const flags: string[] = [];
+    if (costRate == null) flags.push("noCostRate");
+    if (contractsCount === 0) flags.push("noRevenueContracts");
+    return {
+      id: e.id,
+      name: e.fullName,
+      position: e.position,
+      category: e.category,
+      department: e.department.name,
+      fte,
+      costRateRubHour: costRate,
+      annualCostRub,
+      coveragePct,
+      uncoveredCostRub,
+      contractsCount,
+      revenueStatuses,
+      flags,
+    };
+  });
+
+  const num = (v: number | null) => (v == null ? -1 : v);
+  rows.sort((a, b) => {
+    if (sortBy === "coverage") {
+      return a.coveragePct - b.coveragePct || num(b.annualCostRub) - num(a.annualCostRub) || a.name.localeCompare(b.name, "ru");
+    }
+    if (sortBy === "costUncovered") {
+      return num(b.uncoveredCostRub) - num(a.uncoveredCostRub) || a.name.localeCompare(b.name, "ru");
+    }
+    return num(b.annualCostRub) - num(a.annualCostRub) || a.name.localeCompare(b.name, "ru");
+  });
+
+  const page = rows.slice(offset, offset + limit);
+  const nextOffset = offset + page.length < rows.length ? offset + page.length : undefined;
+  const withCost = rows.filter((r) => r.annualCostRub != null);
+
+  return JSON.stringify({
+    year,
+    period: { start: periodStart.toISOString().slice(0, 10), end: periodEnd.toISOString().slice(0, 10) },
+    hoursYear,
+    sortBy,
+    total: rows.length,
+    offset,
+    shown: page.length,
+    ...(nextOffset !== undefined
+      ? {
+          nextOffset,
+          _hint: `Показаны ${offset + 1}..${offset + page.length} из ${rows.length}. Продолжение — тот же инструмент с offset=${nextOffset}.`,
+        }
+      : {}),
+    _units: EMPLOYEE_ECONOMICS_UNITS,
+    summary: {
+      withoutCostRate: rows.length - withCost.length,
+      withoutRevenueContracts: rows.filter((r) => r.contractsCount === 0).length,
+      totalAnnualCostRub: withCost.reduce((s, r) => s + (r.annualCostRub ?? 0), 0),
+      avgCoveragePct: rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.coveragePct, 0) / rows.length) : 0,
+    },
+    employees: page,
   });
 }
 
