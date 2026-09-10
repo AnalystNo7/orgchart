@@ -201,6 +201,27 @@ async function main() {
   r = await run(); show(r); st = await stats();
   check("повтор и успех, 2 запроса", r.done != null && st.count === 2, `count=${st.count}`);
 
+  origLog("\n### 19. Рассуждения MiniMax: <think> без закрытия + маркер «### Ответ»");
+  await setPreset({ maxRetries: 3, retryDelaySec: 2, maxConcurrentRuns: 1, queueTimeoutSec: 30 }); await control("think_marker");
+  r = await run(); show(r);
+  check("черновик и тег скрыты", !r.text.includes("<think>") && !r.text.includes("Let me analyse"), JSON.stringify(r.text.slice(0, 60)));
+  check("строка-маркер в ответ не попала", !r.text.includes("### Ответ") && !r.text.includes("Ответ\n"), JSON.stringify(r.text.slice(0, 40)));
+  check("ответ показан целиком", r.text.trim() === "Итог по данным: всё в норме." && r.done != null, JSON.stringify(r.text));
+  check("была фаза «Модель рассуждает»", r.events.some((e) => e.startsWith("llm_reasoning")));
+
+  origLog("\n### 20. Страховка: <think> без закрытия и без маркера — показываем всё");
+  await control("think_nomarker");
+  r = await run(); show(r);
+  check("черновик показан (ответ не потерян)", r.text.includes("Let me analyse") && r.done != null, JSON.stringify(r.text.slice(0, 50)));
+  check("сам тег <think> убран", !r.text.includes("<think>"));
+
+  origLog("\n### 21. Двухшаговый прогон: текст планирующего шага отброшен");
+  await control("think_tool_step");
+  r = await run(); show(r); st = await stats();
+  check("план шага 1 не показан", !r.text.includes("Plan: I should call"), JSON.stringify(r.text.slice(0, 60)));
+  check("виден только итог финального шага", r.text.trim() === "Итог по данным: всё в норме.", JSON.stringify(r.text));
+  check("прогон дошёл до конца за 2 запроса", r.done != null && st.count === 2, `count=${st.count}`);
+
   console.log = origLog;
   await prisma.llmSetting.deleteMany({ where: { name: "__mock" } });
   await prisma.$disconnect();

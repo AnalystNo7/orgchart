@@ -10,6 +10,7 @@ export type StreamingPhase =
   | "local_search"
   | "retry_wait"
   | "queue_wait"
+  | "llm_reasoning"
   | null;
 
 export interface CompletedStep {

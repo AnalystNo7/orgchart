@@ -8,6 +8,7 @@ import {
 } from "./tools";
 import { getSystemPrompt } from "./system-prompt";
 import { createToolNameFilter } from "./tool-labels";
+import { createThinkFilter, type ReasoningBoundary } from "./think-filter";
 import {
   AI_CHUNK_TIMEOUT_MS,
   AI_RUN_CONTEXT_BUDGET_BYTES,
@@ -22,6 +23,7 @@ import {
   AI_MAX_CONCURRENT_RUNS,
   AI_QUEUE_TIMEOUT_MS,
   AI_RETRY_MAX_SHOWN_CHARS,
+  AI_DEBUG_RAW_CHUNK_MAX_CHARS,
 } from "./limits";
 import { acquireRunSlot, QueueTimeoutError } from "./run-queue";
 
@@ -207,6 +209,12 @@ export async function runChat(
   let inFlightStartedAt = 0;
   let inFlightInputBytes = 0;
   let partialText = "";
+  // Сколько символов черновика скрыто за прогон — в сводку [AI_DONE].
+  let hiddenChars = 0;
+  // Диагностика формата шлюза: печать сырых чанков включается переменной
+  // окружения, чтобы разово посмотреть, есть ли у провайдера отдельное поле
+  // рассуждений вместо <think> внутри content.
+  const rawChunkLimit = Math.max(0, Number(process.env.AI_DEBUG_RAW_CHUNKS ?? 0) || 0);
 
   // Warn the user a minute before the total budget runs out. Lives here (not
   // in the route) because only this side knows the actual budget.
@@ -284,6 +292,7 @@ export async function runChat(
       inFlightStep = 0;
       inFlightStartedAt = 0;
       inFlightInputBytes = 0;
+      hiddenChars = 0;
       lastActivityAt = Date.now();
 
       try {
@@ -299,6 +308,7 @@ export async function runChat(
           // HTTP-запросов.
           maxRetries: 0,
           abortSignal: signal,
+          includeRawChunks: rawChunkLimit > 0,
           onAbort: ({ steps }) => {
             console.log(`[AI_ABORT] SDK прервал поток после ${steps.length} шаг(ов)`);
           },
@@ -385,19 +395,84 @@ export async function runChat(
 
         // Drive the stream: deltas reach the user the moment the model emits them,
         // and whatever is on screen at an abort is exactly what partialText holds.
-        // The filter rewrites internal tool names into Russian labels — a name
-        // may be split across delta boundaries, hence push/flush.
+        // Читаем fullStream, а не textStream: границу шага и признак «шаг
+        // закончился инструментами» знает только он, а по ним фильтр решает,
+        // отбросить черновик или показать его (страховка).
+        // Два фильтра подряд: think — прячет рассуждения, name — переписывает
+        // внутренние имена инструментов; оба удерживают хвост, поэтому push/flush.
         const nameFilter = createToolNameFilter();
-        for await (const delta of result.textStream) {
-          if (delta) {
-            lastActivityAt = Date.now();
-            const out = nameFilter.push(delta);
-            if (out) {
-              partialText += out;
-              callbacks.onText(out);
+        const thinkFilter = createThinkFilter();
+        let reasoningAnnounced = false;
+        let rawSeen = 0;
+
+        const emit = (chunk: string) => {
+          if (!chunk) return;
+          const out = nameFilter.push(chunk);
+          if (out) {
+            partialText += out;
+            callbacks.onText(out);
+          }
+        };
+        const noteHidden = (n: number) => {
+          if (n <= 0) return;
+          if (!reasoningAnnounced) {
+            reasoningAnnounced = true;
+            callbacks.onStatus("llm_reasoning");
+          }
+        };
+        const finishStep = (toolCalls: boolean) => {
+          const end = thinkFilter.endStep({ toolCalls });
+          emit(end.text);
+          if (end.hidden > 0) {
+            hiddenChars += end.hidden;
+            console.log(
+              `[AI_REASONING] шаг ${inFlightStep || stepNo + 1}: скрыто ${end.hidden} символов,` +
+                ` граница: ${BOUNDARY_LABEL[end.boundary]}`,
+            );
+          }
+          reasoningAnnounced = false;
+          rawSeen = 0;
+        };
+
+        for await (const part of result.fullStream) {
+          switch (part.type) {
+            case "text-delta": {
+              lastActivityAt = Date.now();
+              const out = thinkFilter.push(part.text);
+              noteHidden(out.hidden);
+              emit(out.text);
+              break;
             }
+            case "reasoning-delta": {
+              // Провайдер отдал рассуждения отдельным каналом — показывать их
+              // тем более незачем.
+              lastActivityAt = Date.now();
+              const text = (part as { text?: string }).text ?? "";
+              noteHidden(thinkFilter.hide(text).hidden);
+              break;
+            }
+            case "finish-step": {
+              lastActivityAt = Date.now();
+              finishStep(part.finishReason === "tool-calls");
+              break;
+            }
+            case "raw": {
+              if (rawSeen < rawChunkLimit) {
+                rawSeen += 1;
+                const dump = JSON.stringify(part.rawValue) ?? "";
+                console.log(`[AI_RAW] ${dump.slice(0, AI_DEBUG_RAW_CHUNK_MAX_CHARS)}`);
+              }
+              break;
+            }
+            default:
+              // text-start/end, tool-*, source, file, start/finish, error, abort —
+              // обрабатываются колбэками SDK или ниже по finishReason.
+              break;
           }
         }
+        // Поток мог закончиться без finish-step (ошибка, обрыв) — дочистить,
+        // чтобы удержанный хвост не пропал.
+        finishStep(false);
         const filterRest = nameFilter.flush();
         if (filterRest) {
           partialText += filterRest;
@@ -416,6 +491,7 @@ export async function runChat(
           toolStats,
           await result.totalUsage,
           finishReason,
+          hiddenChars,
         );
 
         // A stream timeout does NOT throw — the stream just ends with
@@ -664,6 +740,15 @@ function parseRetryAfter(headers: unknown): number | undefined {
   return undefined;
 }
 
+/** Как определилась граница «черновик / ответ» — для строки [AI_REASONING]. */
+const BOUNDARY_LABEL: Record<ReasoningBoundary, string> = {
+  marker: "маркер",
+  close_tag: "закрывающий тег",
+  tool_calls: "инструменты (отброшено)",
+  revealed: "не найдена (раскрыто)",
+  none: "—",
+};
+
 /** ms → seconds with one decimal, for log readability. */
 function sec(ms: number): string {
   return (ms / 1000).toFixed(1);
@@ -705,6 +790,7 @@ function logRunSummary(
       }
     | undefined,
   finishReason: string,
+  hiddenChars: number,
 ): void {
   const modelMs = Math.max(0, elapsedMs - toolStats.totalMs);
   console.log(
@@ -712,7 +798,8 @@ function logRunSummary(
       `(модель ${sec(modelMs)}s / инструменты ${sec(toolStats.totalMs)}s, ${formatToolCalls(toolStats)})` +
       ` · токены ${tok(usage?.inputTokens)} in + ${tok(usage?.outputTokens)} out` +
       ` (reasoning ${tok(usage?.reasoningTokens)}, cached ${tok(usage?.cachedInputTokens)})` +
-      ` · finish: ${finishReason}`,
+      ` · finish: ${finishReason}` +
+      (hiddenChars > 0 ? ` · рассуждений скрыто ${hiddenChars} симв.` : ""),
   );
 
   // A first step that dwarfs everything else is provider-side latency

@@ -14,6 +14,10 @@
  *                            + tool_call list_scenarios; первые n запросов шага 2 → 429,
  *                            затем успех
  *   stream_error:<n>       — первые n запросов: текст, затем ошибка внутри 200 SSE
+ *   think_marker           — стиль MiniMax: <think> без закрытия, черновик, затем
+ *                            строка «### Ответ» и сам ответ
+ *   think_nomarker         — <think> без закрытия и БЕЗ маркера (проверка страховки)
+ *   think_tool_step        — шаг 1: <think>план + tool_call; шаг 2: черновик + маркер
  *   auth                   — всегда 401
  *   usage                  — всегда 400 "usage limits"
  * GET /__stats → { mode, count, closed, step2Count, log }; closed — соединений,
@@ -93,6 +97,36 @@ function streamDrip(res, n, everyMs) {
   res.on("close", () => clearInterval(timer));
 }
 
+/** Отдать готовый текст мелкими чанками — чтобы теги и маркер резались границами дельт. */
+function streamChunks(res, n, text, finish = "stop") {
+  if (res.destroyed) return;
+  sseHead(res);
+  write(res, chunkOf(n, { role: "assistant", content: "" }));
+  for (const piece of text.match(/[\s\S]{1,7}/g) ?? []) {
+    write(res, chunkOf(n, { content: piece }));
+  }
+  write(res, chunkOf(n, {}, finish));
+  finishStream(res, n);
+}
+
+/** Шаг 1 двухшагового прогона: черновик в <think> и вызов read-only инструмента. */
+function streamThinkToolCall(res, n, text) {
+  if (res.destroyed) return;
+  sseHead(res);
+  write(res, chunkOf(n, { role: "assistant", content: "" }));
+  for (const piece of text.match(/[\s\S]{1,7}/g) ?? []) {
+    write(res, chunkOf(n, { content: piece }));
+  }
+  write(res, chunkOf(n, {
+    tool_calls: [{ index: 0, id: "call_" + n, type: "function", function: { name: "list_scenarios", arguments: "{}" } }],
+  }));
+  write(res, chunkOf(n, {}, "tool_calls"));
+  finishStream(res, n);
+}
+
+const DRAFT = "<think>Let me analyse the request. The user wants a breakdown, so I will check the data first and then summarise.";
+const ANSWER = "\n### Ответ\nИтог по данным: всё в норме.";
+
 function streamError(res, n) {
   if (res.destroyed) return;
   sseHead(res);
@@ -136,6 +170,12 @@ const server = http.createServer((req, res) => {
         return streamOk(res, n);
       }
       if (kind === "stream_error" && n <= n1) return streamError(res, n);
+      if (kind === "think_marker") return streamChunks(res, n, DRAFT + ANSWER);
+      if (kind === "think_nomarker") return streamChunks(res, n, DRAFT);
+      if (kind === "think_tool_step") {
+        if (!secondStep) return streamThinkToolCall(res, n, "<think>Plan: I should call the scenarios tool first.");
+        return streamChunks(res, n, DRAFT + ANSWER);
+      }
       if (kind === "drip") return streamDrip(res, n, Math.max(20, n1));
       const delay = kind === "slow" ? n1 : 0;
       setTimeout(() => streamOk(res, n), delay);
