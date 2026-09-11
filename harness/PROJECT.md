@@ -44,7 +44,10 @@ src/
   lib/                 # 39 файлов — вся бизнес-логика (см. таблицу модулей)
   components/          # 15 директорий, 63 файла: org-chart/ pnl/ dashboard/ ai-chat/ admin/ compare/
                        #   department-card/ employees/ contracts/ competencies/ gap-analysis/
-                       #   process-diagram/ scenarios/ layout/ ui(18 примитивов, из них кастомные:
+                       #   process-diagram/ scenarios/ layout/ (Sidebar; BrandMark — знак «дерево узлов»,
+                       #   единый источник формы: панель, src/app/icon.svg (генерируется scripts/brand-icon-sync.ts),
+                       #   PNG icon.tsx 32×32 и apple-icon.tsx 180×180 через next/og; маршруты значка
+                       #   исключены из auth-middleware) ui(18 примитивов, из них кастомные:
                        #   money-input, resizable-panel)
   types/               # index.ts (SHETIL_CONFIG, словари лейблов, DepartmentWithMetrics), next-auth.d.ts (isAdmin)
 docs/

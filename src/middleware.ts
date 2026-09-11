@@ -14,8 +14,9 @@ export const config = {
      * - /api/auth (next-auth endpoints)
      * - /api/health (проба готовности для healthcheck и мониторинга)
      * - /_next (Next.js internals)
-     * - /favicon.ico, /icons, etc.
+     * - /icon.svg, /icon, /apple-icon (значок приложения: его запрашивают и
+     *   страница входа, и закладки без сессии — редирект на /login сломал бы значок)
      */
-    "/((?!login|api/auth|api/health|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|api/auth|api/health|_next/static|_next/image|icon|apple-icon).*)",
   ],
 };

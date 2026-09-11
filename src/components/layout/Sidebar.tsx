@@ -6,6 +6,7 @@ import { Gauge, BookOpen, FolderKanban, GitCompare, Target, Bot, BarChart3, Book
 import { cn } from "@/lib/utils";
 import { useAiChatStore } from "@/lib/ai-store";
 import { useOrgChartStore } from "@/lib/store";
+import { BrandMark } from "./BrandMark";
 import { useSession, signOut } from "next-auth/react";
 
 const navGroups = [
@@ -88,9 +89,12 @@ export function Sidebar() {
           className="flex min-w-0 items-center"
           title="OrgChart Modeler"
         >
-          <span className="truncate font-head text-[20px] font-bold leading-none tracking-[0.01em] text-white">
-            {collapsed ? "OC" : "OrgChart Modeler"}
-          </span>
+          <BrandMark size={collapsed ? 30 : 26} className="shrink-0" />
+          {!collapsed && (
+            <span className="ml-2.5 truncate font-head text-[20px] font-bold leading-none tracking-[0.01em] text-white">
+              OrgChart Modeler
+            </span>
+          )}
         </Link>
       </div>
 
