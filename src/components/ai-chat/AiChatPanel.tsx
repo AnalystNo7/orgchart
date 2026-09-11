@@ -571,18 +571,28 @@ export function AiChatPanel() {
           </div>
         ) : (
           <div className="space-y-4">
-            {messages.map((msg, i) => (
-              <ChatMessage
-                key={i}
-                message={msg}
-                wide={isMaximized}
-                askAiDisabled={isStreaming}
-                onAskAi={() => {
-                  const question = popAskAiExchange();
-                  if (question) sendMessage(question, { llm: true });
-                }}
-              />
-            ))}
+            {messages.map((msg, i) => {
+              // Кнопка «Отправить в AI» и AI-чипы — только под последней
+              // заглушкой: popAskAiExchange работает лишь с последним сообщением.
+              const isLast = i === messages.length - 1;
+              return (
+                <ChatMessage
+                  key={i}
+                  message={msg}
+                  wide={isMaximized}
+                  askAiDisabled={isStreaming}
+                  onAskAi={
+                    isLast
+                      ? () => {
+                          const question = popAskAiExchange();
+                          if (question) sendMessage(question, { llm: true });
+                        }
+                      : undefined
+                  }
+                  onQuickAction={isLast ? (p) => sendMessage(p, { llm: true }) : undefined}
+                />
+              );
+            })}
             {isStreaming && (
               <StreamingStatus
                 phase={streamingPhase}

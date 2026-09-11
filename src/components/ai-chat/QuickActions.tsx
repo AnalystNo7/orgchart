@@ -1,6 +1,7 @@
 "use client";
 
 import { Database, Sparkles, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type QuickActionsMode = "local" | "ai";
 
@@ -15,6 +16,8 @@ interface QuickActionsProps {
   heading?: string;
   /** Крестик «скрыть»; показывается только вместе с heading. */
   onDismiss?: () => void;
+  /** Переопределение отступов — например, внутри пузыря сообщения. */
+  className?: string;
 }
 
 type ChipAction = { label: string; prompt: string } | { label: string; prefill: string };
@@ -37,13 +40,13 @@ const AI_ACTIONS: ChipAction[] = [
   { label: "What-if", prompt: "Проведи what-if анализ: что произойдёт с метриками и P&L, если оптимизировать оргструктуру — объединить мелкие подразделения (менее 3 сотрудников) и снизить уровни иерархии? Создай what-if сценарий с конкретными изменениями." },
 ];
 
-export function QuickActions({ mode, onAction, onPrefill, disabled, heading, onDismiss }: QuickActionsProps) {
+export function QuickActions({ mode, onAction, onPrefill, disabled, heading, onDismiss, className }: QuickActionsProps) {
   const isAi = mode === "ai";
   const actions = isAi ? AI_ACTIONS : LOCAL_ACTIONS;
   const Icon = isAi ? Sparkles : Database;
 
   return (
-    <div className="flex flex-wrap gap-1.5 px-3 py-2">
+    <div className={cn("flex flex-wrap gap-1.5 px-3 py-2", className)}>
       {heading && (
         <div className="mb-0.5 flex w-full items-center justify-between">
           <span className="text-xs text-ink-500">{heading}</span>

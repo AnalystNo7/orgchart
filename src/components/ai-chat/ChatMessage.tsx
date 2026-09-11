@@ -6,6 +6,7 @@ import { Bot, User, Wrench, BookOpenCheck, BarChart3, Brain } from "lucide-react
 import type { AiMessage } from "@/lib/ai-store";
 import { toolLabel } from "./tool-labels";
 import { splitThinking } from "./think-split";
+import { QuickActions } from "./QuickActions";
 import React from "react";
 
 interface SourceRef {
@@ -116,12 +117,15 @@ export function ChatMessage({
   message,
   wide = false,
   onAskAi,
+  onQuickAction,
   askAiDisabled = false,
 }: {
   message: AiMessage;
   wide?: boolean;
   /** Заглушка локального поиска: отправить вопрос в модель одной кнопкой. */
   onAskAi?: () => void;
+  /** Заглушка локального поиска: готовый AI-промпт вместо своего вопроса. */
+  onQuickAction?: (prompt: string) => void;
   askAiDisabled?: boolean;
 }) {
   const isUser = message.role === "user";
@@ -193,6 +197,15 @@ export function ChatMessage({
             <Bot className="h-3.5 w-3.5" />
             Отправить в AI
           </button>
+        )}
+        {!isUser && message.askAi && onQuickAction && (
+          <QuickActions
+            mode="ai"
+            heading="Или готовый запрос в AI-модель:"
+            onAction={onQuickAction}
+            disabled={askAiDisabled}
+            className="px-0 pb-0"
+          />
         )}
 
         {/* Sources footer */}
