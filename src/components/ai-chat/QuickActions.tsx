@@ -1,10 +1,14 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 
 interface QuickActionsProps {
   onAction: (prompt: string) => void;
   disabled?: boolean;
+  /** Заголовок над чипами — для блока-подсказки посреди диалога. */
+  heading?: string;
+  /** Крестик «скрыть»; показывается только вместе с heading. */
+  onDismiss?: () => void;
 }
 
 const ACTIONS = [
@@ -15,9 +19,24 @@ const ACTIONS = [
   { label: "What-if", prompt: "Проведи what-if анализ: что произойдёт с метриками и P&L, если оптимизировать оргструктуру — объединить мелкие подразделения (менее 3 сотрудников) и снизить уровни иерархии? Создай what-if сценарий с конкретными изменениями." },
 ];
 
-export function QuickActions({ onAction, disabled }: QuickActionsProps) {
+export function QuickActions({ onAction, disabled, heading, onDismiss }: QuickActionsProps) {
   return (
     <div className="flex flex-wrap gap-1.5 px-3 py-2">
+      {heading && (
+        <div className="mb-0.5 flex w-full items-center justify-between">
+          <span className="text-xs text-ink-500">{heading}</span>
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label="Скрыть подсказки"
+              className="rounded p-0.5 text-ink-400 transition-colors hover:bg-ink-50 hover:text-ink-600"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
       {ACTIONS.map((a) => (
         <button
           key={a.label}

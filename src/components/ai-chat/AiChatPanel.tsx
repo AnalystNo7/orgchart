@@ -149,6 +149,11 @@ export function AiChatPanel() {
 
   const { scenarios } = useScenarios();
   const [input, setInput] = useState("");
+  // Блок «Что исследовать» посреди диалога: появляется, когда тумблер «AI»
+  // переводят во «включено» при непустой ленте; прячется по клику на чип
+  // или крестик. Ставится в обработчике тумблера, а не в эффекте, поэтому
+  // при загрузке страницы с уже включённым тумблером блока нет.
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Масштаб текста сообщений (Ctrl+колесо), 70–180%, живёт между сеансами
   const [chatZoom, setChatZoom] = useState<number>(() => {
@@ -603,6 +608,21 @@ export function AiChatPanel() {
         </div>
       )}
 
+      {/* Подсказки после включения тумблера «AI» посреди диалога */}
+      {showSuggestions && messages.length > 0 && scenarioId && (
+        <div className={cn("border-t", isMaximized && "px-5")}>
+          <QuickActions
+            heading="AI включён. Что исследовать:"
+            onDismiss={() => setShowSuggestions(false)}
+            onAction={(p) => {
+              setShowSuggestions(false);
+              sendMessage(p, { llm: true });
+            }}
+            disabled={isStreaming}
+          />
+        </div>
+      )}
+
       {/* Input */}
       <div className={cn("border-t py-2", isMaximized ? "px-8" : "px-3")}>
         {!scenarioId ? (
@@ -637,7 +657,10 @@ export function AiChatPanel() {
             >
               <Switch
                 checked={llmEnabled}
-                onCheckedChange={setLlmEnabled}
+                onCheckedChange={(v) => {
+                  setLlmEnabled(v);
+                  setShowSuggestions(v && messages.length > 0);
+                }}
                 disabled={isStreaming}
                 aria-label="Отправлять вопросы в AI-модель"
                 className="data-[state=checked]:bg-ai"
