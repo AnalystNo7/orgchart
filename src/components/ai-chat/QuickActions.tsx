@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, Sparkles, X } from "lucide-react";
+import { BookOpenCheck, Database, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type QuickActionsMode = "local" | "ai";
@@ -18,18 +18,36 @@ interface QuickActionsProps {
   onDismiss?: () => void;
   /** Переопределение отступов — например, внутри пузыря сообщения. */
   className?: string;
+  /** Документы базы знаний → чипы «БЗ: <название>» (только в режиме local). */
+  kbDocs?: KnowledgeDocRef[];
+}
+
+export interface KnowledgeDocRef {
+  id: string;
+  title: string;
+}
+
+const KB_LABEL_MAX = 32;
+
+function shortTitle(title: string): string {
+  const t = title.trim();
+  return t.length > KB_LABEL_MAX ? `${t.slice(0, KB_LABEL_MAX - 1).trimEnd()}…` : t;
 }
 
 type ChipAction = { label: string; prompt: string } | { label: string; prefill: string };
 
 /**
  * Локальные чипы: тексты подобраны под ключевые слова detectIntent
- * в src/lib/ai/local-query.ts («бенчмарк» + «ит-», «не в норме», «найди в»).
+ * в src/lib/ai/local-query.ts — «бенчмарк» + «ит-» (отрасль IT-интеграторы),
+ * категория по «структур» / «финанс» / «hr», диагностика по «не в норме».
+ * Детектор фильтрует по категории, не по метрике, поэтому чипы — по категориям.
  */
 const LOCAL_ACTIONS: ChipAction[] = [
   { label: "Бенчмарки для ИТ-интеграторов", prompt: "бенчмарки для ИТ-интеграторов" },
   { label: "Что у нас не в норме", prompt: "что у нас не в норме" },
-  { label: "Найти в базе знаний…", prefill: "найди в базе знаний про " },
+  { label: "Оргструктура: нормы ИТ", prompt: "бенчмарки оргструктуры ИТ-интеграторов" },
+  { label: "Финансы: нормы ИТ", prompt: "финансовые бенчмарки ИТ-интеграторов" },
+  { label: "HR: нормы ИТ", prompt: "HR-бенчмарки ИТ-интеграторов" },
 ];
 
 const AI_ACTIONS: ChipAction[] = [
@@ -40,10 +58,12 @@ const AI_ACTIONS: ChipAction[] = [
   { label: "What-if", prompt: "Проведи what-if анализ: что произойдёт с метриками и P&L, если оптимизировать оргструктуру — объединить мелкие подразделения (менее 3 сотрудников) и снизить уровни иерархии? Создай what-if сценарий с конкретными изменениями." },
 ];
 
-export function QuickActions({ mode, onAction, onPrefill, disabled, heading, onDismiss, className }: QuickActionsProps) {
+export function QuickActions({ mode, onAction, onPrefill, disabled, heading, onDismiss, className, kbDocs }: QuickActionsProps) {
   const isAi = mode === "ai";
   const actions = isAi ? AI_ACTIONS : LOCAL_ACTIONS;
   const Icon = isAi ? Sparkles : Database;
+  const localChipClass =
+    "inline-flex items-center gap-1 rounded-full border border-line-strong bg-ink-50 px-2.5 py-1 text-xs font-medium text-ink-700 transition-colors hover:bg-ink-100 disabled:opacity-50";
 
   return (
     <div className={cn("flex flex-wrap gap-1.5 px-3 py-2", className)}>
@@ -72,13 +92,28 @@ export function QuickActions({ mode, onAction, onPrefill, disabled, heading, onD
           className={
             isAi
               ? "inline-flex items-center gap-1 rounded-full border border-ai/25 bg-ai-bg px-2.5 py-1 text-xs font-medium text-ai transition-colors hover:bg-ai-bg disabled:opacity-50"
-              : "inline-flex items-center gap-1 rounded-full border border-line-strong bg-ink-50 px-2.5 py-1 text-xs font-medium text-ink-700 transition-colors hover:bg-ink-100 disabled:opacity-50"
+              : localChipClass
           }
         >
           <Icon className="h-3 w-3" />
           {a.label}
         </button>
       ))}
+      {!isAi &&
+        kbDocs?.map((d) => (
+          <button
+            key={`kb-${d.id}`}
+            type="button"
+            // «найди в» → kb_search в detectIntent; RAG ищет по названию документа
+            onClick={() => onAction(`найди в базе знаний про ${d.title.trim()}`)}
+            title={`Поиск в базе знаний: ${d.title}`}
+            disabled={disabled}
+            className={localChipClass}
+          >
+            <BookOpenCheck className="h-3 w-3" />
+            {`БЗ: ${shortTitle(d.title)}`}
+          </button>
+        ))}
     </div>
   );
 }
