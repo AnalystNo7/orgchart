@@ -1,4 +1,4 @@
-import { streamText, stepCountIs } from "ai";
+import { streamText, generateText, stepCountIs } from "ai";
 import { getLlm } from "./provider";
 import {
   buildTools,
@@ -9,6 +9,12 @@ import {
 import { getSystemPrompt } from "./system-prompt";
 import { createToolNameFilter } from "./tool-labels";
 import { createThinkFilter, type ReasoningBoundary } from "./think-filter";
+import {
+  LANGUAGE_REMINDER,
+  buildRepairPrompt,
+  findForeignFragments,
+  isSafeRepair,
+} from "./language";
 import {
   AI_CHUNK_TIMEOUT_MS,
   AI_RUN_CONTEXT_BUDGET_BYTES,
@@ -24,6 +30,7 @@ import {
   AI_QUEUE_TIMEOUT_MS,
   AI_RETRY_MAX_SHOWN_CHARS,
   AI_DEBUG_RAW_CHUNK_MAX_CHARS,
+  AI_LANGUAGE_REPAIR_TIMEOUT_MS,
 } from "./limits";
 import { acquireRunSlot, QueueTimeoutError } from "./run-queue";
 
@@ -51,6 +58,8 @@ export interface StreamCallbacks {
    * уже закрыт: сюда только сохранение собранного, ничего не отправлять.
    */
   onAbort?: (partial: PartialRun) => void | Promise<void>;
+  /** Сервер переписал готовый ответ (починка языка) — заменить текст в чате. */
+  onReplace?: (text: string) => void;
 }
 
 export interface RunChatOptions {
@@ -284,6 +293,48 @@ export async function runChat(
     await sleep(delayMs, signal);
   };
 
+  // Иероглифы и другие чужие письменности в готовом ответе: один вызов той
+  // же модели без инструментов «перепиши по-русски». Ответ уже показан, поэтому
+  // результат уходит событием replace; при любом сомнении остаётся исходный.
+  const repairLanguage = async (text: string, foreign: string[]): Promise<string | null> => {
+    const startedAt = Date.now();
+    const found = foreign.join(", ");
+    callbacks.onStatus("llm_analyzing");
+    try {
+      const res = await generateText({
+        model,
+        prompt: buildRepairPrompt(text),
+        temperature: 0,
+        maxOutputTokens: settings.maxOutputTokens,
+        abortSignal: signal,
+        timeout: AI_LANGUAGE_REPAIR_TIMEOUT_MS,
+        maxRetries: 0,
+      });
+      // Модель может ответить с рассуждениями и внутренними именами инструментов.
+      const think = createThinkFilter();
+      const names = createToolNameFilter();
+      const stripped = think.push(res.text).text + think.endStep({ toolCalls: false }).text;
+      const clean = (names.push(stripped) + names.flush()).trim();
+      if (!isSafeRepair(text, clean)) {
+        console.log(
+          `[AI_LANG] найдено: ${found} → не исправлено (результат отклонён: чужие символы или числа разошлись)` +
+            ` за ${sec(Date.now() - startedAt)}s`,
+        );
+        return null;
+      }
+      console.log(
+        `[AI_LANG] найдено: ${found} → исправлено за ${sec(Date.now() - startedAt)}s` +
+          ` (длина ${text.length} → ${clean.length})`,
+      );
+      return clean;
+    } catch (error) {
+      console.log(
+        `[AI_LANG] найдено: ${found} → не исправлено (${errorTextOf(error).slice(0, 120)})`,
+      );
+      return null;
+    }
+  };
+
   try {
     for (let attempt = 0; ; attempt++) {
       lastStreamError = undefined;
@@ -318,9 +369,15 @@ export async function runChat(
             chunkMs,
           },
           system: systemPrompt,
-          messages: messages.map((m) => ({
+          messages: messages.map((m, i) => ({
             role: m.role,
-            content: m.content,
+            // Напоминатель о языке — только в копии для модели: последний ход
+            // пользователя весит у открытых моделей больше системного промпта.
+            // В чат и в сохранённый диалог он не попадает.
+            content:
+              m.role === "user" && i === messages.length - 1
+                ? `${m.content}\n\n${LANGUAGE_REMINDER}`
+                : m.content,
           })),
           tools,
           stopWhen: stepCountIs(maxSteps),
@@ -543,6 +600,14 @@ export async function runChat(
           return;
         }
 
+        const foreign = findForeignFragments(partialText);
+        if (foreign.length > 0 && !signal?.aborted) {
+          const fixed = await repairLanguage(partialText, foreign);
+          if (fixed && !signal?.aborted) {
+            partialText = fixed;
+            callbacks.onReplace?.(fixed);
+          }
+        }
         callbacks.onDone(partialText, allToolCalls);
         return;
       } catch (error) {

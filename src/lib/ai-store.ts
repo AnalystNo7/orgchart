@@ -61,6 +61,8 @@ interface AiChatState {
   setMessages: (msgs: AiMessage[]) => void;
   addMessage: (msg: AiMessage) => void;
   appendToLastAssistant: (text: string) => void;
+  /** Заменить текст последнего ответа целиком (починка языка на сервере). */
+  setLastAssistantContent: (text: string) => void;
   clearMessages: () => void;
 
   isStreaming: boolean;
@@ -149,6 +151,14 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
 
   messages: [],
   setMessages: (messages) => set({ messages }),
+  setLastAssistantContent: (text) =>
+    set((s) => {
+      const msgs = [...s.messages];
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== "assistant") return {};
+      msgs[msgs.length - 1] = { ...last, content: text };
+      return { messages: msgs };
+    }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   appendToLastAssistant: (text) =>
     set((s) => {

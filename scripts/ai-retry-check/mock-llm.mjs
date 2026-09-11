@@ -18,6 +18,8 @@
  *                            строка «### Ответ» и сам ответ
  *   think_nomarker         — <think> без закрытия и БЕЗ маркера (проверка страховки)
  *   think_tool_step        — шаг 1: <think>план + tool_call; шаг 2: черновик + маркер
+ *   cjk_leak[:<ms>]        — ответ (через <ms>) с иероглифом «管理层»; повторный запрос без tools
+ *                            (починка языка) → чистый русский текст
  *   auth                   — всегда 401
  *   usage                  — всегда 400 "usage limits"
  * GET /__stats → { mode, count, closed, step2Count, log }; closed — соединений,
@@ -97,6 +99,17 @@ function streamDrip(res, n, everyMs) {
   res.on("close", () => clearInterval(timer));
 }
 
+/** Нестриминговый ответ (generateText шлёт stream:false) — один JSON. */
+function jsonCompletion(res, n, text) {
+  if (res.destroyed) return;
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify({
+    id: "mock-" + n, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: "mock",
+    choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  }));
+}
+
 /** Отдать готовый текст мелкими чанками — чтобы теги и маркер резались границами дельт. */
 function streamChunks(res, n, text, finish = "stop") {
   if (res.destroyed) return;
@@ -153,7 +166,8 @@ const server = http.createServer((req, res) => {
       count += 1;
       const n = count;
       let msgs = [];
-      try { msgs = JSON.parse(body).messages ?? []; } catch { /* не JSON */ }
+      let streaming = true;
+      try { const parsed = JSON.parse(body); msgs = parsed.messages ?? []; streaming = parsed.stream === true; } catch { /* не JSON */ }
       const secondStep = msgs.some((m) => m.role === "tool");
       log.push({ n, at: Date.now(), mode, secondStep });
       const [kind, a1, a2] = mode.split(":");
@@ -171,6 +185,16 @@ const server = http.createServer((req, res) => {
       }
       if (kind === "stream_error" && n <= n1) return streamError(res, n);
       if (kind === "think_marker") return streamChunks(res, n, DRAFT + ANSWER);
+      if (kind === "cjk_leak") {
+        let hasTools = false;
+        try { hasTools = Array.isArray(JSON.parse(body).tools); } catch { /* не JSON */ }
+        // Починка приходит без инструментов, нестримингово (generateText) и с промптом «Перепиши…».
+        const fixed = "| Span 4.2 | ниже на 29% (7) | избыток управленческого слоя (+30–40) |";
+        if (!hasTools) return streaming ? streamChunks(res, n, fixed) : jsonCompletion(res, n, fixed);
+        const leaky = DRAFT + "\n### Ответ\n| Span 4.2 | ниже на 29% (7) | избыток管理层 (+30–40) |";
+        setTimeout(() => streamChunks(res, n, leaky), n1);
+        return;
+      }
       if (kind === "think_nomarker") return streamChunks(res, n, DRAFT);
       if (kind === "think_tool_step") {
         if (!secondStep) return streamThinkToolCall(res, n, "<think>Plan: I should call the scenarios tool first.");

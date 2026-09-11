@@ -248,7 +248,10 @@ export async function POST(req: NextRequest) {
             send("error", { message: error.message });
             finish();
           },
-          onAbort: async (partial) => {
+          onReplace: (text) => {
+          send("replace", { text });
+        },
+        onAbort: async (partial) => {
             cleanup();
             // Клиент уже показал «Запрос отменён пользователем.», поток закрыт —
             // только сохраняем собранное, чтобы «продолжай» имело контекст.

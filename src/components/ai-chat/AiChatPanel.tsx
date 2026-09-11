@@ -144,6 +144,7 @@ export function AiChatPanel() {
     setLlmEnabled,
     setAskAiOnLast,
     popAskAiExchange,
+    setLastAssistantContent,
   } = useAiChatStore();
 
   const { scenarios } = useScenarios();
@@ -336,6 +337,9 @@ export function AiChatPanel() {
                   const data = JSON.parse(dataStr);
                   if (event === "text") {
                     appendToLastAssistant(data.text);
+                  } else if (event === "replace") {
+                    // Сервер переписал ответ (починка языка) — заменить целиком.
+                    setLastAssistantContent(data.text);
                   } else if (event === "tool_call") {
                     toolCalls.push({ name: data.name, input: data.input });
                   } else if (event === "conversation_id") {
@@ -432,6 +436,7 @@ export function AiChatPanel() {
       isStreaming,
       llmEnabled,
       setAskAiOnLast,
+      setLastAssistantContent,
       activeConversationId,
       addMessage,
       appendToLastAssistant,

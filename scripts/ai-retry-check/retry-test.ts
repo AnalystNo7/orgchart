@@ -39,10 +39,10 @@ async function ensureScenario() {
   scenarioId = s.id; scenarioName = s.name;
 }
 
-interface RunResult { events: string[]; done: string | null; error: string | null; ms: number; text: string; aborted: boolean; abortedSteps: number | null }
+interface RunResult { events: string[]; done: string | null; error: string | null; ms: number; text: string; aborted: boolean; abortedSteps: number | null; replaced: string | null }
 async function run(opts: { signal?: AbortSignal } = {}): Promise<RunResult> {
   const events: string[] = []; let done: string | null = null; let error: string | null = null;
-  let text = ""; let aborted = false; let abortedSteps: number | null = null;
+  let text = ""; let aborted = false; let abortedSteps: number | null = null; let replaced: string | null = null;
   const t0 = Date.now();
   await runChat([{ role: "user", content: "привет" }], scenarioId, scenarioName, {
     onText: (t) => { text += t; }, onToolCall: () => {}, onProgress: () => {}, onMeta: () => {},
@@ -50,8 +50,9 @@ async function run(opts: { signal?: AbortSignal } = {}): Promise<RunResult> {
     onDone: (t) => { done = t; },
     onError: (e) => { error = e.message; },
     onAbort: (p) => { aborted = true; abortedSteps = p.steps; },
+    onReplace: (t) => { replaced = t; text = t; },
   }, { signal: opts.signal });
-  return { events, done, error, ms: Date.now() - t0, text, aborted, abortedSteps };
+  return { events, done, error, ms: Date.now() - t0, text, aborted, abortedSteps, replaced };
 }
 const abortAfter = (ms: number) => { const ac = new AbortController(); setTimeout(() => ac.abort(), ms); return ac.signal; };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -71,7 +72,7 @@ async function main() {
   await ensureScenario();
   const quiet = ["log"] as const; // подавляем шум [AI_RUN]/[AI_STEP]
   const origLog = console.log;
-  const keep = (...a: unknown[]) => { const s = String(a[0] ?? ""); if (s.startsWith("[AI_RETRY") || s.startsWith("[AI_QUEUE]") || s.startsWith("[AI_ABORT]") || !s.startsWith("[AI_")) origLog(...a); };
+  const keep = (...a: unknown[]) => { const s = String(a[0] ?? ""); if (s.startsWith("[AI_RETRY") || s.startsWith("[AI_QUEUE]") || s.startsWith("[AI_ABORT]") || s.startsWith("[AI_LANG]") || !s.startsWith("[AI_")) origLog(...a); };
   console.log = keep; void quiet;
 
   origLog("\n### 1. Слот шлюза: первые 2 запроса 429 concurrent, maxRetries=3, пауза 2 с");
@@ -221,6 +222,19 @@ async function main() {
   check("план шага 1 не показан", !r.text.includes("Plan: I should call"), JSON.stringify(r.text.slice(0, 60)));
   check("виден только итог финального шага", r.text.trim() === "Итог по данным: всё в норме.", JSON.stringify(r.text));
   check("прогон дошёл до конца за 2 запроса", r.done != null && st.count === 2, `count=${st.count}`);
+
+  origLog("\n### 22. Иероглиф в ответе → автопочинка одним вызовом без инструментов");
+  await setPreset({ maxRetries: 3, retryDelaySec: 2, maxConcurrentRuns: 1, queueTimeoutSec: 30 }); await control("cjk_leak");
+  r = await run(); show(r); st = await stats();
+  check("итоговый текст без иероглифов", !/[\u4E00-\u9FFF]/.test(r.text) && r.text.includes("управленческого слоя"), JSON.stringify(r.text.slice(0, 70)));
+  check("событие replace пришло и done совпадает с исправленным", r.replaced != null && r.done === r.replaced);
+  check("ровно 2 запроса: ответ + починка", st.count === 2, `count=${st.count}`);
+  check("числа сохранены", r.text.includes("4.2") && r.text.includes("29%") && r.text.includes("30–40"));
+
+  origLog("\n### 23. Отмена во время ответа с иероглифом → починка не запускается");
+  await control("cjk_leak:1000");
+  r = await run({ signal: abortAfter(150) }); show(r); st = await stats();
+  check("aborted, починки не было (1 запрос)", r.aborted && st.count === 1 && r.replaced == null, `count=${st.count}`);
 
   console.log = origLog;
   await prisma.llmSetting.deleteMany({ where: { name: "__mock" } });
