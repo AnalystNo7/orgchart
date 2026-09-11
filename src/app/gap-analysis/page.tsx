@@ -104,6 +104,9 @@ export default function GapAnalysisPage() {
           scenarioId,
           conversationId: activeConversationId,
           messages: allMessages,
+          // Сравнение сценариев выполняет модель инструментом compare_scenarios;
+          // без флага текст с «проблемы» ловил локальный поиск.
+          useLlm: true,
         }),
       })
         .then(async (res) => {

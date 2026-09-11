@@ -25,6 +25,23 @@ export interface AiMessage {
   content: string;
   toolCalls?: Array<{ name: string; input: Record<string, unknown> }>;
   timestamp: string;
+  /**
+   * Заглушка локального поиска: вопрос, который можно одной кнопкой
+   * отправить в AI-модель («Отправить в AI»).
+   */
+  askAi?: string;
+}
+
+const LLM_ENABLED_KEY = "aiChatLlmEnabled";
+
+/** Тумблер «AI» в чате запоминается в браузере; по умолчанию выключен. */
+function readLlmEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(LLM_ENABLED_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 interface ConversationSummary {
@@ -85,9 +102,46 @@ interface AiChatState {
 
   showConversationList: boolean;
   setShowConversationList: (v: boolean) => void;
+  /** Тумблер «AI»: все сообщения идут во внешнюю модель. */
+  llmEnabled: boolean;
+  setLlmEnabled: (v: boolean) => void;
+  /** Пометить последний ответ ассистента предложением «Отправить в AI». */
+  setAskAiOnLast: (question: string) => void;
+  /**
+   * Убрать заглушку и вопрос перед ней из ленты, вернув текст вопроса —
+   * чтобы отправить его в модель одной кнопкой без дубля в чате.
+   */
+  popAskAiExchange: () => string | null;
 }
 
-export const useAiChatStore = create<AiChatState>((set) => ({
+export const useAiChatStore = create<AiChatState>((set, get) => ({
+  llmEnabled: readLlmEnabled(),
+  setLlmEnabled: (llmEnabled) => {
+    try {
+      localStorage.setItem(LLM_ENABLED_KEY, llmEnabled ? "1" : "0");
+    } catch {
+      // приватный режим — просто не запоминаем
+    }
+    set({ llmEnabled });
+  },
+  setAskAiOnLast: (question) =>
+    set((s) => {
+      const msgs = [...s.messages];
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== "assistant") return {};
+      msgs[msgs.length - 1] = { ...last, askAi: question };
+      return { messages: msgs };
+    }),
+  popAskAiExchange: () => {
+    const msgs = get().messages;
+    const last = msgs[msgs.length - 1];
+    if (!last || last.role !== "assistant" || !last.askAi) return null;
+    const prev = msgs[msgs.length - 2];
+    const cut = prev && prev.role === "user" ? 2 : 1;
+    set({ messages: msgs.slice(0, msgs.length - cut) });
+    return last.askAi;
+  },
+
   isOpen: false,
   toggle: () => set((s) => ({ isOpen: !s.isOpen })),
   open: () => set({ isOpen: true }),

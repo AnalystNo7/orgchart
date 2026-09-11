@@ -9,6 +9,7 @@ import {
 } from "@/lib/ai/orchestrator";
 import { processLocalQuery } from "@/lib/ai/local-query";
 import { toolLabel } from "@/lib/ai/tool-labels";
+import { resolveLlmRequest } from "@/lib/ai/llm-gate";
 
 // Binds ONLY on Vercel (locally there is no platform limit; runChat clamps
 // the loop budget under it only when process.env.VERCEL is set). Next reads
@@ -23,10 +24,13 @@ export async function POST(req: NextRequest) {
     scenarioId,
     conversationId,
     messages,
+    useLlm: useLlmFlag,
   } = body as {
     scenarioId: string;
     conversationId?: string;
     messages: ChatMessage[];
+    /** Тумблер «AI» в чате или кнопки, которые всегда идут в модель. */
+    useLlm?: boolean;
   };
 
   if (!scenarioId || !messages?.length) {
@@ -45,11 +49,15 @@ export async function POST(req: NextRequest) {
   // Try local query processing first (no external LLM)
   const lastMessage = messages[messages.length - 1];
   if (lastMessage?.role === "user") {
-    // Check if user explicitly approved LLM usage with prefix "!ai "
-    const useLlm = lastMessage.content.startsWith("!ai ");
+    // Внешняя модель — по осознанному сигналу: тумблер «AI» (флаг в запросе)
+    // или префикс "!ai" для привычных. Иначе — локальный поиск.
+    const { useLlm, content } = resolveLlmRequest({
+      content: lastMessage.content,
+      useLlm: useLlmFlag,
+    });
 
     if (!useLlm) {
-      const localResult = await processLocalQuery(lastMessage.content, scenarioId);
+      const localResult = await processLocalQuery(content, scenarioId);
       if (localResult.handled) {
         return buildLocalResponseStream(
           localResult.response,
@@ -60,15 +68,13 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Local search didn't handle it — ask permission before using external LLM
-      const askPermissionResponse = `Для ответа на этот запрос необходимо обращение к внешней AI-модели.
+      // Локальный поиск не справился — предложить отправить в модель кнопкой
+      // (в ответе) или тумблером «AI»; сам вопрос повторно набирать не нужно.
+      const askPermissionResponse = `**В локальных источниках (бенчмарки, база знаний, диагностика) по этому запросу ничего не найдено.**
 
-**Данные из локальных источников не найдены.**
+Для ответа нужна AI-модель: нажмите **«Отправить в AI»** под этим сообщением или включите тумблер **AI** у поля ввода — тогда все вопросы будут идти в модель сразу.
 
-Чтобы отправить запрос во внешнюю LLM, добавьте префикс \`!ai\` к вашему сообщению, например:
-> !ai ${lastMessage.content.slice(0, 80)}${lastMessage.content.length > 80 ? "..." : ""}
-
-Или используйте локальные команды:
+Локальные команды, которые работают без модели:
 - **Бенчмарки**: «бенчмарки для IT-интеграторов», «какой overhead нормальный»
 - **Диагностика**: «что у нас не в норме», «отклонения от бенчмарков»
 - **База знаний**: «найди в базе знаний про RACI», «документы про Минцберга»`;
@@ -78,15 +84,13 @@ export async function POST(req: NextRequest) {
         [],
         messages,
         scenarioId,
-        conversationId
+        conversationId,
+        { needsLlm: true, question: content }
       );
     }
 
-    // Strip "!ai " prefix before sending to LLM
-    messages[messages.length - 1] = {
-      ...lastMessage,
-      content: lastMessage.content.slice(4),
-    };
+    // В модель уходит текст без служебного префикса
+    messages[messages.length - 1] = { ...lastMessage, content };
   }
 
   // Отмена клиента (кнопка «Отмена», закрытие вкладки, обрыв сети): один
@@ -297,7 +301,9 @@ function buildLocalResponseStream(
   sources: Array<{ type: string; label: string }>,
   messages: ChatMessage[],
   scenarioId: string,
-  conversationId?: string
+  conversationId?: string,
+  /** Локальный поиск не справился: клиент покажет кнопку «Отправить в AI». */
+  extra?: { needsLlm: true; question: string }
 ): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -323,7 +329,7 @@ function buildLocalResponseStream(
       });
       if (newId) send("conversation_id", { id: newId });
 
-      send("done", { local: true, sources });
+      send("done", { local: true, sources, ...(extra ?? {}) });
       controller.close();
     },
   });
@@ -406,7 +412,7 @@ function buildAbortNote(partial: PartialRun): string {
     lines.push(`Уже собрано: ${collected.join(", ")}.`);
   }
   lines.push(
-    "Диалог сохранён — повторите запрос с префиксом `!ai`, " +
+    "Диалог сохранён — включите тумблер «AI» и повторите запрос, " +
       "либо сузьте его, чтобы модели требовалось меньше выкладок."
   );
   return lines.join("\n\n");

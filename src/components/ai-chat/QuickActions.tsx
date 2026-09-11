@@ -22,6 +22,7 @@ export function QuickActions({ onAction, disabled }: QuickActionsProps) {
         <button
           key={a.label}
           onClick={() => onAction(a.prompt)}
+          title="Запрос уходит в AI-модель"
           disabled={disabled}
           className="inline-flex items-center gap-1 rounded-full border border-ai/25 bg-ai-bg px-2.5 py-1 text-xs font-medium text-ai transition-colors hover:bg-ai-bg disabled:opacity-50"
         >

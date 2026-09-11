@@ -9,6 +9,7 @@ import { QuickActions } from "./QuickActions";
 import { ConversationList } from "./ConversationList";
 import { StreamingStatus } from "./StreamingStatus";
 import { ResizablePanel } from "@/components/ui/resizable-panel";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 interface ScenarioItem {
@@ -139,6 +140,10 @@ export function AiChatPanel() {
     setActiveConversationId,
     showConversationList,
     setShowConversationList,
+    llmEnabled,
+    setLlmEnabled,
+    setAskAiOnLast,
+    popAskAiExchange,
   } = useAiChatStore();
 
   const { scenarios } = useScenarios();
@@ -236,8 +241,11 @@ export function AiChatPanel() {
   }, [resetStreamingState, addMessage]);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: { llm?: boolean }) => {
       if (!text.trim() || !scenarioId || isStreaming) return;
+      // Тумблер «AI» — по умолчанию; кнопки быстрых действий и «Отправить в AI»
+      // передают llm: true явно.
+      const useLlm = opts?.llm ?? llmEnabled;
 
       const userMsg: AiMessage = {
         role: "user",
@@ -257,10 +265,13 @@ export function AiChatPanel() {
       abortControllerRef.current = controller;
 
       try {
-        const allMessages = [...messages, userMsg].map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
+        // Из стора, а не из замыкания: popAskAiExchange мог только что убрать
+        // заглушку и вопрос перед ней.
+        const history = useAiChatStore.getState().messages;
+        const allMessages = history
+          .filter((m) => m !== userMsg)
+          .concat(userMsg)
+          .map((m) => ({ role: m.role, content: m.content }));
 
         const res = await fetch("/api/ai/chat", {
           method: "POST",
@@ -269,6 +280,7 @@ export function AiChatPanel() {
             scenarioId,
             conversationId: activeConversationId,
             messages: allMessages,
+            useLlm,
           }),
           signal: controller.signal,
         });
@@ -367,6 +379,12 @@ export function AiChatPanel() {
                       setCurrentStep(data.step);
                       setStepStartedAt(Date.now());
                     }
+                  } else if (event === "done") {
+                    // Локальный поиск не справился: предложить кнопку
+                    // «Отправить в AI» под заглушкой.
+                    if (data.needsLlm && typeof data.question === "string") {
+                      setAskAiOnLast(data.question);
+                    }
                   } else if (event === "heartbeat") {
                     setLastHeartbeat(data.ts);
                   } else if (event === "warning") {
@@ -412,7 +430,8 @@ export function AiChatPanel() {
     [
       scenarioId,
       isStreaming,
-      messages,
+      llmEnabled,
+      setAskAiOnLast,
       activeConversationId,
       addMessage,
       appendToLastAssistant,
@@ -541,7 +560,16 @@ export function AiChatPanel() {
         ) : (
           <div className="space-y-4">
             {messages.map((msg, i) => (
-              <ChatMessage key={i} message={msg} wide={isMaximized} />
+              <ChatMessage
+                key={i}
+                message={msg}
+                wide={isMaximized}
+                askAiDisabled={isStreaming}
+                onAskAi={() => {
+                  const question = popAskAiExchange();
+                  if (question) sendMessage(question, { llm: true });
+                }}
+              />
             ))}
             {isStreaming && (
               <StreamingStatus
@@ -566,7 +594,7 @@ export function AiChatPanel() {
       {/* Quick actions (only when empty and scenario selected) */}
       {messages.length === 0 && scenarioId && (
         <div className={cn(isMaximized && "px-5")}>
-          <QuickActions onAction={sendMessage} disabled={isStreaming} />
+          <QuickActions onAction={(p) => sendMessage(p, { llm: true })} disabled={isStreaming} />
         </div>
       )}
 
@@ -584,10 +612,33 @@ export function AiChatPanel() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isStreaming}
-              placeholder={isStreaming ? "Подождите ответа..." : "Задайте вопрос..."}
+              placeholder={
+                isStreaming
+                  ? "Подождите ответа..."
+                  : llmEnabled
+                    ? "Спросите AI-модель..."
+                    : "Найти в бенчмарках и базе знаний..."
+              }
               rows={1}
               className="max-h-24 min-h-[36px] flex-1 resize-none rounded-md border border-line-strong px-3 py-2 text-sm focus:border-ai/50 focus:outline-none focus:ring-1 focus:ring-ai/25 disabled:bg-ink-50 disabled:text-ink-400 disabled:cursor-not-allowed"
             />
+            <label
+              className="flex h-9 shrink-0 select-none items-center gap-1.5 text-xs"
+              title={
+                llmEnabled
+                  ? "Включено: вопросы идут в AI-модель (тратятся токены)"
+                  : "Выключено: локальный поиск по бенчмаркам и базе знаний; вопросы к модели — кнопкой «Отправить в AI»"
+              }
+            >
+              <Switch
+                checked={llmEnabled}
+                onCheckedChange={setLlmEnabled}
+                disabled={isStreaming}
+                aria-label="Отправлять вопросы в AI-модель"
+                className="data-[state=checked]:bg-ai"
+              />
+              <span className={cn("font-semibold", llmEnabled ? "text-ai" : "text-ink-400")}>AI</span>
+            </label>
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || isStreaming}

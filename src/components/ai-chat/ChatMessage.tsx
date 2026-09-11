@@ -112,7 +112,18 @@ function SourceBadge({ type, label }: { type: string; label: string }) {
 
 /** wide — развёрнутый режим панели: ответы ассистента занимают всю ширину,
  *  вопросы пользователя остаются компактными. */
-export function ChatMessage({ message, wide = false }: { message: AiMessage; wide?: boolean }) {
+export function ChatMessage({
+  message,
+  wide = false,
+  onAskAi,
+  askAiDisabled = false,
+}: {
+  message: AiMessage;
+  wide?: boolean;
+  /** Заглушка локального поиска: отправить вопрос в модель одной кнопкой. */
+  onAskAi?: () => void;
+  askAiDisabled?: boolean;
+}) {
   const isUser = message.role === "user";
   const sources = !isUser ? parseSourceMarkers(message.content) : [];
   // Закрытые блоки <think>…</think> уходят в свёрнутый «Ход рассуждений»;
@@ -170,6 +181,19 @@ export function ChatMessage({ message, wide = false }: { message: AiMessage; wid
             {processedContent}
           </ReactMarkdown>
         </div>
+
+        {!isUser && message.askAi && onAskAi && (
+          <button
+            type="button"
+            onClick={onAskAi}
+            disabled={askAiDisabled}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-ai px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-ai-600 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Отправить этот же вопрос в AI-модель"
+          >
+            <Bot className="h-3.5 w-3.5" />
+            Отправить в AI
+          </button>
+        )}
 
         {/* Sources footer */}
         {!isUser && sources.length > 0 && (
