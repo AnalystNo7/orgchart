@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenCheck, Database, Sparkles, X } from "lucide-react";
+import { Database, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type QuickActionsMode = "local" | "ai";
@@ -18,20 +18,6 @@ interface QuickActionsProps {
   onDismiss?: () => void;
   /** Переопределение отступов — например, внутри пузыря сообщения. */
   className?: string;
-  /** Документы базы знаний → чипы «БЗ: <название>» (только в режиме local). */
-  kbDocs?: KnowledgeDocRef[];
-}
-
-export interface KnowledgeDocRef {
-  id: string;
-  title: string;
-}
-
-const KB_LABEL_MAX = 32;
-
-function shortTitle(title: string): string {
-  const t = title.trim();
-  return t.length > KB_LABEL_MAX ? `${t.slice(0, KB_LABEL_MAX - 1).trimEnd()}…` : t;
 }
 
 type ChipAction = { label: string; prompt: string } | { label: string; prefill: string };
@@ -58,7 +44,7 @@ const AI_ACTIONS: ChipAction[] = [
   { label: "What-if", prompt: "Проведи what-if анализ: что произойдёт с метриками и P&L, если оптимизировать оргструктуру — объединить мелкие подразделения (менее 3 сотрудников) и снизить уровни иерархии? Создай what-if сценарий с конкретными изменениями." },
 ];
 
-export function QuickActions({ mode, onAction, onPrefill, disabled, heading, onDismiss, className, kbDocs }: QuickActionsProps) {
+export function QuickActions({ mode, onAction, onPrefill, disabled, heading, onDismiss, className }: QuickActionsProps) {
   const isAi = mode === "ai";
   const actions = isAi ? AI_ACTIONS : LOCAL_ACTIONS;
   const Icon = isAi ? Sparkles : Database;
@@ -99,21 +85,6 @@ export function QuickActions({ mode, onAction, onPrefill, disabled, heading, onD
           {a.label}
         </button>
       ))}
-      {!isAi &&
-        kbDocs?.map((d) => (
-          <button
-            key={`kb-${d.id}`}
-            type="button"
-            // «найди в» → kb_search в detectIntent; RAG ищет по названию документа
-            onClick={() => onAction(`найди в базе знаний про ${d.title.trim()}`)}
-            title={`Поиск в базе знаний: ${d.title}`}
-            disabled={disabled}
-            className={localChipClass}
-          >
-            <BookOpenCheck className="h-3 w-3" />
-            {`БЗ: ${shortTitle(d.title)}`}
-          </button>
-        ))}
     </div>
   );
 }

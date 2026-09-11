@@ -5,7 +5,7 @@ import { Bot, X, Plus, History, Send, FolderOpen, ChevronDown, Check, Maximize2,
 import { useAiChatStore, type AiMessage, type StreamingPhase } from "@/lib/ai-store";
 import { useOrgChartStore } from "@/lib/store";
 import { ChatMessage } from "./ChatMessage";
-import { QuickActions, type QuickActionsMode, type KnowledgeDocRef } from "./QuickActions";
+import { QuickActions, type QuickActionsMode } from "./QuickActions";
 import { ConversationList } from "./ConversationList";
 import { StreamingStatus } from "./StreamingStatus";
 import { ResizablePanel } from "@/components/ui/resizable-panel";
@@ -39,22 +39,6 @@ function useScenarios() {
   }, []);
 
   return { scenarios, loading };
-}
-
-/** Два последних документа базы знаний — для чипов «БЗ: …» (список без текста). */
-function useKnowledgeDocs(): KnowledgeDocRef[] {
-  const [docs, setDocs] = useState<KnowledgeDocRef[]>([]);
-
-  useEffect(() => {
-    fetch("/api/knowledge")
-      .then((r) => (r.ok ? r.json() : { documents: [] }))
-      .then((data: { documents?: KnowledgeDocRef[] }) =>
-        setDocs((data.documents ?? []).slice(0, 2).map((d) => ({ id: d.id, title: d.title })))
-      )
-      .catch(() => {});
-  }, []);
-
-  return docs;
 }
 
 function ScenarioBadge({
@@ -164,7 +148,6 @@ export function AiChatPanel() {
   } = useAiChatStore();
 
   const { scenarios } = useScenarios();
-  const kbDocs = useKnowledgeDocs();
   const [input, setInput] = useState("");
   // Блок-подсказка над полем ввода посреди диалога:
   // "ai" — тумблер «AI» перевели во «включено» при непустой ленте (AI-чипы);
@@ -643,7 +626,6 @@ export function AiChatPanel() {
         <div className={cn(isMaximized && "px-5")}>
           <QuickActions
             mode={llmEnabled ? "ai" : "local"}
-            kbDocs={kbDocs}
             onAction={(p) => sendMessage(p, { llm: llmEnabled })}
             onPrefill={(t) => {
               setInput(t);
@@ -660,7 +642,6 @@ export function AiChatPanel() {
         <div className={cn("border-t", isMaximized && "px-5")}>
           <QuickActions
             mode={suggestions}
-            kbDocs={kbDocs}
             heading={suggestions === "ai" ? "AI включён. Что исследовать:" : "Что ещё посмотреть:"}
             onDismiss={() => setSuggestions(null)}
             onAction={(p) => {
