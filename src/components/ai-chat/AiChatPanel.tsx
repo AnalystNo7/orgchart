@@ -5,7 +5,7 @@ import { Bot, X, Plus, History, Send, FolderOpen, ChevronDown, Check, Maximize2,
 import { useAiChatStore, type AiMessage, type StreamingPhase } from "@/lib/ai-store";
 import { useOrgChartStore } from "@/lib/store";
 import { ChatMessage } from "./ChatMessage";
-import { QuickActions } from "./QuickActions";
+import { QuickActions, type QuickActionsMode } from "./QuickActions";
 import { ConversationList } from "./ConversationList";
 import { StreamingStatus } from "./StreamingStatus";
 import { ResizablePanel } from "@/components/ui/resizable-panel";
@@ -149,11 +149,12 @@ export function AiChatPanel() {
 
   const { scenarios } = useScenarios();
   const [input, setInput] = useState("");
-  // Блок «Что исследовать» посреди диалога: появляется, когда тумблер «AI»
-  // переводят во «включено» при непустой ленте; прячется по клику на чип
-  // или крестик. Ставится в обработчике тумблера, а не в эффекте, поэтому
-  // при загрузке страницы с уже включённым тумблером блока нет.
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  // Блок-подсказка над полем ввода посреди диалога:
+  // "ai" — тумблер «AI» перевели во «включено» при непустой ленте (AI-чипы);
+  // "local" — завершился любой ответ при выключенном тумблере (локальные чипы).
+  // Прячется по клику на чип, крестик или при отправке сообщения. Ставится в
+  // обработчиках, а не в эффекте, поэтому при загрузке страницы блока нет.
+  const [suggestions, setSuggestions] = useState<QuickActionsMode | null>(null);
 
   // Масштаб текста сообщений (Ctrl+колесо), 70–180%, живёт между сеансами
   const [chatZoom, setChatZoom] = useState<number>(() => {
@@ -252,6 +253,7 @@ export function AiChatPanel() {
       // Тумблер «AI» — по умолчанию; кнопки быстрых действий и «Отправить в AI»
       // передают llm: true явно.
       const useLlm = opts?.llm ?? llmEnabled;
+      setSuggestions(null);
 
       const userMsg: AiMessage = {
         role: "user",
@@ -434,6 +436,8 @@ export function AiChatPanel() {
         });
       } finally {
         resetStreamingState();
+        // Тумблер заблокирован во время стрима, значение из замыкания актуально.
+        if (!llmEnabled) setSuggestions("local");
       }
     },
     [
@@ -514,6 +518,7 @@ export function AiChatPanel() {
           </button>
           <button
             onClick={() => {
+              setSuggestions(null);
               clearMessages();
             }}
             className="rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
@@ -522,7 +527,10 @@ export function AiChatPanel() {
             <Plus className="h-4 w-4" />
           </button>
           <button
-            onClick={() => setShowConversationList(true)}
+            onClick={() => {
+              setSuggestions(null);
+              setShowConversationList(true);
+            }}
             className="rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
             title="История"
           >
@@ -628,16 +636,22 @@ export function AiChatPanel() {
         </div>
       )}
 
-      {/* Подсказки после включения тумблера «AI» посреди диалога */}
-      {showSuggestions && messages.length > 0 && scenarioId && (
+      {/* Подсказки посреди диалога: AI-чипы после включения тумблера,
+          локальные чипы после каждого ответа при выключенном тумблере */}
+      {suggestions && messages.length > 0 && scenarioId && (
         <div className={cn("border-t", isMaximized && "px-5")}>
           <QuickActions
-            mode="ai"
-            heading="AI включён. Что исследовать:"
-            onDismiss={() => setShowSuggestions(false)}
+            mode={suggestions}
+            heading={suggestions === "ai" ? "AI включён. Что исследовать:" : "Что ещё посмотреть:"}
+            onDismiss={() => setSuggestions(null)}
             onAction={(p) => {
-              setShowSuggestions(false);
-              sendMessage(p, { llm: true });
+              setSuggestions(null);
+              sendMessage(p, { llm: suggestions === "ai" });
+            }}
+            onPrefill={(t) => {
+              setSuggestions(null);
+              setInput(t);
+              inputRef.current?.focus();
             }}
             disabled={isStreaming}
           />
@@ -680,7 +694,7 @@ export function AiChatPanel() {
                 checked={llmEnabled}
                 onCheckedChange={(v) => {
                   setLlmEnabled(v);
-                  setShowSuggestions(v && messages.length > 0);
+                  setSuggestions(v && messages.length > 0 ? "ai" : null);
                 }}
                 disabled={isStreaming}
                 aria-label="Отправлять вопросы в AI-модель"
