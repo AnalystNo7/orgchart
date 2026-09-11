@@ -554,8 +554,10 @@ export function AiChatPanel() {
             <p className="text-sm font-medium text-neutral-500">
               AI-ассистент
             </p>
-            <p className="mt-1 text-xs text-neutral-400">
-              Задайте вопрос или выберите действие
+            <p className="mt-1 max-w-xs text-xs text-neutral-400">
+              {llmEnabled
+                ? "Задайте вопрос AI-модели или выберите действие"
+                : "Поиск по бенчмаркам и базе знаний. Вопросы к модели — после включения «AI»."}
             </p>
             {scenarios.length > 0 && (
               <div className="mt-4 w-full px-2">
@@ -601,10 +603,18 @@ export function AiChatPanel() {
         )}
       </div>
 
-      {/* Quick actions (only when empty and scenario selected) */}
+      {/* Быстрые действия в пустом диалоге: набор чипов зависит от тумблера «AI» */}
       {messages.length === 0 && scenarioId && (
         <div className={cn(isMaximized && "px-5")}>
-          <QuickActions onAction={(p) => sendMessage(p, { llm: true })} disabled={isStreaming} />
+          <QuickActions
+            mode={llmEnabled ? "ai" : "local"}
+            onAction={(p) => sendMessage(p, { llm: llmEnabled })}
+            onPrefill={(t) => {
+              setInput(t);
+              inputRef.current?.focus();
+            }}
+            disabled={isStreaming}
+          />
         </div>
       )}
 
@@ -612,6 +622,7 @@ export function AiChatPanel() {
       {showSuggestions && messages.length > 0 && scenarioId && (
         <div className={cn("border-t", isMaximized && "px-5")}>
           <QuickActions
+            mode="ai"
             heading="AI включён. Что исследовать:"
             onDismiss={() => setShowSuggestions(false)}
             onAction={(p) => {
